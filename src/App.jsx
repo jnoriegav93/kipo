@@ -9,7 +9,7 @@ import {
 // En App.jsx, arriba donde están los imports:
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, updateDoc, doc, setDoc, query, where, onSnapshot, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, setDoc, query, where, onSnapshot, getDocs, writeBatch, deleteDoc,getDoc } from "firebase/firestore";
 import { db, storage } from './firebaseConfig';
 // 🔔 IMPORTANTE PARA VS CODE: 
 // 1. Instala las dependencias: npm install leaflet react-leaflet firebase
@@ -441,6 +441,7 @@ const MapaReal = ({
 };
 
 
+
 // Subcomponentes auxiliares
 const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, textSize = 'text-lg', theme }) => (
   <div>
@@ -475,6 +476,26 @@ const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols, textSi
 function App() {
   const { estadoSync, cola } = useSync();
   const [user, setUser] = useState(null);
+
+  const [logoApp, setLogoApp] = useState(null);
+  // EFECTO: Cuando el usuario entra, buscamos su logo en la Base de Datos
+  useEffect(() => {
+    const fetchLogo = async () => {
+      if (user && user.email) {
+        try {
+          const userRef = doc(db, "usuarios", user.email);
+          const snap = await getDoc(userRef);
+          if (snap.exists() && snap.data().logoEmpresa) {
+            setLogoApp(snap.data().logoEmpresa);
+          }
+        } catch (error) {
+          console.error("Error cargando logo:", error);
+        }
+      }
+    };
+    fetchLogo();
+  }, [user]);
+
   const [config, setConfig] = useState(DATA_INICIAL);
   const [iconSize, setIconSize] = useState(1);
   const [mapStyle, setMapStyle] = useState('vector'); 
@@ -503,10 +524,10 @@ function App() {
   const [modoLectura, setModoLectura] = useState(false); 
   const [configTab, setConfigTab] = useState('armados');
   const [selectorColorAbierto, setSelectorColorAbierto] = useState(null);
-
   const [acordeonAbierto, setAcordeonAbierto] = useState('armados_vis');
   const [mapViewState, setMapViewState] = useState(null);
   const [gpsTrigger, setGpsTrigger] = useState(0);
+  const [deviceBlocked, setDeviceBlocked] = useState(false);
 
   // Formulario
   const [memoriaUltimoPunto, setMemoriaUltimoPunto] = useState(null);
@@ -525,23 +546,123 @@ function App() {
   const [alertData, setAlertData] = useState(null);
   const [exportData, setExportData] = useState(null);
 
-// 🔔 DETECTOR DE SESIÓN: Restaura el usuario al recargar la página
+
+
+// --- HELPER: Convertir URL a Base64 (Para el reporte Excel) ---
+  const urlABase64 = async (url) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result); 
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error("Error descargando logo:", error);
+      return null;
+    }
+  };
+
+// --- FUNCIÓN PARA SUBIR LOGO A FIREBASE ---
+  const handleCargarLogo = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+
+    // Feedback visual inmediato (opcional, o podrías poner un loading)
+    const localPreview = URL.createObjectURL(file);
+    setLogoApp(localPreview); 
+
+    try {
+      // 1. Subir imagen al Storage: carpeta "logos/email_usuario"
+      const storageRef = ref(storage, `logos_empresas/${user.email}`);
+      await uploadBytes(storageRef, file);
+      
+      // 2. Obtener la URL pública
+      const urlDescarga = await getDownloadURL(storageRef);
+
+      // 3. Guardar esa URL en el perfil del usuario en Firestore
+      const userRef = doc(db, "usuarios", user.email);
+      // Usamos setDoc con merge por si el documento del usuario no tenía este campo
+      await setDoc(userRef, { logoEmpresa: urlDescarga }, { merge: true });
+
+      // 4. Actualizar estado final
+      setLogoApp(urlDescarga);
+      console.log("Logo actualizado en la nube correctamente");
+
+    } catch (error) {
+      console.error("Error subiendo logo:", error);
+      alert("Error al subir el logo. Verifica tu conexión.");
+      // Si falla, revertimos
+      setLogoApp(null);
+    }
+  };
+
+
+
+
+// 🔔 EFECTO: CAMBIAR COLOR BARRA DE ESTADO IOS (Status Bar)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usuarioFirebase) => {
+    // Buscamos la etiqueta meta, si no existe la creamos
+    let metaThemeColor = document.querySelector("meta[name='theme-color']");
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement('meta');
+      metaThemeColor.name = 'theme-color';
+      document.head.appendChild(metaThemeColor);
+    }
+    
+    // Si es Dark Mode usamos Slate-900 (#0f172a), si es Light usamos Blanco (#ffffff)
+    // Esto hará que la batería y hora se vean bien integradas
+    metaThemeColor.setAttribute('content', isDark ? '#0f172a' : '#ffffff');
+  }, [isDark]);
+
+
+  // 🔔 DETECTOR DE SESIÓN MEJORADO
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (usuarioFirebase) => {
       if (usuarioFirebase) {
-        setUser({
-          uid: usuarioFirebase.uid,
-          email: usuarioFirebase.email,
-          name: usuarioFirebase.displayName || usuarioFirebase.email.split('@')[0],
-          photoURL: usuarioFirebase.photoURL
-        });
+        // 🛑 ANTES DE DAR PASO, VERIFICAMOS LA HUELLA
+        const huellaActual = generarHuellaDigital(); // Asegúrate que security.js se importa en App.jsx
+        
+        try {
+          const userRef = doc(db, "usuarios", usuarioFirebase.email);
+          const userSnap = await getDoc(userRef);
+
+          if (userSnap.exists()) {
+             const datos = userSnap.data();
+             const permitidos = datos.dispositivosAutorizados || [];
+
+             if (permitidos.includes(huellaActual)) {
+               // ✅ AUTORIZADO: Pasamos los datos y abrimos la App
+               setDeviceBlocked(false);
+               setUser({
+                 uid: usuarioFirebase.uid,
+                 email: usuarioFirebase.email,
+                 name: usuarioFirebase.displayName || usuarioFirebase.email.split('@')[0],
+                 photoURL: usuarioFirebase.photoURL
+               });
+             } else {
+               // ⛔ NO AUTORIZADO: Bloqueamos y cerramos sesión interna
+               console.warn("Dispositivo no autorizado. Bloqueando...");
+               setDeviceBlocked(true); // Esto activará el escudo en Login
+               await signOut(auth); // Cerramos sesión para que no pueda entrar
+               setUser(null);
+             }
+          } else {
+             // Usuario no existe en DB
+             setUser(null);
+          }
+        } catch (error) {
+          console.error("Error verificando dispositivo:", error);
+          setUser(null);
+        }
       } else {
         setUser(null);
+        // Nota: No reseteamos deviceBlocked aquí para que el mensaje persista si fue un bloqueo
       }
     });
     return () => unsubscribe();
   }, []);
-
 
 // FUNCIÓN PARA CERRAR SESIÓN REAL
   const cerrarSesion = async () => {
@@ -983,78 +1104,80 @@ const procesarFoto = (e) => {
   });
 };
 
+
 const comprimirYEstampar = (url, maxWidth, maxHeight, datos, logoBase64) => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = url;
-    img.onload = () => {
-      let w = img.width;
-      let h = img.height;
-      if (w > h) { if (w > maxWidth) { h *= maxWidth / w; w = maxWidth; } }
-      else { if (h > maxHeight) { w *= maxHeight / h; h = maxHeight; } }
-
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, w, h);
-
-      if (datos) {
-        const cajaAlto = h * 0.10; // Reducido 15% adicional (Franja muy fina)
-        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
-        ctx.fillRect(0, h - cajaAlto, w, cajaAlto);
-
-        const zona1 = w * 0.25;
-        const zona2 = w * 0.50;
-        const xDiv2 = zona1 + zona2;
-
-        // 1. NÚMERO (Amarillo)
-        ctx.fillStyle = "#fbbf24";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.font = `bold ${cajaAlto * 0.65}px Arial`;
-        ctx.fillText(String(datos.numero || '000').padStart(3, '0'), zona1/2, h - (cajaAlto/2));
-
-        // 2. TEXTO CENTRAL
-        const fSizeBase = cajaAlto * 0.25;
-        const xCentro = zona1 + (zona2 / 2);
-        
-        // Proyecto (Amarillo, negrita, tamaño original)
-        ctx.fillStyle = "#fbbf24";
-        ctx.font = `bold ${fSizeBase}px Arial`;
-        ctx.fillText((datos.proyecto || '').toUpperCase(), xCentro, h - (cajaAlto * 0.7));
-
-        // GPS y Fecha (Blanco, más pequeños)
-        ctx.fillStyle = "white";
-        ctx.font = `${fSizeBase * 0.75}px Arial`;
-        ctx.fillText(datos.gps, xCentro, h - (cajaAlto * 0.45));
-        ctx.fillText(new Date().toLocaleDateString(), xCentro, h - (cajaAlto * 0.2));
-
-        // 3. LOGO (Más pequeño, 50% del alto de la franja)
-        if (logoBase64) {
-          const imgLogo = new Image();
-          imgLogo.src = logoBase64;
-          imgLogo.onload = () => {
-            const altoL = cajaAlto * 0.5; // Tamaño reducido
-            const anchoL = imgLogo.width * (altoL / imgLogo.height);
-            ctx.drawImage(imgLogo, xDiv2 + (zona1/2) - (anchoL/2), h - (cajaAlto/2) - (altoL/2), anchoL, altoL);
-            finalizar();
-          };
-          imgLogo.onerror = () => finalizar();
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = url;
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > h) { if (w > maxWidth) { h *= maxWidth / w; w = maxWidth; } }
+        else { if (h > maxHeight) { w *= maxHeight / h; h = maxHeight; } }
+  
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+  
+        if (datos) {
+          const cajaAlto = h * 0.10; 
+          
+          // --- CAMBIO 1: FONDO BLANCO TIPO VIDRIO (0.7 de opacidad) ---
+          ctx.fillStyle = "rgba(255, 255, 255, 0.70)"; 
+          ctx.fillRect(0, h - cajaAlto, w, cajaAlto);
+  
+          const zona1 = w * 0.25;
+          const zona2 = w * 0.50;
+          const xDiv2 = zona1 + zona2;
+  
+          // --- CAMBIO 2: NÚMERO EN NEGRO ---
+          ctx.fillStyle = "#000000"; // Antes amarillo
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.font = `bold ${cajaAlto * 0.65}px Arial`;
+          ctx.fillText(String(datos.numero || '000').padStart(3, '0'), zona1/2, h - (cajaAlto/2));
+  
+          // 2. TEXTO CENTRAL
+          const fSizeBase = cajaAlto * 0.25;
+          const xCentro = zona1 + (zona2 / 2);
+          
+          // --- CAMBIO 3: PROYECTO EN NEGRO ---
+          ctx.fillStyle = "#000000"; // Antes amarillo
+          ctx.font = `bold ${fSizeBase}px Arial`;
+          ctx.fillText((datos.proyecto || '').toUpperCase(), xCentro, h - (cajaAlto * 0.7));
+  
+          // --- CAMBIO 4: GPS Y FECHA EN GRIS OSCURO (Para jerarquía) ---
+          ctx.fillStyle = "#333333"; // Antes blanco
+          ctx.font = `${fSizeBase * 0.75}px Arial`;
+          ctx.fillText(datos.gps, xCentro, h - (cajaAlto * 0.45));
+          ctx.fillText(new Date().toLocaleDateString(), xCentro, h - (cajaAlto * 0.2));
+  
+          // 3. LOGO 
+          if (logoBase64) {
+            const imgLogo = new Image();
+            imgLogo.src = logoBase64;
+            imgLogo.onload = () => {
+              const altoL = cajaAlto * 0.5; 
+              const anchoL = imgLogo.width * (altoL / imgLogo.height);
+              ctx.drawImage(imgLogo, xDiv2 + (zona1/2) - (anchoL/2), h - (cajaAlto/2) - (altoL/2), anchoL, altoL);
+              finalizar();
+            };
+            imgLogo.onerror = () => finalizar();
+          } else { finalizar(); }
         } else { finalizar(); }
-      } else { finalizar(); }
-
-      function finalizar() {
-        canvas.toBlob((b) => {
-          const reader = new FileReader();
-          reader.readAsArrayBuffer(b);
-          reader.onloadend = () => resolve({ buffer: reader.result, width: w, height: h });
-        }, "image/jpeg", 0.9);
-      }
-    };
-  });
-};
-
+  
+        function finalizar() {
+          canvas.toBlob((b) => {
+            const reader = new FileReader();
+            reader.readAsArrayBuffer(b);
+            reader.onloadend = () => resolve({ buffer: reader.result, width: w, height: h });
+          }, "image/jpeg", 0.9);
+        }
+      };
+    });
+  };
 
   // =========================================================
   // 2. NUEVA FUNCIÓN: COMPARTIR O DESCARGAR
@@ -1072,152 +1195,303 @@ const comprimirYEstampar = (url, maxWidth, maxHeight, datos, logoBase64) => {
     saveAs(blob, nombre);
   };
 
-const descargarReporteExcel = async (proy) => {
-  if (!proy) return;
-  const logoUser = await pedirLogo(); // Ahora usa tu aviso personalizado
-  const workbook = new ExcelJS.Workbook();
-  const wsDatos = workbook.addWorksheet('1. DATOS', { views: [{state: 'frozen', ySplit: 1}] });
-  const wsFotos = workbook.addWorksheet('2. FOTOS');
 
-  wsFotos.columns = [{ width: 25 }, { width: 55 }, { width: 55 }, { width: 55 }, { width: 55 }];
-  
-  // 1. Columnas según tu lista exacta
-  wsDatos.columns = [
-    { header: 'ITEM', key: 'item', width: 7 },
-    { header: 'NRO', key: 'numero', width: 12 },
-    { header: 'CÓDIGO', key: 'codigo', width: 15 },
-    { header: 'LATITUD', key: 'lat', width: 15 },
-    { header: 'LONGITUD', key: 'lng', width: 15 },
-    { header: 'GPS (Concat)', key: 'gps', width: 25 },
-    { header: 'SUMINISTRO', key: 'sum', width: 15 },
-    { header: 'TIPO RED', key: 'tipo', width: 12 },
-    { header: 'MATERIAL', key: 'mat', width: 12 },
-    { header: 'ALTURA', key: 'alt', width: 10 },
-    { header: 'FUERZA', key: 'fuerza', width: 10 },
-    { header: 'CABLES', key: 'cables', width: 10 },
-    { header: 'ARMADO', key: 'arm', width: 25 },
-    { header: 'EXTRAS', key: 'extras', width: 30 },
-    { header: 'FERRETERÍA EXTRA', key: 'ferr', width: 30 },
-    { header: 'OBSERVACIONES', key: 'obs', width: 35 },
-  ];
+// --- EXPORTAR EXCEL (COMPLETO Y ACTUALIZADO) ---
+  const descargarReporteExcel = async (proy) => {
+    if (!proy) return;
 
-  // Estilo de encabezado (Azul profesional)
-  const headerRow = wsDatos.getRow(1);
-  headerRow.eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } };
-    cell.alignment = { horizontal: 'center' };
-  });
-
-  let filaGaleria = 1;
-  const pts = puntos.filter(p => proy.dias.some(d => d.id === p.diaId));
-
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const valNum = p.datos.numero || '-';
-    const lat = (p.coords.lat || 0).toFixed(6);
-    const lng = (p.coords.lng || 0).toFixed(6);
-
-    const row = wsDatos.getRow(i + 2);
-    row.values = {
-      item: i + 1,
-      numero: valNum,
-      codigo: p.datos.codigo || '-',
-      lat: Number(lat),
-      lng: Number(lng),
-      gps: `${lat}, ${lng}`,
-      sum: p.datos.suministro || '-',
-      tipo: p.datos.tipo || '-',
-      mat: p.datos.material || '-',
-      alt: p.datos.altura || '-',
-      fuerza: p.datos.fuerza || '-',
-      cables: p.datos.cables || '-',
-      arm: config.armados.find(a => a.id === p.datos.armadoSeleccionado?.idArmado)?.nombre || '-',
-      // CONCATENACIÓN DE EXTRAS
-      extras: Array.isArray(p.datos.extrasSeleccionados) ? p.datos.extrasSeleccionados.join(', ') : '-',
-      ferr: Array.isArray(p.datos.ferreteriaExtraSeleccionada) ? p.datos.ferreteriaExtraSeleccionada.join(', ') : '-',
-      obs: p.datos.observaciones || '-'
-    };
-
-    if (valNum !== '-') {
-      const cell = row.getCell('numero');
-      cell.value = { text: valNum, hyperlink: `#'2. FOTOS'!A${filaGaleria}` };
-      cell.font = { color: { argb: 'FF0000FF' }, underline: true, bold: true };
+    // 1. GESTIÓN DEL LOGO (Automática)
+    // Convertimos la URL de la nube a Base64 para poder incrustarla
+    let logoBase64 = null;
+    if (logoApp) {
+        logoBase64 = await urlABase64(logoApp);
     }
 
-    // Hoja de Fotos (Título Poste con color)
-    wsFotos.getRow(filaGaleria).height = 400;
-    const cellTit = wsFotos.getCell(filaGaleria, 1);
-    cellTit.value = `POSTE ${valNum}`;
-    cellTit.font = { size: 20, bold: true, color: { argb: 'FF1F4E78' } };
-    cellTit.alignment = { vertical: 'middle', horizontal: 'center' };
+    const workbook = new ExcelJS.Workbook();
+    
+    // Configuración de Hojas
+    const wsDatos = workbook.addWorksheet('1. DATOS', { views: [{state: 'frozen', ySplit: 4}] }); // Congelamos en la fila 4
+    const wsFotos = workbook.addWorksheet('2. FOTOS');
 
-    if (p.datos.fotos) {
-      for (let j = 0; j < p.datos.fotos.length; j++) {
-        try {
-          const res = await comprimirYEstampar(p.datos.fotos[j], 500, 500, {
-            numero: valNum, proyecto: proy.nombre, gps: `${lat}, ${lng}`
-          }, logoUser);
-          const imgId = workbook.addImage({ buffer: res.buffer, extension: 'jpeg' });
-          wsFotos.addImage(imgId, { tl: { col: j + 1, row: filaGaleria - 1 }, ext: { width: res.width, height: res.height } });
-        } catch (e) {}
+    // --- HOJA 1: DATOS ---
+    
+    // Definimos columnas (ExcelJS las pone en la Fila 1 por defecto)
+    wsDatos.columns = [
+      { header: 'ITEM', key: 'item', width: 7 },
+      { header: 'NRO', key: 'numero', width: 12 },
+      { header: 'CÓDIGO', key: 'codigo', width: 15 },
+      { header: 'LATITUD', key: 'lat', width: 15 },
+      { header: 'LONGITUD', key: 'lng', width: 15 },
+      { header: 'GPS (Concat)', key: 'gps', width: 25 },
+      { header: 'SUMINISTRO', key: 'sum', width: 15 },
+      { header: 'TIPO RED', key: 'tipo', width: 12 },
+      { header: 'MATERIAL', key: 'mat', width: 12 },
+      { header: 'ALTURA', key: 'alt', width: 10 },
+      { header: 'FUERZA', key: 'fuerza', width: 10 },
+      { header: 'CABLES', key: 'cables', width: 10 },
+      { header: 'ARMADO', key: 'arm', width: 25 },
+      { header: 'EXTRAS', key: 'extras', width: 30 },
+      { header: 'FERRETERÍA EXTRA', key: 'ferr', width: 30 },
+      { header: 'OBSERVACIONES', key: 'obs', width: 35 },
+    ];
+
+    // TRUCO: Insertamos 3 filas vacías al principio para bajar los encabezados a la fila 4
+    // Así dejamos espacio arriba para el Logo y el Título del Proyecto
+    wsDatos.insertRow(1, []);
+    wsDatos.insertRow(1, []);
+    wsDatos.insertRow(1, []);
+
+    // --- INSERTAR LOGO EN EL EXCEL (Hoja Datos) ---
+    if (logoBase64) {
+        const imageId = workbook.addImage({
+            base64: logoBase64,
+            extension: 'png',
+        });
+        // Lo ponemos en la esquina superior izquierda (A1:B3)
+        wsDatos.addImage(imageId, {
+            tl: { col: 0, row: 0 },
+            ext: { width: 120, height: 55 } // Ajusta tamaño según prefieras
+        });
+    }
+
+    // --- TÍTULO DEL PROYECTO ---
+    wsDatos.mergeCells('C2:H2'); // Combinamos celdas para el título
+    const cellTitulo = wsDatos.getCell('C2');
+    cellTitulo.value = `REPORTE: ${proy.nombre.toUpperCase()}`;
+    cellTitulo.font = { size: 16, bold: true, color: { argb: 'FF1F4E78' } };
+    cellTitulo.alignment = { vertical: 'middle' };
+
+    // --- ESTILAR LOS ENCABEZADOS (Ahora están en la Fila 4) ---
+    const headerRow = wsDatos.getRow(4);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }; // Azul Corporativo
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+    });
+
+    // --- LLENADO DE DATOS ---
+    let filaGaleria = 1;
+    const pts = puntos.filter(p => proy.dias.some(d => d.id === p.diaId));
+
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const valNum = p.datos.numero || '-';
+      const lat = (p.coords.lat || 0).toFixed(6);
+      const lng = (p.coords.lng || 0).toFixed(6);
+
+      // Escribimos en i + 5 porque tenemos 4 filas de cabecera ocupadas arriba
+      const row = wsDatos.getRow(i + 5); 
+      
+      row.values = {
+        item: i + 1,
+        numero: valNum,
+        codigo: p.datos.codigo || '-',
+        lat: Number(lat),
+        lng: Number(lng),
+        gps: `${lat}, ${lng}`,
+        sum: p.datos.suministro || '-',
+        tipo: p.datos.tipo || '-',
+        mat: p.datos.material || '-',
+        alt: p.datos.altura || '-',
+        fuerza: p.datos.fuerza || '-',
+        cables: p.datos.cables || '-',
+        arm: config.armados.find(a => a.id === p.datos.armadoSeleccionado?.idArmado)?.nombre || '-',
+        extras: Array.isArray(p.datos.extrasSeleccionados) ? p.datos.extrasSeleccionados.join(', ') : '-',
+        ferr: Array.isArray(p.datos.ferreteriaExtraSeleccionada) ? p.datos.ferreteriaExtraSeleccionada.join(', ') : '-',
+        obs: p.datos.observaciones || '-'
+      };
+
+      // Bordes para todas las celdas de datos
+      row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+
+      // Hipervínculo a la foto
+      if (valNum !== '-') {
+        const cell = row.getCell('numero');
+        cell.value = { text: valNum, hyperlink: `#'2. FOTOS'!A${filaGaleria}` };
+        cell.font = { color: { argb: 'FF0000FF' }, underline: true, bold: true };
       }
+
+      // --- HOJA 2: FOTOS ---
+      wsFotos.columns = [{ width: 25 }, { width: 55 }, { width: 55 }, { width: 55 }, { width: 55 }];
+      wsFotos.getRow(filaGaleria).height = 400; // Altura para las fotos
+      
+      // Título del Poste
+      const cellTit = wsFotos.getCell(filaGaleria, 1);
+      cellTit.value = `POSTE ${valNum}`;
+      cellTit.font = { size: 20, bold: true, color: { argb: 'FF1F4E78' } };
+      cellTit.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+      if (p.datos.fotos) {
+        for (let j = 0; j < p.datos.fotos.length; j++) {
+          try {
+            // AQUÍ USAMOS EL LOGO AUTOMÁTICO (logoBase64)
+            const res = await comprimirYEstampar(p.datos.fotos[j], 500, 500, {
+              numero: valNum, 
+              proyecto: proy.nombre, 
+              gps: `${lat}, ${lng}`
+            }, logoBase64); // <--- Pasamos el logo recuperado de la nube
+
+            const imgId = workbook.addImage({ buffer: res.buffer, extension: 'jpeg' });
+            wsFotos.addImage(imgId, { tl: { col: j + 1, row: filaGaleria - 1 }, ext: { width: res.width, height: res.height } });
+          } catch (e) {
+              console.error("Error procesando foto excel", e);
+          }
+        }
+      }
+      filaGaleria++;
     }
-    filaGaleria++;
-  }
-  const buffer = await workbook.xlsx.writeBuffer();
-  compartirODescargar(new Blob([buffer]), `Reporte_${proy.nombre}.xlsx`);
-};
 
-const descargarFotosZip = async (proy) => {
-  if (!proy) return;
-  const logoUser = await pedirLogo();
-  
-  const zip = new JSZip();
-  // Carpeta Raíz con nombre del proyecto
-  const nombreCarpetaRaiz = proy.nombre.replace(/\s+/g, '_').toUpperCase();
-  const root = zip.folder(nombreCarpetaRaiz);
-  
-  const pts = puntos.filter(p => proy.dias.some(d => d.id === p.diaId));
-  const contadores = {};
-
-  for (const p of pts) {
-    let numOriginal = String(p.datos.numero || 'SN');
-    let numCarpeta = numOriginal;
-
-    // Lógica de letras para repetidos (a, b, c...)
-    if (contadores[numOriginal]) {
-      const letra = String.fromCharCode(96 + contadores[numOriginal]);
-      numCarpeta = `${numOriginal}${letra}`;
-      contadores[numOriginal]++;
+    // Descarga Final
+    const buffer = await workbook.xlsx.writeBuffer();
+    // Usamos saveAs directo o tu funcion compartirODescargar
+    if (typeof compartirODescargar === 'function') {
+        compartirODescargar(new Blob([buffer]), `Reporte_${proy.nombre}.xlsx`);
     } else {
-      contadores[numOriginal] = 1;
+        saveAs(new Blob([buffer]), `Reporte_${proy.nombre}.xlsx`);
+    }
+  };
+
+// --- DESCARGAR FOTOS ZIP (Actualizado: Estructura por Días + Logo Auto) ---
+  const descargarFotosZip = async (proy) => {
+    if (!proy) return;
+    
+    // 1. PREPARAR LOGO (Automático desde la nube)
+    let logoParaEstampar = null;
+    let blobLogo = null;
+    
+    if (logoApp) {
+        try {
+            // Descargamos el logo para tenerlo listo
+            const response = await fetch(logoApp);
+            blobLogo = await response.blob();
+            // Convertimos a Base64 para la función de estampar
+            logoParaEstampar = await urlABase64(logoApp);
+        } catch (e) {
+            console.error("No se pudo procesar el logo para el ZIP", e);
+        }
     }
 
-    const carpetaPoste = root.folder(numCarpeta); // Carpeta solo con NRO poste
-    const gpsStr = `${(p.coords.lat||0).toFixed(6)}, ${(p.coords.lng||0).toFixed(6)}`;
+    const zip = new JSZip();
+    
+    // 2. CREAR CARPETA RAÍZ (Nombre del Proyecto)
+    const nombreCarpetaRaiz = proy.nombre.replace(/\s+/g, '_').toUpperCase();
+    const root = zip.folder(nombreCarpetaRaiz);
 
-    if (p.datos.fotos) {
-      for (let i = 0; i < p.datos.fotos.length; i++) {
-        const res = await comprimirYEstampar(p.datos.fotos[i], 900, 900, {
-          numero: p.datos.numero, proyecto: proy.nombre, gps: gpsStr
-        }, logoUser);
-        carpetaPoste.file(`Foto_${i+1}.jpg`, res.buffer);
-      }
+    // Guardamos el archivo del logo en la raíz si existe
+    if (blobLogo) {
+        root.file("LOGO_EMPRESA.png", blobLogo);
     }
+
+    // 3. RECORRER DÍAS (Para crear subcarpetas por día)
+    // Ordenamos los días para que las carpetas salgan ordenadas si quieres, o usamos el orden del array
+    for (const dia of proy.dias) {
+        
+        // Filtramos los puntos que pertenecen a ESTE día
+        const ptsDia = puntos.filter(p => p.diaId === dia.id);
+        
+        // Si el día no tiene puntos, saltamos o creamos carpeta vacía (decisión: saltar si está vacío)
+        if (ptsDia.length === 0) continue;
+
+        // Crear carpeta del DÍA
+        // Ejemplo: "DIA_1_LUNES" o solo el nombre del día
+        const nombreDia = dia.nombre.replace(/\s+/g, '_').toUpperCase();
+        const carpetaDia = root.folder(nombreDia);
+
+        // Reiniciamos contadores de duplicados POR DÍA
+        // (El poste 1 del Lunes es distinto al poste 1 del Martes)
+        const contadores = {};
+
+        // Recorrer puntos de ese día
+        for (const p of ptsDia) {
+            let numOriginal = String(p.datos.numero || 'SN');
+            let numCarpeta = numOriginal;
+
+            // Lógica de letras para repetidos dentro del MISMO día (1, 1a, 1b...)
+            if (contadores[numOriginal]) {
+                const letra = String.fromCharCode(96 + contadores[numOriginal]); // 97 = 'a'
+                numCarpeta = `${numOriginal}${letra}`;
+                contadores[numOriginal]++;
+            } else {
+                contadores[numOriginal] = 1;
+            }
+
+            // Crear carpeta del POSTE dentro del DÍA
+            const carpetaPoste = carpetaDia.folder(numCarpeta);
+            const gpsStr = `${(p.coords.lat||0).toFixed(6)}, ${(p.coords.lng||0).toFixed(6)}`;
+
+            // Procesar Fotos
+            if (p.datos.fotos && p.datos.fotos.length > 0) {
+                for (let i = 0; i < p.datos.fotos.length; i++) {
+                    try {
+                        // Usamos la función de estampar con el logo automático
+                        const res = await comprimirYEstampar(
+                            p.datos.fotos[i], 
+                            900, 
+                            900, 
+                            {
+                                numero: p.datos.numero, 
+                                proyecto: proy.nombre, 
+                                gps: gpsStr,
+                                fecha: dia.fecha // Opcional: Agregar fecha al estampado si lo deseas
+                            }, 
+                            logoParaEstampar // <--- Logo pasado automáticamente
+                        );
+                        
+                        // Guardar imagen en la carpeta del poste
+                        carpetaPoste.file(`Foto_${i+1}.jpg`, res.buffer);
+                    } catch (err) {
+                        console.error(`Error procesando foto punto ${numOriginal}`, err);
+                        // Si falla el estampado, intentamos guardar la original (opcional)
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. GENERAR Y DESCARGAR
+    const content = await zip.generateAsync({ type: "blob" });
+    compartirODescargar(content, `FOTOS_${nombreCarpetaRaiz}.zip`);
+  };
+
+// --- NUEVA FUNCIÓN: IR A UBICACIÓN DEL PROYECTO ---
+const irUbicacionProyecto = (e, proyId) => {
+  e.stopPropagation();
+  // Filtramos los puntos de este proyecto
+  const ptsProy = puntos.filter(p => p.proyectoId === proyId);
+  
+  if (ptsProy.length === 0) {
+    setAlertData({ title: "Sin Ubicación", message: "Este proyecto aún no tiene puntos en el mapa." });
+    return;
   }
-  const content = await zip.generateAsync({ type: "blob" });
-  compartirODescargar(content, `FOTOS_${nombreCarpetaRaiz}.zip`);
+
+  // Calculamos el promedio de las coordenadas (Centroide)
+  const sumLat = ptsProy.reduce((acc, p) => acc + p.coords.lat, 0);
+  const sumLng = ptsProy.reduce((acc, p) => acc + p.coords.lng, 0);
+  const centroLat = sumLat / ptsProy.length;
+  const centroLng = sumLng / ptsProy.length;
+
+  // Movemos el mapa y cambiamos la vista
+  setMapViewState({ center: [centroLat, centroLng], zoom: 17 });
+  setVista('mapa');
+  setMenuAbierto(false); // Por si acaso
 };
 
 
-// --- 🚀 EXPORTACIÓN KML FINAL (Diseño EVA Digital + Posición Natural) ---
+// --- 🚀 EXPORTACIÓN KML FINAL (Automático con Logo + Diseño EVA) ---
   const handleExportKML = async (proyParam) => {
     const proy = proyParam || (exportData && exportData.proyecto);
     if (!proy) return;
 
-    // 1. Pedir Logo
-    const logoBase64 = await pedirLogo(); 
+    // 1. GESTIÓN DEL LOGO (Automática)
+    // Convertimos la URL de la nube a Base64 para incrustarla en el HTML del globo
+    let logoBase64 = null;
+    if (logoApp) {
+        logoBase64 = await urlABase64(logoApp);
+    }
 
     const ptsProy = puntos.filter(p => proy.dias.some(d => d.id === p.diaId));
     const conProy = conexiones.filter(c => proy.dias.some(d => d.id === c.diaId));
@@ -1240,23 +1514,23 @@ const descargarFotosZip = async (proy) => {
             font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
             background-color: #f0f2f5;
             margin: 0;
-            padding: 20px; /* Margen natural arriba a la izquierda */
+            padding: 20px;
           }
           .card {
             background-color: #ffffff;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             max-width: 380px;
-            overflow: hidden; /* Para que el header respete el borde */
+            overflow: hidden;
             border: 1px solid #ddd;
           }
           .header {
-            background-color: #100F1D; /* Color Oscuro Corporativo */
+            background-color: #100F1D;
             padding: 20px;
             text-align: center;
           }
           .brand-eva {
-            color: #FCBF26; /* Color Amarillo Corporativo */
+            color: #FCBF26;
             font-weight: 900;
             font-size: 24px;
             letter-spacing: 1px;
@@ -1275,7 +1549,7 @@ const descargarFotosZip = async (proy) => {
           
           .link-box {
             background-color: #f8f9fa;
-            border: 1px dashed #100F1D; /* Borde con el color de la marca */
+            border: 1px dashed #100F1D;
             border-radius: 4px;
             padding: 10px;
             margin-bottom: 20px;
@@ -1286,8 +1560,8 @@ const descargarFotosZip = async (proy) => {
             user-select: all;
           }
           .copy-btn {
-            background-color: #100F1D; /* Botón oscuro */
-            color: #FCBF26; /* Texto amarillo */
+            background-color: #100F1D;
+            color: #FCBF26;
             border: none;
             padding: 12px 25px;
             border-radius: 4px;
@@ -1338,11 +1612,11 @@ const descargarFotosZip = async (proy) => {
             const btn = document.querySelector('.copy-btn');
             const originalText = btn.innerText;
             btn.innerText = '¡COPIADO!';
-            btn.style.backgroundColor = '#27ae60'; // Verde temporal
+            btn.style.backgroundColor = '#27ae60';
             btn.style.color = '#fff';
             setTimeout(() => {
               btn.innerText = originalText;
-              btn.style.backgroundColor = '#100F1D'; // Vuelve al color marca
+              btn.style.backgroundColor = '#100F1D';
               btn.style.color = '#FCBF26';
             }, 2000);
           }
@@ -1382,7 +1656,6 @@ const descargarFotosZip = async (proy) => {
       
       let fotosHtml = "";
       if (cantFotos > 0) {
-        // Reiniciamos variable para evitar duplicidad
         fotosHtml = `<div style="width:260px; overflow-x:auto; white-space:nowrap; margin-top:4px;">`;
         p.datos.fotos.forEach(url => {
           fotosHtml += `<img src="${url}" style="width:250px; display:inline-block; margin-right:5px; border-radius:2px;"/>`;
@@ -1463,8 +1736,9 @@ const descargarFotosZip = async (proy) => {
     kml += `</Folder></Document></kml>`;
 
     compartirODescargar(new Blob([kml]), fileName);
-    if(setExportData) setExportData(null);
-  };
+    if(setExportData) setExportData(null); // Limpiar modal si existe
+  };  
+
 
   // --- PROYECTOS ---
   const confirmarCrearProyecto = async () => {
@@ -1648,52 +1922,36 @@ const solicitarBorrarProyecto = (proyId) => {
 
 
 // ✅ USAMOS EL NUEVO LOGIN
-if (!user) return <Login onLogin={setUser} />;
+if (!user) return <Login onLogin={setUser} initialBlocked={deviceBlocked} />;
 
   return (
     <div className={`h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
       
-    {/* HEADER COMPLETO (RESTAURADO + GPS) */}
+
+
+      {/* HEADER COMPLETO (Simplificado: Solo Menú y Herramientas) */}
       <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} z-[50] relative shrink-0 h-16`}>
         
-        {/* LADO IZQUIERDO: MENÚ + TEXTO CORRECTO */}
-        <div className="flex items-center gap-3 overflow-hidden">
+        {/* LADO IZQUIERDO: SOLO MENÚ */}
+        <div className="flex items-center">
              <button onClick={() => setMenuAbierto(true)}>
                <Menu size={28} className={theme.text} strokeWidth={2.5}/>
              </button>
-             
-             <div className="flex flex-col justify-center">
-               {proyectoActual ? (
-                 <>
-                   <h1 className={`font-black text-lg uppercase tracking-tight leading-none ${theme.text}`}>
-                     {proyectoActual.nombre}
-                   </h1>
-                   <span className="text-[10px] font-bold text-brand-500 uppercase tracking-widest truncate">
-                     {diaActual ? (proyectoActual?.dias?.find(d => d.id === diaActual)?.nombre || 'DÍA SELECCIONADO') : 'SELECCIONA DÍA'}
-                   </span>
-                 </>
-               ) : (
-                 // TEXTO GRIS Y PEQUEÑO (COMO QUERÍAS)
-                 <span className="text-xs font-bold text-slate-400 italic uppercase tracking-wider">
-                   Sin Proyecto Seleccionado
-                 </span>
-               )}
-             </div>
         </div>
 
-{/* LADO DERECHO: TODAS LAS HERRAMIENTAS */}
+        {/* LADO DERECHO: TODAS LAS HERRAMIENTAS (Sin cambios) */}
         <div className="flex items-center gap-2">
            
-   {/* --- 0. INDICADOR DE SINCRONIZACIÓN (CORREGIDO Y EXCLUSIVO) --- */}
+           {/* 0. INDICADOR DE SINCRONIZACIÓN */}
            <div className={`
              flex items-center justify-center w-10 h-10 rounded-xl border-2 transition-all duration-300 relative
              ${estadoSync === 'synced' 
-                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' // OPCIÓN A: VERDE
+                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' 
                 : estadoSync === 'syncing' 
-                  ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'  // OPCIÓN B: AMARILLO
+                  ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400' 
                   : estadoSync === 'offline' 
-                    ? 'bg-slate-700/50 border-slate-600 text-slate-500'      // OPCIÓN C: GRIS
-                    : `${theme.bg} ${theme.border} text-slate-400`            // OPCIÓN D: DEFAULT
+                    ? 'bg-slate-700/50 border-slate-600 text-slate-500' 
+                    : `${theme.bg} ${theme.border} text-slate-400`
              }
            `}>
              {estadoSync === 'syncing' && <RefreshCw size={20} className="animate-spin" />}
@@ -1747,41 +2005,112 @@ if (!user) return <Login onLogin={setUser} />;
                 <ZoomIn size={20} />
               </button>
            </div>
-
         </div>
-
       </div>
 
-      {/* SIDEBAR */}
+
+{/* SIDEBAR (MENÚ LATERAL) - MODIFICADO */}
       {menuAbierto && (
         <div className="absolute inset-0 z-[2000] flex">
+          {/* Panel Blanco/Oscuro */}
           <div className={`w-4/5 max-w-xs ${theme.card} border-r-2 ${theme.border} h-full shadow-2xl flex flex-col animate-in slide-in-from-left duration-200`}>
-            <div className="p-6 bg-brand-600 text-white mb-2">
+            
+            {/* Header del Menú */}
+            <div className="p-6 bg-brand-600 text-white mb-2 shrink-0">
               <h2 className="text-2xl font-black">Menú Kipo</h2>
-              <p className="text-xs text-brand-200">{user.name}</p>
+              <p className="text-xs text-brand-200">{user?.email || 'Usuario'}</p>
             </div>
-            <nav className="flex-1 p-2 space-y-2 overflow-y-auto">
-              <BotonMenu icon={<MapPin size={24}/>} label="Mapa Principal" active={vista==='mapa'} onClick={()=>{ setVista('mapa'); setMenuAbierto(false); }} theme={theme} />
-              <BotonMenu icon={<Folder size={24}/>} label="Gestionar Proyectos" active={vista.includes('proyectos')} onClick={()=>{setVista('proyectos'); setMenuAbierto(false)}} theme={theme} />
-              <BotonMenu icon={<Settings size={24}/>} label="Configuración" active={vista==='config'} onClick={()=>{setVista('config'); setMenuAbierto(false)}} theme={theme} />
+
+            {/* Navegación Scrolleable */}
+            <nav className="flex-1 p-3 space-y-2 overflow-y-auto">
               
+              {/* 1. SECCIONES PRINCIPALES (Más compactas: p-3) */}
+              <button 
+                onClick={() => { setVista('mapa'); setMenuAbierto(false); }} 
+                className={`w-full p-3 rounded-xl flex items-center gap-3 font-bold transition-colors ${vista === 'mapa' ? 'bg-slate-900 text-white shadow-lg' : `${theme.text} hover:bg-slate-100`}`}
+              >
+                <MapPin size={20} strokeWidth={2.5} /> Mapa Principal
+              </button>
+
+              <button 
+                onClick={() => { setVista('proyectos'); setMenuAbierto(false); }} 
+                className={`w-full p-3 rounded-xl flex items-center gap-3 font-bold transition-colors ${vista === 'proyectos' ? 'bg-slate-900 text-white shadow-lg' : `${theme.text} hover:bg-slate-100`}`}
+              >
+                <Folder size={20} strokeWidth={2.5} /> Gestionar Proyectos
+              </button>
+
+              <button 
+                onClick={() => { setVista('config'); setMenuAbierto(false); }} 
+                className={`w-full p-3 rounded-xl flex items-center gap-3 font-bold transition-colors ${vista === 'config' ? 'bg-slate-900 text-white shadow-lg' : `${theme.text} hover:bg-slate-100`}`}
+              >
+                <Settings size={20} strokeWidth={2.5} /> Configuración
+              </button>
+              
+              {/* 2. ESTILO DE MAPA */}
               <div className={`pt-4 border-t-2 ${theme.border} mt-4`}>
-                 <p className={`px-4 text-xs ${theme.text} font-black mb-2`}>ESTILO DE MAPA</p>
-                 <button onClick={() => setMapStyle('vector')} className={`w-full flex items-center px-4 py-3 text-sm font-bold ${mapStyle === 'vector' ? theme.activeItem : theme.inactiveItem}`}>
-                   <Layers size={18} className="mr-3"/> Vectorial
-                 </button>
-                 <button onClick={() => setMapStyle('satellite')} className={`w-full flex items-center px-4 py-3 text-sm font-bold ${mapStyle === 'satellite' ? theme.activeItem : theme.inactiveItem}`}>
-                   <Camera size={18} className="mr-3"/> Satelital
-                 </button>
+                 <p className={`px-2 text-[10px] font-black tracking-widest uppercase mb-2 ${theme.textSec}`}>ESTILO DE MAPA</p>
+                 <div className="space-y-1">
+                    <button onClick={() => setMapStyle('vector')} className={`w-full flex items-center px-3 py-2 text-sm font-bold rounded-lg ${mapStyle === 'vector' ? 'bg-slate-200 text-black' : theme.text}`}>
+                      <Layers size={18} className="mr-3"/> Vectorial
+                    </button>
+                    <button onClick={() => setMapStyle('satellite')} className={`w-full flex items-center px-3 py-2 text-sm font-bold rounded-lg ${mapStyle === 'satellite' ? 'bg-slate-200 text-black' : theme.text}`}>
+                      <Camera size={18} className="mr-3"/> Satelital
+                    </button>
+                 </div>
               </div>
+
+              {/* 3. SECCIÓN LOGO (Compacta y Estilizada) */}
+              <div className="mt-6 mb-4">
+                 <h3 className={`px-2 text-[10px] font-black tracking-widest uppercase mb-2 ${theme.textSec}`}>LOGO</h3>
+                 
+                 <div className={`relative rounded-xl border-2 border-dashed ${theme.border} ${theme.card} h-24 flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-brand-500 mx-1`}>
+                    
+                    {logoApp ? (
+                        <>
+                           <img src={logoApp} alt="Logo Empresa" className="w-full h-full object-contain p-2" />
+                           <button 
+                             onClick={async (e) => { 
+                               e.stopPropagation();
+                               if(!user) return;
+                               setLogoApp(null); 
+                               try {
+                                 const userRef = doc(db, "usuarios", user.email);
+                                 await updateDoc(userRef, { logoEmpresa: null }); 
+                               } catch(err) { console.error(err); }
+                             }} 
+                             className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-md shadow-md hover:bg-red-600 active:scale-95 z-20"
+                           >
+                             <Trash2 size={12} />
+                           </button>
+                        </>
+                    ) : (
+                        <div className="flex flex-col items-center gap-1 opacity-50 pointer-events-none">
+                           <ImageIcon size={24} className={theme.text} />
+                           <span className={`text-[9px] font-bold ${theme.text} text-center`}>SUBIR LOGO</span>
+                        </div>
+                    )}
+
+                    <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleCargarLogo} 
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    />
+                 </div>
+              </div>
+
             </nav>
+
+            {/* Footer: Cerrar Sesión */}
             <button 
               onClick={cerrarSesion} 
-              className={`m-4 p-4 rounded-xl ${theme.bg} text-red-600 font-bold flex items-center justify-center gap-2 border-2 ${theme.border}`}
+              className={`m-4 p-4 rounded-xl ${theme.bg} text-red-600 font-bold flex items-center justify-center gap-2 border-2 ${theme.border} shrink-0`}
             >
               <LogOut size={20} /> CERRAR SESIÓN
             </button>
           </div>
+          
+          {/* Fondo borroso para cerrar al hacer clic fuera */}
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={() => setMenuAbierto(false)}></div>
         </div>
       )}
@@ -1821,21 +2150,21 @@ if (!user) return <Login onLogin={setUser} />;
                 </div>
             )}
 
-            {/* --- BARRA INFERIOR (SOLO ESTO SE QUEDA) --- */}
-             <div className={`absolute bottom-0 left-0 right-0 h-20 bg-white border-t-2 border-slate-200 shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-[400] flex overflow-hidden`}>
+{/* --- BARRA INFERIOR (CON SOPORTE MODO OSCURO) --- */}
+             <div className={`absolute bottom-0 left-0 right-0 h-20 ${theme.bottomBar} border-t-2 ${theme.border} shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-[400] flex overflow-hidden`}>
               
               {puntoSeleccionado ? (
                   // --- CASO A: PUNTO SELECCIONADO ---
                   <>
-                    <button onClick={verDetalle} className="flex-1 bg-white text-slate-800 font-black text-lg flex items-center justify-center gap-2 active:bg-slate-100 transition-colors">
+                    <button onClick={verDetalle} className={`flex-1 ${theme.card} ${theme.text} font-black text-lg flex items-center justify-center gap-2 active:opacity-80 transition-colors`}>
                       <Eye size={24} strokeWidth={2.5}/> VER
                     </button>
-                    <div className="w-[2px] h-10 self-center bg-slate-300 rounded-full"></div>
-                    <button onClick={iniciarEdicion} className="flex-1 bg-white text-slate-800 font-black text-lg flex items-center justify-center gap-2 active:bg-slate-100 transition-colors">
+                    <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
+                    <button onClick={iniciarEdicion} className={`flex-1 ${theme.card} ${theme.text} font-black text-lg flex items-center justify-center gap-2 active:opacity-80 transition-colors`}>
                       <Edit3 size={24} strokeWidth={2.5}/> EDITAR
                     </button>
-                    <div className="w-[2px] h-10 self-center bg-slate-300 rounded-full"></div>
-                    <button onClick={solicitarBorrarPunto} className="w-20 bg-white text-red-600 font-black flex flex-col items-center justify-center active:bg-red-50 transition-colors">
+                    <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
+                    <button onClick={solicitarBorrarPunto} className={`w-20 ${theme.card} text-red-600 font-black flex flex-col items-center justify-center active:bg-red-500/10 transition-colors`}>
                       <Trash2 size={26} strokeWidth={2.5}/> 
                       <span className="text-[9px] mt-1 tracking-widest">BORRAR</span>
                     </button>
@@ -1843,56 +2172,72 @@ if (!user) return <Login onLogin={setUser} />;
               ) : (
                   // --- CASO B: MAPA NORMAL ---
                   <>
-                    <button onClick={(e) => { e.stopPropagation(); setModoUnion(!modoUnion); setPuntoA_Union(null); }} className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${modoUnion ? 'bg-yellow-400 text-black' : 'bg-white text-slate-800 hover:text-black active:bg-slate-100'}`}>
+                    <button onClick={(e) => { e.stopPropagation(); setModoUnion(!modoUnion); setPuntoA_Union(null); }} className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${modoUnion ? 'bg-yellow-400 text-black' : `${theme.card} ${theme.text} hover:opacity-80`}`}>
                       <LinkIcon size={24} strokeWidth={2.5} /> {modoUnion ? 'CANCELAR' : 'UNIR'}
                     </button>
-                    <div className="w-[2px] h-10 self-center bg-slate-300 rounded-full"></div>
-                    <button onClick={intentarAgregarDatos} className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${puntoTemporal ? 'bg-brand-600 text-white' : 'bg-white text-slate-800 hover:text-black active:bg-slate-100'}`}>
+                    <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
+                    <button onClick={intentarAgregarDatos} className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${puntoTemporal ? 'bg-brand-600 text-white' : `${theme.card} ${theme.text} hover:opacity-80`}`}>
                       <Plus size={24} strokeWidth={2.5} /> AGREGAR
                     </button>
                   </>
               )}
             </div>
 
+
             {/* Aviso Modo Unión */}
             {modoUnion && <div className="absolute top-24 left-0 right-0 flex justify-center pointer-events-none z-40"><div className="bg-yellow-400 text-black px-4 py-2 rounded-full text-xs font-bold shadow-lg border-2 border-yellow-600 animate-pulse">{puntoA_Union ? 'TOCA EL SEGUNDO POSTE' : 'SELECCIONA EL PRIMER POSTE'}</div></div>}
         </div>
       )}
 
-{/* VISTA PROYECTOS (VERSIÓN FINAL DEFINITIVA) */}
+
+{/* VISTA PROYECTOS (Corrección: Modo Claro recuperado + Modo Oscuro) */}
       {vista === 'proyectos' && (
-        <div className={`flex-1 ${theme.bg} p-4 overflow-y-auto`}>
+        <div className={`flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
+           
+           {/* CASO: SIN PROYECTOS */}
            {proyectos.length === 0 ? (
-             <div className="flex flex-col items-center justify-center h-full text-slate-500">
+             <div className={`flex flex-col items-center justify-center h-full ${theme.textSec} p-4`}>
                <Folder size={64} className="mb-4 opacity-30"/>
                <p className="mb-4 font-bold">No hay proyectos creados</p>
                <button onClick={() => { setTempData({ tipo: 'levantamiento' }); setModalOpen('CREAR_PROYECTO'); }} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Plus size={20} /> CREAR PRIMER PROYECTO</button>
              </div>
            ) : (
              <>
-               {/* HEADER */}
-               <div className="flex justify-between items-center mb-6">
-                 <h2 className={`text-xl font-black ${theme.text} uppercase tracking-tight`}>PROYECTOS</h2>
-                 <div className="flex gap-2">
-                    <button onClick={() => setVista('mapa')} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold border-2 border-black hover:bg-black transition-colors">IR AL MAPA</button>
-                    <button onClick={() => { setTempData({ tipo: 'levantamiento' }); setModalOpen('CREAR_PROYECTO'); }} className="bg-brand-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 border-2 border-brand-800"><Plus size={16} /> NUEVO PROYECTO</button>
-                 </div>
+               {/* 1. HEADER SUPERIOR */}
+               <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0 z-20`}>
+                 <button onClick={() => setVista('mapa')}>
+                    <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
+                 </button> 
+                 <span className={`font-black ${theme.text} text-lg uppercase`}>PROYECTOS</span> 
+                 <div className="w-6"></div>
                </div>
 
-               <div className="space-y-4">
+               {/* 2. BARRA DE ACCIÓN */}
+               <div className={`${theme.header} shrink-0 p-2 z-10 shadow-sm`}> 
+                  <button 
+                    onClick={() => { setTempData({ tipo: 'levantamiento' }); setModalOpen('CREAR_PROYECTO'); }} 
+                    className={`w-full py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:border-brand-500 hover:text-brand-500 transition-colors active:scale-95`}
+                  >
+                    <Plus size={18} /> CREAR NUEVO PROYECTO
+                  </button> 
+               </div>
+
+               {/* 3. LISTA DE PROYECTOS */}
+               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                  {proyectos.map(proy => {
                    const esActivo = proyectoActual?.id === proy.id;
-                   const colorProyecto = proy.colorGlobal || COLORES_DIA[0]; // Color seguro
+                   const colorProyecto = proy.colorGlobal || COLORES_DIA[0];
 
                    // --- PROYECTO INACTIVO ---
+                   // CORRECCIÓN: Si es light (!isDark), usa gris (bg-slate-200). Si es dark, usa el tema card.
                    if (!esActivo) {
                      return (
                         <div 
                            key={proy.id} 
                            onClick={() => seleccionarProyecto(proy)} 
-                           className="w-full rounded-xl bg-slate-200 border-2 border-slate-400 p-5 cursor-pointer hover:bg-slate-300 hover:border-slate-600 transition-all active:scale-95 shadow-sm"
+                           className={`w-full rounded-xl ${isDark ? theme.card : 'bg-slate-200'} border-2 ${theme.border} p-5 cursor-pointer hover:opacity-80 transition-all active:scale-95 shadow-sm`}
                         >
-                           <h3 className="font-black text-lg uppercase text-slate-600 text-center tracking-widest select-none">
+                           <h3 className={`font-black text-lg uppercase ${theme.textSec} text-center tracking-widest select-none`}>
                               {proy.nombre}
                            </h3>
                         </div>
@@ -1905,52 +2250,52 @@ if (!user) return <Login onLogin={setUser} />;
                    const todosVisibles = idsDias.every(id => diasVisibles.includes(id));
 
                    return (
-                    <div key={proy.id} className="rounded-xl border-2 border-black bg-white shadow-2xl animate-in zoom-in-95 duration-200 relative">
-                        {/* ^^^ HE QUITADO 'overflow-hidden' AQUÍ PARA QUE EL MENÚ NO SE CORTE ^^^ */}
+                    <div key={proy.id} className={`rounded-xl border-2 ${theme.border} ${theme.card} shadow-2xl animate-in zoom-in-95 duration-200 relative`}>
                         
-                        {/* CABECERA (Agregué rounded-t-xl para mantener la forma curva arriba) */}
-                        <div className="p-4 flex justify-between items-center bg-white border-b-2 border-slate-200 rounded-t-xl">
+                        {/* CABECERA TARJETA */}
+                        <div className={`p-4 ${theme.card} border-b-2 ${theme.border} rounded-t-xl flex flex-col gap-4`}>
                           
-                          {/* INFO */}
-                          <div className="flex flex-col items-start gap-1">
-                            <h3 className="font-black text-xl text-black uppercase leading-none">{proy.nombre}</h3>
-                            <span className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest mt-1">
-                              {proy.tipo || 'LEVANTAMIENTO'}
-                            </span>
-                            <span className="mt-1 bg-slate-800 text-white text-[10px] font-black px-2 py-1 rounded border border-black">
-                               {totalPuntosProy} PUNTOS
-                            </span>
+                          {/* FILA 1 */}
+                          <div className="flex justify-between items-start w-full gap-2">
+                            <h3 className={`font-black text-xl ${theme.text} uppercase leading-tight break-words flex-1`}>
+                                {proy.nombre}
+                            </h3>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                                <div className="flex items-center gap-1">
+                                    <span className={`bg-slate-800 text-white text-[10px] font-black px-2 py-1 rounded border ${theme.border}`}>
+                                        {totalPuntosProy} PTS
+                                    </span>
+                                    <span className={`bg-slate-100 text-slate-600 text-[9px] font-black px-2 py-1 rounded border border-slate-300 uppercase tracking-wide`}>
+                                      {proy.tipo || 'LEVANTAMIENTO'}
+                                    </span>
+                                    <button 
+                                        onClick={(e) => irUbicacionProyecto(e, proy.id)}
+                                        className="bg-blue-600 text-white p-1 rounded border border-blue-800 hover:bg-blue-700 active:scale-95 shadow-sm"
+                                        title="Ver en Mapa"
+                                    >
+                                        <MapPin size={14} strokeWidth={2.5} />
+                                    </button>
+                                </div>
+                            </div>
                           </div>
 
-                          {/* ACCIONES */}
-                          <div className="flex items-center gap-3">
+                          {/* FILA 2: ACCIONES */}
+                          <div className={`flex items-center justify-between w-full pt-2 border-t ${theme.border}`}>
                              
-                         
-                            {/* 1. COLOR PROYECTO (CORREGIDO: BOTÓN FIJO + MENÚ ABAJO) */}
-                             <div className="relative">
-                                
-                                {/* A. EL BOTÓN (SIEMPRE VISIBLE) */}
+                             {/* COLOR */}
+                             <div className="relative flex items-center">
                                 <div 
                                     onClick={(e) => { 
                                         e.stopPropagation(); 
-                                        // Si ya está abierto este mismo, lo cerramos. Si no, lo abrimos.
                                         setSelectorColorAbierto(selectorColorAbierto === proy.id ? null : proy.id); 
                                     }} 
-                                    className="w-9 h-9 rounded-md border-2 border-slate-600 cursor-pointer hover:scale-110 shadow-sm transition-transform" 
+                                    className={`w-9 h-9 rounded-md border-2 ${theme.border} cursor-pointer hover:scale-110 shadow-sm transition-transform`} 
                                     style={{backgroundColor: colorProyecto}}
                                 ></div>
-
-                                {/* B. EL MENÚ FLOTANTE (SOLO APARECE SI ESTÁ ABIERTO) */}
                                 {selectorColorAbierto === proy.id && (
                                     <>
-                                      {/* Capa invisible para cerrar al hacer clic fuera */}
                                       <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setSelectorColorAbierto(null); }}></div>
-                                      
-                                      {/* Contenedor del Menú */}
-                                      {/* top-full: Justo debajo del botón */}
-                                      {/* mt-2: Un pequeño espacio extra para que no se pegue */}
-                                      {/* left-0: Alineado a la izquierda del botón */}
-                                      <div className="flex gap-1 animate-in slide-in-from-top-1 duration-200 absolute left-0 top-full mt-2 bg-white p-2 rounded-xl border-2 border-black shadow-2xl z-[100] min-w-max">
+                                      <div className={`flex gap-1 animate-in slide-in-from-top-1 duration-200 absolute left-0 top-full mt-2 ${theme.card} p-2 rounded-xl border-2 ${theme.border} shadow-2xl z-[100] min-w-max`}>
                                           {COLORES_DIA.map(c => (
                                               <div 
                                                   key={c} 
@@ -1967,86 +2312,74 @@ if (!user) return <Login onLogin={setUser} />;
                                 )}
                              </div>
 
-                             {/* 2. FOTOS ZIP */}
-                             <button 
-                                onClick={(e) => { e.stopPropagation(); descargarFotosZip(proy); }} 
-                                className="p-1 text-slate-700 hover:text-blue-600 transition-colors" 
-                                title="Descargar Fotos (ZIP)"
-                             >
-                                <FolderDown size={28} strokeWidth={2.5}/>
-                             </button>
+                             <div className={`w-[1px] h-8 ${isDark ? 'bg-slate-700' : 'bg-slate-300'} mx-2`}></div>
 
-                             {/* 3. REPORTE EXCEL */}
-                             <button 
-                                onClick={(e) => { e.stopPropagation(); descargarReporteExcel(proy); }} 
-                                className="p-1 text-slate-700 hover:text-green-600 transition-colors" 
-                                title="Reporte Fotográfico (Excel)"
-                             >
-                                <FileDown size={28} strokeWidth={2.5}/>
-                             </button>
+                             {/* EXPORTAR */}
+                             <div className="flex items-center gap-4">
+                                 <button onClick={(e) => { e.stopPropagation(); descargarFotosZip(proy); }} className={`${theme.textSec} hover:text-blue-600 transition-colors active:scale-90`} title="Descargar Fotos (ZIP)"><FolderDown size={24} strokeWidth={2.5}/></button>
+                                 <button onClick={(e) => { e.stopPropagation(); descargarReporteExcel(proy); }} className={`${theme.textSec} hover:text-green-600 transition-colors active:scale-90`} title="Reporte Excel"><FileDown size={24} strokeWidth={2.5}/></button>
+                                 <button onClick={(e) => { e.stopPropagation(); handleExportKML(proy); }} className={`${theme.textSec} hover:text-black transition-colors active:scale-90`} title="Exportar KMZ"><Share2 size={24} strokeWidth={2.5}/></button>
+                             </div>
 
-                             {/* 4. KMZ */}
-                             <button 
-                                onClick={(e) => { e.stopPropagation(); handleExportKML(proy); }} 
-                                className="p-1 text-slate-700 hover:text-black transition-colors" 
-                                title="Exportar KMZ"
-                             >
-                                <Share2 size={26} strokeWidth={2.5}/>
-                             </button>
+                             <div className={`w-[1px] h-8 ${isDark ? 'bg-slate-700' : 'bg-slate-300'} mx-2`}></div>
 
-                             {/* 5. VISTA */}
-                             <button onClick={(e) => toggleVisibilidadProyecto(e, proy)} className="p-1">
-                                {todosVisibles ? (
-                                    <Eye size={28} className="text-orange-500" strokeWidth={2.5}/> 
-                                ) : (
-                                    <EyeOff size={28} className="text-slate-900" strokeWidth={2.5}/>
-                                )}
-                             </button>
-
-                             {/* 6. BASURERO */}
-                             <button onClick={(e) => { e.stopPropagation(); solicitarBorrarProyecto(proy.id); }} className="p-1 text-slate-700 hover:text-red-600 transition-colors">
-                                <Trash2 size={26} strokeWidth={2.5}/>
-                             </button>
-
+                             {/* GESTION */}
+                             <div className="flex items-center gap-4">
+                                 <button onClick={(e) => toggleVisibilidadProyecto(e, proy)} className="active:scale-90 transition-transform">
+                                    {todosVisibles ? <Eye size={24} className="text-brand-500" strokeWidth={2.5}/> : <EyeOff size={24} className={theme.textSec} strokeWidth={2.5}/>}
+                                 </button>
+                                 <button onClick={(e) => { e.stopPropagation(); solicitarBorrarProyecto(proy.id); }} className={`${theme.textSec} hover:text-red-600 transition-colors active:scale-90`}>
+                                    <Trash2 size={24} strokeWidth={2.5}/>
+                                 </button>
+                             </div>
                           </div>
                         </div>
 
-                        {/* --- LISTA DE DÍAS (Agregué rounded-b-xl para mantener la forma curva abajo) --- */}
-                        <div className="bg-slate-100 border-t-2 border-slate-300 p-3 space-y-2 rounded-b-xl">
-                             <button onClick={() => { setTempData({}); setModalOpen('CREAR_DIA'); }} className="w-full py-3 border-2 border-dashed border-slate-400 bg-white rounded-xl text-slate-600 font-bold text-xs hover:border-black hover:text-black transition-colors">+ NUEVO DÍA DE TRABAJO</button>
+                        {/* LISTA DE DÍAS (Fondo Gris Claro si es Modo Claro / Oscuro si es Dark) */}
+                        <div className={`${isDark ? 'bg-slate-950/50' : 'bg-slate-100'} border-t-2 ${theme.border} p-3 space-y-2 rounded-b-xl`}>
                              
-                             {proy.dias.map(dia => {
+                             <button onClick={() => { setTempData({}); setModalOpen('CREAR_DIA'); }} className={`w-full py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs hover:border-brand-500 hover:text-brand-500 transition-colors`}>+ NUEVO DÍA DE TRABAJO</button>
+                             
+                             {[...proy.dias].reverse().map(dia => {
                                  const isSelected = diaActual === dia.id;
                                  const isVisible = diasVisibles.includes(dia.id);
                                  const ptosDia = puntos.filter(p => p.diaId === dia.id).length;
                                  
+                                 // CORRECCIÓN: 
+                                 // MODO OSCURO: Naranja (para contraste)
+                                 // MODO CLARO: Negro (bg-slate-900) como pediste.
+                                 let claseDia = `${theme.card} ${theme.border} ${theme.text}`; // Por defecto (No seleccionado)
+                                 let textoSub = theme.textSec;
+
+                                 if (isSelected) {
+                                     if (isDark) {
+                                         claseDia = 'bg-orange-500 border-orange-600 text-black shadow-lg ring-2 ring-orange-200';
+                                         textoSub = 'text-black/70';
+                                     } else {
+                                         claseDia = 'bg-slate-900 border-black text-white shadow-lg';
+                                         textoSub = 'text-slate-400';
+                                     }
+                                 }
+
                                  return (
-                                   <div 
-                                      key={dia.id} 
-                                      className={`p-3 rounded-lg border-2 flex justify-between items-center transition-colors 
-                                        ${isSelected ? 'bg-slate-900 border-black shadow-lg' : 'bg-white border-slate-400'}`}
-                                   >
+                                   <div key={dia.id} className={`p-3 rounded-lg border-2 flex justify-between items-center transition-colors ${claseDia}`}>
                                      <div className="flex-1 cursor-pointer flex items-center gap-3" onClick={() => { setDiaActual(dia.id); if(!isVisible) toggleVisibilidadDia(dia.id); }}>
                                         <div>
-                                          <h4 className={`font-black text-sm ${isSelected ? 'text-white' : 'text-slate-800'}`}>{dia.nombre}</h4>
-                                          <span className={`text-[10px] font-bold ${isSelected ? 'text-slate-400' : 'text-slate-500'}`}>{dia.fecha} • {ptosDia} pts</span>
+                                          <h4 className="font-black text-sm">{dia.nombre}</h4>
+                                          <span className={`text-[10px] font-bold ${textoSub}`}>{dia.fecha} • {ptosDia} pts</span>
                                         </div>
                                      </div>
                                      <div className="flex items-center gap-4">
                                         <div className="flex gap-1">
                                           {COLORES_DIA.map(c => (
-                                            <div 
-                                                key={c} 
-                                                onClick={() => cambiarColorDia(proy.id, dia.id, c)} 
-                                                className={`w-5 h-5 rounded cursor-pointer transition-transform ${dia.color === c ? 'ring-1 ring-offset-1 ring-black scale-125 z-10 shadow-sm' : 'opacity-40 hover:opacity-100'}`} 
-                                                style={{backgroundColor: c}}
-                                            ></div>
+                                            <div key={c} onClick={() => cambiarColorDia(proy.id, dia.id, c)} className={`w-5 h-5 rounded cursor-pointer transition-transform ${dia.color === c ? 'ring-1 ring-offset-1 ring-black scale-125 z-10 shadow-sm' : 'opacity-40 hover:opacity-100'}`} style={{backgroundColor: c}}></div>
                                           ))}
                                         </div>
                                         <button onClick={() => toggleVisibilidadDia(dia.id)}>
+                                            {/* El ojo también cambia de color según selección y tema */}
                                             {isVisible ? 
-                                              <Eye size={22} className={isSelected ? "text-orange-400" : "text-brand-600"} strokeWidth={2.5}/> : 
-                                              <EyeOff size={22} className={isSelected ? "text-slate-500" : "text-slate-300"} strokeWidth={2.5}/>
+                                                <Eye size={22} className={isSelected ? (isDark ? "text-black" : "text-brand-500") : "text-brand-600"} strokeWidth={2.5}/> : 
+                                                <EyeOff size={22} className={isSelected ? (isDark ? "text-black/50" : "text-slate-500") : theme.textSec} strokeWidth={2.5}/>
                                             }
                                         </button>
                                      </div>
@@ -2056,8 +2389,6 @@ if (!user) return <Login onLogin={setUser} />;
                         </div>
                     </div>
                    )
-
-
                  })}
                </div>
              </>
@@ -2081,6 +2412,7 @@ if (!user) return <Login onLogin={setUser} />;
 
         </div>
       )}
+
 
 {/* VISTA FORMULARIO */}
 {vista === 'formulario' && (
@@ -2279,55 +2611,18 @@ function BloqueLiquidacion({ disabled }) {
     );
 }
 
-// --- CONFIGURADOR (ESTILOS CORREGIDOS + FIX BORRAR) ---
+// --- CONFIGURADOR (FINAL: Textos Blancos en Modo Oscuro) ---
 function Configurador({ config, saveConfig, volver, modalState, theme, tab, setTab, seccionAbierta, setSeccionAbierta }) {
-  // Ahora modalState ya trae setConfirmData gracias al Paso 1
   const { modalOpen, setModalOpen, tempData, setTempData, setConfirmData } = modalState;
   
-  // --- HELPERS CRUD ---
+  // Helpers (Sin cambios)
   const crearArmado = () => { if(!tempData.nombre) return; const nuevo = { id: `a_${Date.now()}`, nombre: tempData.nombre, items: [], visible: true }; saveConfig({ ...config, armados: [...config.armados, nuevo] }); setModalOpen(null); };
   const crearFerreteria = () => { if(!tempData.nombre || !tempData.unidad) return; const nuevo = { id: `f_${Date.now()}`, nombre: tempData.nombre, unidad: tempData.unidad }; saveConfig({ ...config, catalogoFerreteria: [...config.catalogoFerreteria, nuevo] }); setModalOpen(null); };
   const agregarMaterial = () => { if(!tempData.matId || !tempData.cant) return; const nuevosArmados = config.armados.map(a => a.id === tempData.armadoId ? { ...a, items: [...a.items, { idRef: tempData.matId, cant: parseFloat(tempData.cant) }] } : a); saveConfig({ ...config, armados: nuevosArmados }); setModalOpen(null); };
-  
-  const agregarBoton = () => { 
-      if(!tempData.val || !tempData.tipoLista) return; 
-      const tipo = tempData.tipoLista; 
-      const valorFinal = (tipo === 'alturas' || tipo === 'fuerzas') ? parseFloat(tempData.val) : tempData.val; 
-      const nuevosBotones = { ...config.botonesPoste, [tipo]: [...config.botonesPoste[tipo], { v: valorFinal, visible: true }] }; 
-      saveConfig({ ...config, botonesPoste: nuevosBotones }); 
-      setModalOpen(null); 
-  };
-  
-  // Toggles
-  const toggleVisibilidadBoton = (tipo, valor) => { 
-      const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].map(b => b.v === valor ? { ...b, visible: !b.visible } : b) }; 
-      saveConfig({ ...config, botonesPoste: nuevosBotones }); 
-  };
-
-  const toggleVisibilidadArmado = (id) => {
-      const nuevosArmados = config.armados.map(a => a.id === id ? { ...a, visible: (a.visible === undefined ? false : !a.visible) } : a);
-      saveConfig({ ...config, armados: nuevosArmados });
-  };
-
-  // 🔔 FUNCIÓN DE BORRAR (Ahora sí funcionará)
-  const confirmarBorrarBoton = (tipo, valor) => {
-      if (!setConfirmData) { alert("Error: setConfirmData no recibido"); return; }
-      setConfirmData({
-          title: 'Eliminar Opción',
-          message: `¿Eliminar "${valor}" de la lista?`,
-          actionText: 'ELIMINAR',
-          theme: theme,
-          onConfirm: () => {
-              const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].filter(b => b.v !== valor) };
-              saveConfig({ ...config, botonesPoste: nuevosBotones });
-              setConfirmData(null);
-          }
-      });
-  };
-
-  const toggleAcordeon = (id) => setSeccionAbierta(seccionAbierta === id ? null : id);
-
-  // Borrados Clásicos
+  const agregarBoton = () => { if(!tempData.val || !tempData.tipoLista) return; const tipo = tempData.tipoLista; const valorFinal = (tipo === 'alturas' || tipo === 'fuerzas') ? parseFloat(tempData.val) : tempData.val; const nuevosBotones = { ...config.botonesPoste, [tipo]: [...config.botonesPoste[tipo], { v: valorFinal, visible: true }] }; saveConfig({ ...config, botonesPoste: nuevosBotones }); setModalOpen(null); };
+  const toggleVisibilidadBoton = (tipo, valor) => { const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].map(b => b.v === valor ? { ...b, visible: !b.visible } : b) }; saveConfig({ ...config, botonesPoste: nuevosBotones }); };
+  const toggleVisibilidadArmado = (id) => { const nuevosArmados = config.armados.map(a => a.id === id ? { ...a, visible: (a.visible === undefined ? false : !a.visible) } : a); saveConfig({ ...config, armados: nuevosArmados }); };
+  const confirmarBorrarBoton = (tipo, valor) => { if (!setConfirmData) { alert("Error: setConfirmData no recibido"); return; } setConfirmData({ title: 'Eliminar Opción', message: `¿Eliminar "${valor}" de la lista?`, actionText: 'ELIMINAR', theme: theme, onConfirm: () => { const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].filter(b => b.v !== valor) }; saveConfig({ ...config, botonesPoste: nuevosBotones }); setConfirmData(null); } }); };
   const borrarArmado = (id) => saveConfig({ ...config, armados: config.armados.filter(a => a.id !== id) });
   const borrarFerreteria = (id) => saveConfig({ ...config, catalogoFerreteria: config.catalogoFerreteria.filter(f => f.id !== id) });
   const borrarMaterialDeArmado = (armadoId, index) => { const nuevosArmados = config.armados.map(a => a.id === armadoId ? {...a, items: a.items.filter((_, i) => i !== index)} : a); saveConfig({ ...config, armados: nuevosArmados }); };
@@ -2335,54 +2630,23 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
   const [expandedId, setExpandedId] = useState(null); 
   const [editId, setEditId] = useState(null); 
 
-  // --- LONG PRESS BUTTON ---
   const LongPressButton = ({ onClick, onLongPress, children, className }) => {
-      const timerRef = useRef(null);
-      const isLongPress = useRef(false);
-
-      const start = (e) => {
-          if (e.type === 'touchstart') e.stopPropagation();
-          isLongPress.current = false;
-          timerRef.current = setTimeout(() => {
-              isLongPress.current = true;
-              if (navigator.vibrate) navigator.vibrate(50);
-              onLongPress();
-          }, 500); 
-      };
-
-      const end = (e) => {
-          if (timerRef.current) {
-              clearTimeout(timerRef.current);
-              timerRef.current = null;
-          }
-          if (!isLongPress.current) {
-              if (e.type === 'touchend') e.preventDefault();
-              if (onClick) onClick();
-          }
-      };
-
-      return (
-          <button 
-              onMouseDown={start} onMouseUp={end} onMouseLeave={() => clearTimeout(timerRef.current)}
-              onTouchStart={start} onTouchEnd={end}
-              className={className} type="button"
-          >
-              {children}
-          </button>
-      );
+      const timerRef = useRef(null); const isLongPress = useRef(false);
+      const start = (e) => { if (e.type === 'touchstart') e.stopPropagation(); isLongPress.current = false; timerRef.current = setTimeout(() => { isLongPress.current = true; if (navigator.vibrate) navigator.vibrate(50); onLongPress(); }, 500); };
+      const end = (e) => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } if (!isLongPress.current) { if (e.type === 'touchend') e.preventDefault(); if (onClick) onClick(); } };
+      return ( <button onMouseDown={start} onMouseUp={end} onMouseLeave={() => clearTimeout(timerRef.current)} onTouchStart={start} onTouchEnd={end} className={className} type="button"> {children} </button> );
   };
 
-  // --- FILA DE PESTAÑAS (TABS) ---
+  // --- COMPONENTE INTERNO PARA TABS (Corregido: Texto Blanco si inactivo) ---
   const FilaPestanas = ({ idA, tituloA, renderA, idB, tituloB, renderB }) => {
       const isOpenA = seccionAbierta === idA;
       const isOpenB = idB ? seccionAbierta === idB : false;
 
-      // Estilo Base de Botón Título (Ahora texto más grande)
       const baseBtnClass = `h-14 rounded-xl border-2 font-black text-xs uppercase tracking-wide transition-all shadow-sm flex items-center justify-center`;
       
-      // Estilo Activo vs Inactivo
-      const activeClass = `bg-slate-900 text-white border-black ring-2 ring-slate-400`;
-      const inactiveClass = `${theme.card} text-slate-800 border-slate-300 hover:bg-slate-100 hover:text-black`;
+      const activeClass = `bg-orange-500 text-black border-orange-600 shadow-md ring-2 ring-orange-200 transform scale-[1.02]`;
+      // AQUÍ ESTÁ LA CORRECCIÓN: usamos theme.text para que se vea blanco en dark mode
+      const inactiveClass = `${theme.card} ${theme.text} border-slate-300 hover:bg-slate-50 hover:text-black opacity-80`;
 
       return (
           <div className="mb-2">
@@ -2397,13 +2661,12 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
                   )}
               </div>
 
-              {isOpenA && <div className={`mt-2 p-3 rounded-xl border-2 ${theme.border} bg-slate-50 animate-in slide-in-from-top-2 duration-200`}>{renderA()}</div>}
-              {isOpenB && <div className={`mt-2 p-3 rounded-xl border-2 ${theme.border} bg-slate-50 animate-in slide-in-from-top-2 duration-200`}>{renderB()}</div>}
+              {isOpenA && <div className={`mt-2 p-3 rounded-xl border-2 ${theme.border} ${theme.card} animate-in slide-in-from-top-2 duration-200`}>{renderA()}</div>}
+              {isOpenB && <div className={`mt-2 p-3 rounded-xl border-2 ${theme.border} ${theme.card} animate-in slide-in-from-top-2 duration-200`}>{renderB()}</div>}
           </div>
       );
   };
 
-  // Renderizador de Botones Normales
   const renderBotones = (tipo, addModal, tipoAdd) => (
       <div className="flex flex-wrap gap-2">
           {config.botonesPoste[tipo]?.map((item, i) => (
@@ -2412,14 +2675,14 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
                   onClick={() => toggleVisibilidadBoton(tipo, item.v)}
                   onLongPress={() => confirmarBorrarBoton(tipo, item.v)}
                   className={`h-12 px-4 rounded-lg text-sm font-bold border-2 flex items-center gap-2 active:scale-95 transition-all shadow-sm select-none
-                  ${item.visible ? 'bg-slate-900 text-white border-black' : 'bg-white text-slate-800 border-slate-300'}`}
+                  ${item.visible ? 'bg-slate-900 text-white border-black' : `${theme.card} ${theme.text} border-slate-300`}`}
               >
                   {item.v} {item.visible ? <Eye size={16}/> : <EyeOff size={16}/>}
               </LongPressButton>
           ))}
           <button 
               onClick={() => { setTempData({ tipoLista: tipoAdd }); setModalOpen(addModal); }}
-              className="h-12 w-12 rounded-lg border-2 border-dashed border-slate-400 bg-white flex items-center justify-center text-green-600 hover:bg-green-50 active:scale-95 transition-colors"
+              className={`h-12 w-12 rounded-lg border-2 border-dashed ${theme.border} ${theme.card} flex items-center justify-center text-green-600 hover:opacity-80 active:scale-95 transition-colors`}
           >
               <Plus size={24} strokeWidth={4} />
           </button>
@@ -2435,16 +2698,15 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
           <div className="w-6"></div> 
       </div>
       
-      {/* TABS SUPERIORES (Estilo mejorado: texto más grande y oscuro) */}
+      {/* TABS (Texto corregido) */}
       <div className={`flex ${theme.header} border-b-2 ${theme.border} shrink-0`}> 
           {['armados', 'ferreteria', 'botones'].map(t => ( 
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest border-b-4 ${tab === t ? 'border-brand-500 text-brand-500' : 'border-transparent text-slate-700 hover:text-black hover:bg-slate-50'}`}>{t}</button> 
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest border-b-4 ${tab === t ? 'border-brand-500 text-brand-500' : `border-transparent ${theme.text} hover:opacity-70`}`}>{t}</button> 
           ))} 
       </div>
       
       <div className="flex-1 overflow-y-auto p-3">
-        
-        {/* --- PESTAÑA 1: EDITOR DE ARMADOS --- */}
+        {/* PESTAÑA 1: EDITOR DE ARMADOS */}
         {tab === 'armados' && ( 
             <div className="space-y-3">
                 <button onClick={() => { setTempData({}); setModalOpen('CREAR_ARMADO'); }} className={`w-full py-4 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500`}>+ Crear Armado</button> 
@@ -2465,16 +2727,16 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
                                 <div className={`p-3 border-t text-xs ${theme.textSec}`}>
                                     {arm.items.length === 0 ? "Sin materiales" : arm.items.map((it, i) => {
                                         const m = config.catalogoFerreteria.find(f=>f.id===it.idRef);
-                                        return <div key={i} className="flex justify-between py-1 border-b last:border-0 border-slate-100"><span>{m?.nombre}</span><span className="font-bold">{it.cant} {m?.unidad}</span></div>
+                                        return <div key={i} className={`flex justify-between py-1 border-b last:border-0 ${theme.border}`}><span>{m?.nombre}</span><span className="font-bold">{it.cant} {m?.unidad}</span></div>
                                     })}
                                 </div> 
                             )} 
                             {isEditing && ( 
-                                <div className="p-3 border-t bg-slate-50">
+                                <div className={`p-3 border-t ${theme.bg}`}>
                                     <div className="space-y-2 mb-3">
                                         {arm.items.map((it, i) => {
                                             const m = config.catalogoFerreteria.find(f=>f.id===it.idRef);
-                                            return <div key={i} className="flex justify-between items-center bg-white p-2 rounded border border-slate-200 text-xs"><span>{m?.nombre}</span><div className="flex items-center gap-2"><span className="font-bold">{it.cant}</span><button onClick={()=>borrarMaterialDeArmado(arm.id, i)} className="text-red-500"><X size={14}/></button></div></div>
+                                            return <div key={i} className={`flex justify-between items-center ${theme.card} p-2 rounded border ${theme.border} text-xs ${theme.text}`}><span>{m?.nombre}</span><div className="flex items-center gap-2"><span className="font-bold">{it.cant}</span><button onClick={()=>borrarMaterialDeArmado(arm.id, i)} className="text-red-500"><X size={14}/></button></div></div>
                                         })}
                                     </div>
                                     <button onClick={() => { setTempData({ armadoId: arm.id }); setModalOpen('AGREGAR_MAT'); }} className="w-full bg-brand-600 text-white py-3 rounded-lg font-bold text-xs">+ MATERIAL</button>
@@ -2486,7 +2748,7 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
             </div> 
         )}
         
-        {/* --- PESTAÑA 2: FERRETERÍA --- */}
+        {/* PESTAÑA 2: FERRETERÍA */}
         {tab === 'ferreteria' && ( 
             <div className="space-y-2"> 
                 <button onClick={() => { setTempData({ unidad: 'und' }); setModalOpen('CREAR_FERR'); }} className={`w-full py-4 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500 mb-2`}>+ Crear Pieza</button> 
@@ -2502,70 +2764,35 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
             </div> 
         )}
         
-        {/* --- PESTAÑA 3: BOTONES --- */}
+        {/* PESTAÑA 3: BOTONES (Con Títulos Blancos) */}
         {tab === 'botones' && ( 
-          <div className="space-y-4">
+          <div className="space-y-2">
             
-            {/* 1. LIQUIDACIÓN */}
-            <div>
-                <h3 className={`text-[10px] font-black ${theme.textSec} mb-2 uppercase tracking-widest ml-1 bg-slate-100 p-2 rounded-lg border ${theme.border} text-center`}>
-                    LIQUIDACIÓN
-                </h3>
-                
-                <FilaPestanas 
-                    idA="vis_armados" tituloA="Armados"
-                    renderA={() => (
-                        <div className="flex flex-wrap gap-2">
-                            {config.armados.map(arm => (
-                                <button key={arm.id} onClick={() => toggleVisibilidadArmado(arm.id)} 
-                                    className={`h-12 px-4 rounded-lg text-sm font-bold border-2 flex items-center gap-2 active:scale-95 transition-all shadow-sm select-none
-                                    ${arm.visible !== false ? 'bg-slate-900 text-white border-black' : 'bg-white text-slate-800 border-slate-300'}`}>
-                                    {arm.nombre} {arm.visible !== false ? <Eye size={16}/> : <EyeOff size={16}/>}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                    idB="vis_ferreteria" tituloB="Ferretería Extra"
-                    renderB={() => renderBotones('ferreteriaExtra', 'AGREGAR_BOTON', 'ferreteriaExtra')}
-                />
-                
-                <FilaPestanas 
-                    idA="vis_cables" tituloA="Cantidad de Cables"
-                    renderA={() => renderBotones('cables', 'AGREGAR_BOTON', 'cables')}
-                />
+            {/* 1. LIQUIDACIÓN - TÍTULO BLANCO */}
+            <div className="relative flex py-2 items-center mt-2 mb-2">
+                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
+                <span className={`flex-shrink-0 mx-4 ${theme.text} opacity-50 text-[10px] font-black tracking-[0.2em] uppercase`}>Liquidación</span>
+                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
             </div>
+            
+            <FilaPestanas idA="vis_armados" tituloA="Armados" renderA={() => (<div className="flex flex-wrap gap-2">{config.armados.map(arm => (<LongPressButton key={arm.id} onClick={() => toggleVisibilidadArmado(arm.id)} className={`h-12 px-4 rounded-lg text-sm font-bold border-2 flex items-center gap-2 active:scale-95 transition-all shadow-sm select-none ${arm.visible !== false ? 'bg-slate-900 text-white border-black' : `${theme.card} ${theme.text} border-slate-300`}`}>{arm.nombre} {arm.visible !== false ? <Eye size={16}/> : <EyeOff size={16}/>}</LongPressButton>))}</div>)} idB="vis_ferreteria" tituloB="Ferretería Extra" renderB={() => renderBotones('ferreteriaExtra', 'AGREGAR_BOTON', 'ferreteriaExtra')}/>
+            <FilaPestanas idA="vis_cables" tituloA="Cantidad de Cables" renderA={() => renderBotones('cables', 'AGREGAR_BOTON', 'cables')}/>
 
-            {/* 2. POSTES */}
-            <div>
-                <h3 className={`text-[10px] font-black ${theme.textSec} mb-2 uppercase tracking-widest ml-1 bg-slate-100 p-2 rounded-lg border ${theme.border} text-center mt-4`}>
-                    POSTES
-                </h3>
-                
-                <FilaPestanas 
-                    idA="vis_altura" tituloA="Altura"
-                    renderA={() => renderBotones('alturas', 'AGREGAR_BOTON', 'alturas')}
-                    idB="vis_material" tituloB="Material"
-                    renderB={() => renderBotones('materiales', 'AGREGAR_BOTON', 'materiales')}
-                />
-
-                <FilaPestanas 
-                    idA="vis_fuerza" tituloA="Fuerza"
-                    renderA={() => renderBotones('fuerzas', 'AGREGAR_BOTON', 'fuerzas')}
-                    idB="vis_tipo" tituloB="Tipo de Red"
-                    renderB={() => renderBotones('tipos', 'AGREGAR_BOTON', 'tipos')}
-                />
-
-                <FilaPestanas 
-                    idA="vis_extras" tituloA="Datos Extras"
-                    renderA={() => renderBotones('extras', 'AGREGAR_BOTON', 'extras')}
-                />
+            {/* 2. POSTES - TÍTULO BLANCO */}
+            <div className="relative flex py-2 items-center mt-6 mb-2">
+                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
+                <span className={`flex-shrink-0 mx-4 ${theme.text} opacity-50 text-[10px] font-black tracking-[0.2em] uppercase`}>Postes</span>
+                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
             </div>
-
+            
+            <FilaPestanas idA="vis_altura" tituloA="Altura" renderA={() => renderBotones('alturas', 'AGREGAR_BOTON', 'alturas')} idB="vis_material" tituloB="Material" renderB={() => renderBotones('materiales', 'AGREGAR_BOTON', 'materiales')}/>
+            <FilaPestanas idA="vis_fuerza" tituloA="Fuerza" renderA={() => renderBotones('fuerzas', 'AGREGAR_BOTON', 'fuerzas')} idB="vis_tipo" tituloB="Tipo de Red" renderB={() => renderBotones('tipos', 'AGREGAR_BOTON', 'tipos')}/>
+            <FilaPestanas idA="vis_extras" tituloA="Datos Extras" renderA={() => renderBotones('extras', 'AGREGAR_BOTON', 'extras')}/>
           </div> 
         )}
       </div>
       
-      {/* Modales (Sin cambios) */}
+      {/* Modales (Sin cambios visuales profundos pero usan theme) */}
       <Modal isOpen={modalOpen === 'CREAR_ARMADO'} onClose={() => setModalOpen(null)} title="Nuevo Armado" theme={theme}> <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} /> <div className="h-4"></div> <button onClick={crearArmado} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">CREAR</button> </Modal>
       <Modal isOpen={modalOpen === 'CREAR_FERR'} onClose={() => setModalOpen(null)} title="Nueva Pieza" theme={theme}> <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} /> <div className="flex gap-2 my-4"> {['und', 'mts'].map(u => ( <button key={u} onClick={() => setTempData({...tempData, unidad: u})} className={`flex-1 py-4 rounded-xl font-bold border-2 text-lg ${tempData.unidad === u ? 'bg-slate-900 text-white' : theme.input}`}> {u.toUpperCase()} </button> ))} </div> <button onClick={crearFerreteria} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">REGISTRAR</button> </Modal>
       <Modal isOpen={modalOpen === 'AGREGAR_MAT'} onClose={() => setModalOpen(null)} title="Agregar Material" theme={theme}> <div className="max-h-60 overflow-y-auto mb-3 bg-slate-800 rounded-xl border border-slate-700 p-2"> {config.catalogoFerreteria.map(f => ( <div key={f.id} onClick={() => setTempData({...tempData, matId: f.id})} className={`p-4 rounded-lg text-base font-medium cursor-pointer mb-1 transition-colors flex justify-between ${tempData.matId === f.id ? 'bg-brand-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`}> <span>{f.nombre}</span> <span className="opacity-60 text-xs uppercase">{f.unidad}</span> </div> ))} </div> <input type="number" placeholder="Cantidad" className={`w-full ${theme.input} p-4 rounded-xl border-2 ${theme.border} mb-4 font-bold text-lg [appearance:textfield]`} onChange={e => setTempData({...tempData, cant: e.target.value})} /> <button onClick={agregarMaterial} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">AGREGAR</button> </Modal>
@@ -2573,6 +2800,7 @@ function Configurador({ config, saveConfig, volver, modalState, theme, tab, setT
     </div>
   );
 }
+
 
 }
 
