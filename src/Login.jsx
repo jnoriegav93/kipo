@@ -5,14 +5,15 @@ import { doc, getDoc } from 'firebase/firestore';
 import { generarHuellaDigital } from './security';
 import { Eye, EyeOff, Copy, Check, MessageCircle, ShieldAlert, MapPin, ChevronRight, Lock } from 'lucide-react'; // Agregamos 'Check'
 
-const Login = ({ onLogin }) => {
+const Login = ({ onLogin, initialBlocked }) => {
   const [emailInput, setEmailInput] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [deviceCode, setDeviceCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [bloqueoDispositivo, setBloqueoDispositivo] = useState(false);
+  //const [bloqueoDispositivo, setBloqueoDispositivo] = useState(false);
+  const [bloqueoDispositivo, setBloqueoDispositivo] = useState(initialBlocked || false);
   
   // Estado para feedback visual de copiado
   const [copied, setCopied] = useState(false);
@@ -80,6 +81,14 @@ const Login = ({ onLogin }) => {
     const mensaje = `Hola, solicito acceso a Kipo.\n\nCódigo: *${deviceCode}*\nUsuario: ${emailInput}`;
     window.open(`https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
   };
+
+// Agregar esto dentro de Login.jsx antes del return
+React.useEffect(() => {
+  if (initialBlocked) {
+    setDeviceCode(generarHuellaDigital());
+    setBloqueoDispositivo(true);
+  }
+}, [initialBlocked]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 relative font-sans"
