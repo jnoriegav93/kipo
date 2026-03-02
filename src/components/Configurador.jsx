@@ -92,24 +92,33 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
     });
   };
   const borrarFerreteria = (id) => {
-    console.log('🗑️ borrarFerreteria llamado con ID:', id);
-    console.log('setConfirmData existe?', !!setConfirmData);
-    if (!setConfirmData) { 
-      alert("Error: setConfirmData no recibido"); 
-      return; 
+    if (!setConfirmData) {
+      alert("Error: setConfirmData no recibido");
+      return;
     }
     const ferr = config.catalogoFerreteria.find(f => f.id === id);
-    console.log('Ferretería encontrada:', ferr);
-    setConfirmData({ 
-      title: 'Eliminar Ferretería', 
-      message: `¿Estás seguro de eliminar "${ferr?.nombre}"? Esta acción no se puede deshacer.`, 
-      actionText: 'ELIMINAR', 
-      theme: theme, 
-      onConfirm: () => { 
-        console.log('✅ Confirmado - borrando ferretería');
-        saveConfig({ ...config, catalogoFerreteria: config.catalogoFerreteria.filter(f => f.id !== id) }); 
-        setConfirmData(null); 
-      } 
+
+    // Verificar si la ferretería está en algún armado
+    const armadosQueLoUsan = config.armados.filter(a => a.items?.some(item => item.idRef === id));
+    if (armadosQueLoUsan.length > 0) {
+      const nombres = armadosQueLoUsan.map(a => `"${a.nombre}"`).join(', ');
+      setAlertData({
+        title: 'No se puede eliminar',
+        message: `"${ferr?.nombre}" forma parte del armado ${nombres}. Primero quítala del armado para poder eliminarla.`,
+        theme: theme
+      });
+      return;
+    }
+
+    setConfirmData({
+      title: 'Eliminar Ferretería',
+      message: `¿Estás seguro de eliminar "${ferr?.nombre}"? Esta acción no se puede deshacer.`,
+      actionText: 'ELIMINAR',
+      theme: theme,
+      onConfirm: () => {
+        saveConfig({ ...config, catalogoFerreteria: config.catalogoFerreteria.filter(f => f.id !== id) });
+        setConfirmData(null);
+      }
     });
   };
   const borrarMaterialDeArmado = (armadoId, index) => { const nuevosArmados = config.armados.map(a => a.id === armadoId ? {...a, items: a.items.filter((_, i) => i !== index)} : a); saveConfig({ ...config, armados: nuevosArmados }); };
@@ -484,7 +493,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
         <button onClick={crearFerreteria} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">REGISTRAR</button> 
       </Modal>
 
-      <Modal isOpen={modalOpen === 'AGREGAR_MAT'} onClose={() => setModalOpen(null)} title="Agregar Ferretería" theme={theme}> 
+      <Modal isOpen={modalOpen === 'AGREGAR_MAT'} onClose={() => setModalOpen(null)} title="Agregar Ferretería" theme={theme} bottomSheet> 
         
         <div className={`max-h-60 overflow-y-auto rounded-xl border-2 ${theme.border} p-2 ${theme.card} mb-3`}> 
           {config.catalogoFerreteria.map(f => ( 

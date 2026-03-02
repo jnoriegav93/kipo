@@ -362,35 +362,33 @@ const VistaSupervision = ({
 
       {/* MODAL CHAT */}
       {chatAbierto && (
-        <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={cerrarChat}>
-          <div className={`${theme.card} rounded-2xl max-w-2xl w-full shadow-2xl border-2 ${theme.border} overflow-hidden`} onClick={(e) => e.stopPropagation()}>
+        <div className={`fixed inset-0 z-[300] ${theme.card} flex flex-col`}>
 
-            {/* Header */}
-            <div className={`${theme.header} px-6 py-4 border-b-2 ${theme.border} flex items-center justify-between`}>
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-100 p-2 rounded-lg">
-                  <MessageCircle size={20} className="text-blue-600" />
-                </div>
-                <div>
-                  <h3 className={`font-black text-lg ${theme.text} uppercase`}>Bitácora</h3>
-                  <p className={`text-xs ${theme.textSec} font-medium`}>{chatAbierto.nombre}</p>
-                </div>
+          {/* Header */}
+          <div className={`${theme.header} px-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-100 p-2 rounded-lg">
+                <MessageCircle size={20} className="text-blue-600" />
               </div>
-              <button onClick={cerrarChat} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
-                <X size={24} />
-              </button>
+              <div>
+                <h3 className={`font-black text-lg ${theme.text} uppercase`}>Bitácora</h3>
+                <p className={`text-xs ${theme.textSec} font-medium`}>{chatAbierto.nombre}</p>
+              </div>
             </div>
+            <button onClick={cerrarChat} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
+              <X size={24} />
+            </button>
+          </div>
 
-            {/* Contenido */}
-            <div className="p-6">
-              <ChatBitacora
-                proyectoId={chatAbierto.id}
-                user={user}
-                theme={theme}
-                esCompartido={true}
-                config={config}
-              />
-            </div>
+          {/* Contenido */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <ChatBitacora
+              proyectoId={chatAbierto.id}
+              user={user}
+              theme={theme}
+              esCompartido={true}
+              config={config}
+            />
           </div>
         </div>
       )}

@@ -647,7 +647,7 @@ const VistaProyectos = ({
       {modalOpen === 'EXPORTAR_HUB' && activeProjectData && (
         <div className={`fixed inset-0 z-[300] flex flex-col ${theme.bg}`}>
           {/* Header */}
-          <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
+          <div className={`${theme.header} px-4 flex items-center justify-between border-b-2 ${theme.border} shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
             <h3 className={`font-black ${theme.text} text-xl uppercase`}>Exportación</h3>
             <button onClick={() => { setModalOpen(null); setExportandoTipo(null); }}>
               <X size={28} className={theme.text} />
@@ -678,35 +678,33 @@ const VistaProyectos = ({
       {/* MODAL CHAT */}
       {
         modalLocalOpen?.startsWith('CHAT_') && (
-          <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalLocalOpen(null)}>
-            <div className={`${theme.card} rounded-2xl max-w-2xl w-full shadow-2xl border-2 ${theme.border} overflow-hidden`} onClick={(e) => e.stopPropagation()}>
+          <div className={`fixed inset-0 z-[300] ${theme.card} flex flex-col`}>
 
-              {/* Header */}
-              <div className={`${theme.header} px-6 py-4 border-b-2 ${theme.border} flex items-center justify-between`}>
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 p-2 rounded-lg">
-                    <MessageCircle size={20} className="text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className={`font-black text-lg ${theme.text} uppercase`}>Bitácora</h3>
-                    <p className={`text-xs ${theme.textSec} font-medium`}>Comunicación del proyecto</p>
-                  </div>
+            {/* Header */}
+            <div className={`${theme.header} px-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-100 p-2 rounded-lg">
+                  <MessageCircle size={20} className="text-blue-600" />
                 </div>
-                <button onClick={() => setModalLocalOpen(null)} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
-                  <X size={24} />
-                </button>
+                <div>
+                  <h3 className={`font-black text-lg ${theme.text} uppercase`}>Bitácora</h3>
+                  <p className={`text-xs ${theme.textSec} font-medium`}>Comunicación del proyecto</p>
+                </div>
               </div>
+              <button onClick={() => setModalLocalOpen(null)} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
+                <X size={24} />
+              </button>
+            </div>
 
-              {/* Contenido */}
-              <div className="p-6">
-                <ChatBitacora
-                  proyectoId={proyectoActual?.id}
-                  user={user}
-                  theme={theme}
-                  esCompartido={false}
-                  config={config}
-                />
-              </div>
+            {/* Contenido */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <ChatBitacora
+                proyectoId={proyectoActual?.id}
+                user={user}
+                theme={theme}
+                esCompartido={false}
+                config={config}
+              />
             </div>
           </div>
         )

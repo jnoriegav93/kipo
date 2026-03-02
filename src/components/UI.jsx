@@ -4,8 +4,23 @@ import { X, AlertTriangle, AlertCircle, FileDown, Share2 } from 'lucide-react';
 
 // --- COMPONENTES UI ---
 
-export const Modal = ({ isOpen, onClose, title, children, theme }) => {
+export const Modal = ({ isOpen, onClose, title, children, theme, bottomSheet = false }) => {
   if (!isOpen) return null;
+  if (bottomSheet) {
+    return (
+      <div className="fixed inset-0 z-[300] flex items-end bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className={`${theme.card} border-2 ${theme.border} w-full rounded-t-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200`}>
+          <div className={`${theme.header} p-4 border-b-2 ${theme.border} flex justify-between items-center`}>
+            <h3 className={`font-black ${theme.text} text-xl uppercase`}>{title}</h3>
+            <button onClick={onClose}><X size={28} className={theme.text}/></button>
+          </div>
+          <div className="p-4" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+            {children}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className={`${theme.card} border-2 ${theme.border} w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden`}>

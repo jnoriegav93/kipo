@@ -69,10 +69,10 @@ export default function ChatBitacora({ proyectoId, user, theme, esCompartido, co
   };
 
   return (
-    <div className={`${theme.card} rounded-xl overflow-hidden`}>
+    <div className="flex flex-col flex-1 overflow-hidden">
 
       {/* Mensajes */}
-      <div className="h-64 overflow-y-auto p-3 space-y-2 bg-slate-50">
+      <div className={`flex-1 overflow-y-auto p-3 space-y-2 ${theme.bg}`}>
         {mensajes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400">
             <MessageCircle size={32} className="mb-2 opacity-30" />
@@ -176,7 +176,7 @@ export default function ChatBitacora({ proyectoId, user, theme, esCompartido, co
       </div>
 
       {/* Input */}
-      <div className={`p-3 border-t-2 ${theme.border} ${theme.bg} flex gap-2`}>
+      <div className={`p-3 border-t-2 ${theme.border} ${theme.bg} flex gap-2 shrink-0`} style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}>
         <input
           type="text"
           value={nuevoMensaje}
