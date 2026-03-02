@@ -874,7 +874,7 @@ export default function VerDetalle({
       {
         fullscreenPhoto && (
           <div className="fixed inset-0 z-[999] bg-black flex flex-col" onClick={() => setFullscreenPhoto(null)}>
-            <div className="flex justify-between items-center p-4 bg-black/80 backdrop-blur-md border-b border-white/10">
+            <div className="flex justify-between items-center px-4 pb-4 bg-black/80 backdrop-blur-md border-b border-white/10" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
               <div>
                 <h3 className="font-bold text-white text-base">{fullscreenPhoto.label.replace('\n', ' ')}</h3>
               </div>
