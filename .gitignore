@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.local
+.env*.local
+firebase-debug.log
+dist.zip
+lint_output.txt
+copia/
