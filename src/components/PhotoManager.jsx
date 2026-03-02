@@ -454,11 +454,33 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     }
     // Pre-fetch imágenes inmediatamente para evitar NotAllowedError
     prefetchRef.current = Promise.all(fotoItems.map(({ url }) => fetch(url).then(r => r.blob()).catch(() => null)));
-    setCompartirModal({ sectionId, step: 'elegir' });
+    setCompartirModal({ sectionId, step: 'elegir', modo: 'fotos' });
+  };
+
+  const compartirLista = async (sectionId) => {
+    const fotoItems = buildFotoItems(sectionId);
+    if (fotoItems.length === 0) { alert('No hay fotos para compartir'); return; }
+    if (!navigator.share || !/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      alert('Función de compartir no disponible en este dispositivo'); return;
+    }
+    const tab = TABS_CONFIG[sectionId];
+    const nroPoste = datos?.numero || '';
+    const pasivoVal = datos?.pasivo || '';
+    const headerText = [
+      `FOTOS DE ${tab.title}`,
+      nroPoste ? `ITEM: *${nroPoste}*` : null,
+      pasivoVal ? `COD E. PASIVO: *${pasivoVal}*` : null,
+    ].filter(Boolean).join('\n');
+    const listText = '*LISTA DE FOTOS:*\n' + fotoItems.map(f => `• ${f.label}`).join('\n');
+    try {
+      await navigator.share({ text: `${headerText}\n${listText}` });
+    } catch (error) {
+      if (error.name !== 'AbortError') console.log('Error compartiendo lista:', error);
+    }
   };
 
   const ejecutarCompartir = async (conSello, stampCfg) => {
-    const { sectionId } = compartirModal;
+    const { sectionId, modo = 'fotos' } = compartirModal;
     setCompartiendo(true);
     try {
       const fotoItems = buildFotoItems(sectionId);
@@ -496,9 +518,13 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         nroPoste ? `ITEM: *${nroPoste}*` : null,
         pasivoVal ? `COD E. PASIVO: *${pasivoVal}*` : null,
       ].filter(Boolean).join('\n');
-      const listText = '*LISTA DE FOTOS:*\n' + fotoItems.map(f => `• ${f.label}`).join('\n') + '\n⬇️⬇️⬇️';
+      const listText = '*LISTA DE FOTOS:*\n' + fotoItems.map(f => `• ${f.label}`).join('\n');
 
-      await navigator.share({ files, text: `${headerText}\n${listText}` });
+      if (modo === 'lista') {
+        await navigator.share({ text: `${headerText}\n${listText}` });
+      } else {
+        await navigator.share({ files });
+      }
     } catch (error) {
       if (error.name !== 'AbortError') console.log('Error compartiendo:', error);
     } finally {
@@ -701,10 +727,19 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             <div className="flex-1 h-px bg-slate-300"></div>
           </div>
 
-          <button onClick={() => compartirFotos(activeTab)} className="w-full mb-4 flex items-center justify-center gap-2 bg-slate-900 text-white py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95 shadow-md">
-            <Share2 size={16} />
-            COMPARTIR FOTOS
-          </button>
+          <div className="mb-4">
+            <p className="text-center font-black text-slate-900 text-xs uppercase tracking-widest mb-2">Compartir</p>
+            <div className="flex gap-2">
+              <button onClick={() => compartirFotos(activeTab)} className="flex-1 flex items-center justify-center gap-1.5 bg-slate-900 text-white py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95 shadow-md">
+                <Share2 size={14} />
+                FOTOS
+              </button>
+              <button onClick={() => compartirLista(activeTab)} className="flex-1 flex items-center justify-center gap-1.5 bg-white border-2 border-slate-900 text-slate-900 py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all active:scale-95 shadow-md">
+                <Share2 size={14} />
+                LISTA
+              </button>
+            </div>
+          </div>
 
           {activeTab === 'adicionales' ? (
             /* ADICIONALES: grid dinámico con botón "+" */
