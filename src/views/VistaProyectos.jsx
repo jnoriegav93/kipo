@@ -821,7 +821,7 @@ const VistaProyectos = ({
             <div className={`${theme.card} rounded-2xl w-full h-full shadow-2xl border-2 ${theme.border} overflow-hidden flex flex-col`} onClick={(e) => e.stopPropagation()}>
 
               {/* Header */}
-              <div className={`${theme.header} px-6 py-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0`}>
+              <div className={`${theme.header} px-6 pb-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0`} style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
                 <div className="flex items-center gap-3">
                   <div className="bg-slate-800 p-2 rounded-lg">
                     <MapPin size={20} className="text-white" />
@@ -1101,8 +1101,6 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
       }
       if (blob) {
         blobsRef.current[archivo.id] = blob;
-        const { compartirODescargar } = await import('../utils/helpers');
-        await compartirODescargar(blob, archivo.name);
         setResultadosExportacion(prev => prev.map(r => r.id === archivo.id ? { ...r, descargado: true } : r));
       }
     } catch (e) {
@@ -1642,7 +1640,7 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                   className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
                     archivo.cargando || !archivo.downloadUrl
                       ? 'border-slate-100 text-slate-300 cursor-not-allowed'
-                      : 'border-slate-300 text-slate-500 hover:bg-slate-50 active:scale-95'
+                      : 'border-slate-900 text-slate-900 hover:bg-slate-50 active:scale-95'
                   }`}
                 >
                   <Link2 size={16} />
