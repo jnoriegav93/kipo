@@ -226,15 +226,41 @@ export default function VerDetalle({
         nroPoste ? `ITEM: *${nroPoste}*` : null,
         pasivoVal ? `COD E. PASIVO: *${pasivoVal}*` : null,
       ].filter(Boolean).join('\n');
-      const listText = '*LISTA DE FOTOS:*\n' + fotoItems.map(f => `• ${f.label}`).join('\n') + '\n⬇️⬇️⬇️';
+      const listText = '*LISTA DE FOTOS:*\n' + fotoItems.map(f => `• ${f.label}`).join('\n');
 
-      await navigator.share({ files, text: `${headerText}\n${listText}` });
+      const { modo = 'fotos' } = compartirModal;
+      if (modo === 'lista') {
+        await navigator.share({ text: `${headerText}\n${listText}` });
+      } else {
+        await navigator.share({ files });
+      }
     } catch (error) {
       if (error.name !== 'AbortError') console.log('Error compartiendo:', error);
     } finally {
       setCompartiendo(false);
-      setCompartirModal(null);
+      setCompartirModal(m => m ? { ...m, step: 'config' } : null);
       prefetchVDRef.current = null;
+    }
+  };
+
+  const compartirListaVD = async (tabId, tabTitle) => {
+    const fotoItems = buildFotoItemsVD(tabId);
+    if (fotoItems.length === 0) { alert('No hay fotos para compartir'); return; }
+    if (!navigator.share || !/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      alert('Función de compartir no disponible en este dispositivo'); return;
+    }
+    const nroPoste = datos?.numero || '';
+    const pasivoVal = datos?.pasivo || '';
+    const headerText = [
+      `FOTOS DE ${tabTitle}`,
+      nroPoste ? `ITEM: *${nroPoste}*` : null,
+      pasivoVal ? `COD E. PASIVO: *${pasivoVal}*` : null,
+    ].filter(Boolean).join('\n');
+    const listText = '*LISTA DE FOTOS:*\n' + fotoItems.map(f => `• ${f.label}`).join('\n');
+    try {
+      await navigator.share({ text: `${headerText}\n${listText}` });
+    } catch (error) {
+      if (error.name !== 'AbortError') console.log('Error compartiendo lista:', error);
     }
   };
 
@@ -854,10 +880,17 @@ export default function VerDetalle({
                     </div>
                   </div>
 
-                  <button onClick={() => { if (!logoModalBase64) { setSinLogoAdvertencia(true); } else { ejecutarCompartir(true, stampConfigCompartir); } }}
-                    className="w-full py-3 bg-slate-900 text-white rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform mt-1">
-                    COMPARTIR
-                  </button>
+                  <p className="text-center font-black text-slate-900 text-xs uppercase tracking-widest mt-1">Compartir</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => { if (!logoModalBase64) { setSinLogoAdvertencia(true); } else { ejecutarCompartir(true, stampConfigCompartir); } }}
+                      className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
+                      FOTOS
+                    </button>
+                    <button onClick={() => { compartirListaVD(compartirModal.tabId, compartirModal.tabTitle); setCompartirModal(m => m ? { ...m, step: 'config' } : null); }}
+                      className="flex-1 py-3 bg-white border-2 border-slate-900 text-slate-900 rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
+                      LISTA
+                    </button>
+                  </div>
                   <button onClick={() => setCompartirModal(m => ({ ...m, step: 'elegir' }))}
                     className="w-full py-2 text-slate-900 font-bold text-sm">
                     ← Atrás

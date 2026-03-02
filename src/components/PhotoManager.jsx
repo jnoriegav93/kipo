@@ -529,7 +529,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       if (error.name !== 'AbortError') console.log('Error compartiendo:', error);
     } finally {
       setCompartiendo(false);
-      setCompartirModal(null);
+      setCompartirModal(m => m ? { ...m, step: 'config' } : null);
       prefetchRef.current = null;
     }
   };
