@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, ChevronDown, Eye, EyeOff, Trash2, MapPin,
-  FolderDown, FileDown, Share2, Folder, X, Key, Users, Check, XCircle, Copy, MessageCircle, Image as ImageIcon, Info, Download, Loader2, Minus, AlertTriangle, Lock, UploadCloud, Edit
+  FolderDown, FileDown, Share2, Folder, X, Key, Users, Check, XCircle, Copy, MessageCircle, Image as ImageIcon, Info, Download, Loader2, Minus, AlertTriangle, Lock, UploadCloud, Edit, Link2
 } from 'lucide-react';
 import { Modal, ThemedInput } from '../components/UI';
 import { compartirODescargar } from '../utils/helpers';
@@ -1087,6 +1087,43 @@ const VistaProyectos = ({
 };
 
 const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, handleExportarServidor, cancelarExportacion, resultadosExportacion, setResultadosExportacion, logoApp, setLogoApp, inputLogoRef, handleCargarLogo, user, proyectoId }) => {
+  const [descargandoId, setDescargandoId] = React.useState(null);
+  const blobsRef = React.useRef({});
+
+  const handleDescargar = async (archivo) => {
+    if (descargandoId === archivo.id) return;
+    setDescargandoId(archivo.id);
+    try {
+      let blob = archivo.blob instanceof Blob ? archivo.blob : null;
+      if (!blob && archivo.downloadUrl) {
+        const res = await fetch(archivo.downloadUrl);
+        blob = await res.blob();
+      }
+      if (blob) {
+        blobsRef.current[archivo.id] = blob;
+        const { compartirODescargar } = await import('../utils/helpers');
+        await compartirODescargar(blob, archivo.name);
+        setResultadosExportacion(prev => prev.map(r => r.id === archivo.id ? { ...r, descargado: true } : r));
+      }
+    } catch (e) {
+      console.error('Error descargando:', e);
+    } finally {
+      setDescargandoId(null);
+    }
+  };
+
+  const handleCompartirArchivo = async (archivo) => {
+    const blob = blobsRef.current[archivo.id];
+    if (!blob) return;
+    try {
+      const file = new File([blob], archivo.name, { type: blob.type });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: archivo.name });
+      }
+    } catch (e) {
+      console.log('Compartir cancelado:', e);
+    }
+  };
   // 1. Cálculos Iniciales (Safe Nav)
   // FIX: Recalcular stats correctamente incluso si proyecto.dias es undefined (usando filtroPunto o lógica simple)
   // Si es un proyecto nuevo, proyecto.dias puede ser [] o undefined, así que usamos puntos directamente si pertenecen al proyecto (asumiendo que puntos tiene proyectoId, pero aqui solo tenemos diaId).
@@ -1598,40 +1635,42 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                   </p>
                 </div>
 
-                {/* Botón Compartir */}
+                {/* Botón Compartir Link */}
                 <button
-                  disabled={archivo.cargando || !!!archivo.descargado}
+                  disabled={archivo.cargando || !archivo.downloadUrl}
                   onClick={() => navigator.share?.({ url: archivo.downloadUrl, title: archivo.name })}
-                  className={`p-2 rounded-lg transition-all flex-shrink-0 ${
-                    archivo.cargando || !!!archivo.descargado
-                      ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
-                      : 'bg-slate-800 text-white hover:bg-slate-700 active:scale-95'
+                  className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
+                    archivo.cargando || !archivo.downloadUrl
+                      ? 'border-slate-100 text-slate-300 cursor-not-allowed'
+                      : 'border-slate-300 text-slate-500 hover:bg-slate-50 active:scale-95'
                   }`}
                 >
-                  <Share2 size={16} />
+                  <Link2 size={16} />
                 </button>
 
-                {/* Botón Descargar / Check */}
+                {/* Botón Descargar → Compartir Archivo */}
                 {!!archivo.descargado ? (
-                  <div className="p-2 bg-green-100 text-green-600 rounded-lg flex-shrink-0">
-                    <Check size={16} />
-                  </div>
+                  <button
+                    onClick={() => handleCompartirArchivo(archivo)}
+                    className="p-2 rounded-lg border-2 border-green-400 text-green-600 hover:bg-green-50 active:scale-95 flex-shrink-0"
+                  >
+                    <Share2 size={16} />
+                  </button>
                 ) : (
-                  <a
-                    href={archivo.downloadUrl || '#'}
-                    download={archivo.name}
-                    onClick={archivo.cargando
-                      ? (e) => e.preventDefault()
-                      : () => setResultadosExportacion(prev => prev.map(r => r.id === archivo.id ? { ...r, descargado: true } : r))
-                    }
+                  <button
+                    onClick={() => !archivo.cargando && handleDescargar(archivo)}
+                    disabled={archivo.cargando || descargandoId === archivo.id}
                     className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
-                      archivo.cargando
+                      archivo.cargando || descargandoId === archivo.id
                         ? 'border-slate-100 text-slate-300 pointer-events-none'
                         : 'border-purple-300 text-purple-600 hover:bg-purple-50 active:scale-95'
                     }`}
                   >
-                    <Download size={16} />
-                  </a>
+                    {descargandoId === archivo.id
+                      ? <Loader2 size={16} className="animate-spin" />
+                      : <Download size={16} />
+                    }
+                  </button>
                 )}
 
                 {/* Barra de progreso animada en el borde inferior */}
