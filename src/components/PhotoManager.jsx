@@ -1037,7 +1037,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
 
       {/* TOASTS: fotos alta calidad listas para guardar */}
       {hrToasts.length > 0 && (
-        <div className="fixed bottom-24 left-0 right-0 z-[1500] flex flex-col gap-2 px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="fixed bottom-0 left-0 right-0 z-[1500] flex flex-col gap-2 px-4" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
           {hrToasts.map(toast => (
             <div key={toast.id} className="bg-slate-900 rounded-2xl flex items-center gap-3 px-4 py-3 shadow-2xl border border-white/10">
               <span className="text-xl shrink-0">📷</span>
