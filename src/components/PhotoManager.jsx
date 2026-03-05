@@ -375,12 +375,24 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
               const stampedHR = await estamparMetadatos(blobHR, datosEstampado, logoBase64, stampCfg);
               const blobHRStamped = new Blob([stampedHR.buffer], { type: 'image/jpeg' });
               const urlHR = URL.createObjectURL(blobHRStamped);
-              const a = document.createElement('a');
-              a.href = urlHR;
-              a.download = `kipo_${section}_${item}_${Date.now()}.jpg`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
+              const fileName = `kipo_${section}_${item}_${Date.now()}.jpg`;
+              const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+              if (isIOS && navigator.share) {
+                try {
+                  const shareFile = new File([blobHRStamped], fileName, { type: 'image/jpeg' });
+                  await navigator.share({ files: [shareFile] });
+                } catch (e) {
+                  if (e.name !== 'AbortError') {
+                    const a = document.createElement('a');
+                    a.href = urlHR; a.download = fileName;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  }
+                }
+              } else {
+                const a = document.createElement('a');
+                a.href = urlHR; a.download = fileName;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              }
               setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
             }, 'image/jpeg', 0.92);
           } catch (err) {

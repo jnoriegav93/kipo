@@ -392,8 +392,8 @@ export const estamparMetadatos = async (imagenSource, datos, logoBase64, stampCo
         ctx.stroke();
         ctx.restore();
 
-        // Tamaño de fuente fijo
-        const fs = 26;
+        // Tamaño de fuente proporcional a la altura de la barra
+        const fs = Math.max(14, Math.round(cajaAlto * 0.28));
         const lineH = fs * 1.1;
 
         // Posición vertical centrada de las 2 filas

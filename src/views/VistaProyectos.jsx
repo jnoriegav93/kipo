@@ -640,49 +640,149 @@ const VistaProyectos = ({
           <button onClick={() => setTempData({ ...tempData, modoFotos: 'altaCalidad' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.modoFotos === 'altaCalidad' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>ALTA CALIDAD</button>
         </div>
         {tempData.modoFotos === 'altaCalidad' && (
-          <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Configuración del sello</p>
-            <div>
-              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Posición del logo</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[['left','Izquierda'],['right','Derecha']].map(([pos, label]) => (
-                  <button key={pos} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), logoPosition: pos } }))}
-                    className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(tempData.stampConfig?.logoPosition || 'right') === pos ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+          <button onClick={() => setModalOpen('ALTA_CALIDAD_CONFIG')} className="w-full mb-4 flex items-center justify-between px-4 py-3 rounded-xl border-2 border-slate-900 bg-slate-50 active:scale-95 transition-transform">
+            <span className="font-black text-slate-900 text-xs uppercase tracking-widest">Configurar Sello</span>
+            <div className="flex items-center gap-2">
+              {tempData.stampLogoBase64 ? <Check size={14} className="text-green-600" /> : <AlertTriangle size={14} className="text-amber-500" />}
+              <ChevronDown size={16} className="text-slate-900 -rotate-90" />
             </div>
-            <div>
-              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Identificadores</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[['mostrarNroPoste','Item'],['mostrarCodFat','Pasivo']].map(([key, label]) => {
-                  const val = tempData.stampConfig?.[key] ?? (key === 'mostrarNroPoste' ? true : false);
-                  return (
-                    <button key={key} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), [key]: !val } }))}
-                      className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Fondo del sello</p>
-              <div className="grid grid-cols-3 gap-2">
-                {[['glass','Vidrio'],['white','Blanco'],['black','Negro']].map(([val, label]) => (
-                  <button key={val} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), fondoSello: val } }))}
-                    className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(tempData.stampConfig?.fondoSello || 'white') === val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="text-[9px] text-slate-400 leading-tight">El logo se tomará del logo del proyecto (mismo que usas al compartir).</p>
-          </div>
+          </button>
         )}
         <button onClick={confirmarCrearProyecto} className="w-full bg-brand-600 text-white py-3 rounded font-bold border-2 border-brand-800">CREAR</button>
       </Modal>
+
+      {/* PANTALLA COMPLETA: CONFIG SELLO ALTA CALIDAD */}
+      {modalOpen === 'ALTA_CALIDAD_CONFIG' && (() => {
+        const sc = tempData.stampConfig || {};
+        const fondo = sc.fondoSello || 'white';
+        const prevBarBg = fondo === 'black' ? 'rgba(0,0,0,0.80)' : fondo === 'glass' ? 'rgba(50,50,50,0.45)' : 'rgba(255,255,255,0.92)';
+        const prevClr1 = fondo === 'white' ? '#000000' : fondo === 'black' ? '#FCBF26' : '#ffffff';
+        const prevClr2 = fondo === 'white' ? '#000000' : '#ffffff';
+        const prevDiv = fondo === 'white' ? '#cbd5e1' : fondo === 'glass' ? 'rgba(255,255,255,0.50)' : 'rgba(255,255,255,0.30)';
+        const logoInputRef2 = React.createRef();
+        return (
+          <div className="fixed inset-0 z-[400] bg-white flex flex-col">
+            {/* Header */}
+            <div className="bg-slate-900 px-4 flex items-center justify-between shrink-0" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))', paddingBottom: '16px' }}>
+              <button onClick={() => setModalOpen('CREAR_PROYECTO')}>
+                <ChevronDown size={28} className="text-white rotate-90" />
+              </button>
+              <span className="font-black text-white text-base uppercase">Configurar Sello</span>
+              <div className="w-7" />
+            </div>
+            {/* Contenido */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Explicación */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-xs text-amber-800 font-medium leading-snug">En esta opción las fotos se guardarán en tu equipo con el sello ya impreso en alta resolución. También se sube una versión comprimida sellada para la app.</p>
+              </div>
+              {/* Logo */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider">Logo del sello</p>
+                <input ref={logoInputRef2} type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0]; if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => setTempData(prev => ({ ...prev, stampLogoBase64: ev.target.result }));
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }} />
+                {tempData.stampLogoBase64 ? (
+                  <div className="flex items-center gap-3">
+                    <img src={tempData.stampLogoBase64} alt="Logo" className="h-12 object-contain border border-slate-200 rounded bg-white p-1" />
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-green-600 font-bold">✓ Logo cargado</span>
+                      <button onClick={() => setTempData(prev => ({ ...prev, stampLogoBase64: null }))} className="text-[10px] text-red-500 font-bold text-left">Quitar logo</button>
+                    </div>
+                    <button onClick={() => logoInputRef2.current?.click()} className="ml-auto text-xs text-brand-600 font-bold">Cambiar</button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button onClick={() => logoInputRef2.current?.click()} className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-300 rounded-lg text-xs font-bold text-slate-600 active:scale-95 transition-transform">
+                      <UploadCloud size={16} /> SUBIR LOGO
+                    </button>
+                    <p className="text-[9px] text-slate-400 text-center">También puedes continuar sin logo</p>
+                  </div>
+                )}
+              </div>
+              {/* Config */}
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Posición del logo</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[['left','Izquierda'],['right','Derecha']].map(([pos, label]) => (
+                      <button key={pos} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), logoPosition: pos } }))}
+                        className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(sc.logoPosition || 'right') === pos ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Identificadores</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[['mostrarNroPoste','Item'],['mostrarCodFat','Pasivo']].map(([key, label]) => {
+                      const val = sc[key] ?? (key === 'mostrarNroPoste' ? true : false);
+                      return (
+                        <button key={key} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), [key]: !val } }))}
+                          className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Fondo del sello</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[['glass','Vidrio'],['white','Blanco'],['black','Negro']].map(([val, label]) => (
+                      <button key={val} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), fondoSello: val } }))}
+                        className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(sc.fondoSello || 'white') === val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* Preview */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 text-center">Vista previa del sello</p>
+                <div className="relative rounded overflow-hidden border border-slate-300 bg-slate-300" style={{ height: '80px' }}>
+                  {tempData.stampLogoBase64 ? (
+                    <img src={tempData.stampLogoBase64} alt="Logo" className={`absolute top-1 ${(sc.logoPosition || 'right') === 'left' ? 'left-1' : 'right-1'} h-5 object-contain bg-white/80 border border-slate-400 rounded px-1`} />
+                  ) : (
+                    <div className={`absolute top-1 ${(sc.logoPosition || 'right') === 'left' ? 'left-1' : 'right-1'} bg-white/80 border border-slate-400 rounded px-1.5 py-0.5 text-[7px] font-black text-slate-600`}>LOGO</div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 flex items-center border-t border-slate-400" style={{ height: '38%', backgroundColor: prevBarBg }}>
+                    <div className="flex flex-col justify-center overflow-hidden shrink-0" style={{ width: '25%', padding: '1px 3px 1px 4px', gap: '1px' }}>
+                      <span className="font-black truncate leading-none" style={{ fontSize: '6px', color: prevClr1 }}>PROYECTO</span>
+                      <span className="font-black truncate leading-none" style={{ fontSize: '6px', color: prevClr2 }}>
+                        {(sc.mostrarNroPoste ?? true) && '001'}{(sc.mostrarNroPoste ?? true) && (sc.mostrarCodFat) && ' | '}{sc.mostrarCodFat && 'M25'}
+                        {!(sc.mostrarNroPoste ?? true) && !sc.mostrarCodFat && '—'}
+                      </span>
+                    </div>
+                    <div className="self-stretch shrink-0" style={{ width: '1px', margin: '2px 0', backgroundColor: prevDiv }}></div>
+                    <div className="flex flex-col justify-center items-center overflow-hidden shrink-0" style={{ width: '40%', padding: '1px 3px', gap: '1px' }}>
+                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2 }}>15/01/2025 · 09:30</span>
+                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2 }}>-12.345, -76.987</span>
+                    </div>
+                    <div className="self-stretch shrink-0" style={{ width: '1px', margin: '2px 0', backgroundColor: prevDiv }}></div>
+                    <div className="flex flex-col justify-center overflow-hidden flex-1" style={{ padding: '1px 4px 1px 3px', gap: '1px' }}>
+                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2, textAlign: 'right' }}>Av. Principal 123</span>
+                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2, textAlign: 'right' }}>Arequipa, Perú</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Botón confirmar */}
+            <div className="shrink-0 p-4 border-t border-slate-200" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+              <button onClick={() => setModalOpen('CREAR_PROYECTO')} className="w-full bg-slate-900 text-white py-3 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform">
+                CONFIRMAR
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       <Modal isOpen={modalOpen === 'CREAR_DIA'} onClose={() => setModalOpen(null)} title="Nuevo Día" theme={theme}>
         <ThemedInput autoFocus placeholder="Nombre (ej: Lunes 05)" val={tempData.nombre || ''} onChange={e => setTempData({ ...tempData, nombre: e.target.value })} theme={theme} />
