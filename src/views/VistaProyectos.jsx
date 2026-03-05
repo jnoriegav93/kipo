@@ -648,7 +648,13 @@ const VistaProyectos = ({
             </div>
           </button>
         )}
-        <button onClick={confirmarCrearProyecto} className="w-full bg-brand-600 text-white py-3 rounded font-bold border-2 border-brand-800">CREAR</button>
+        <button onClick={() => {
+          if (tempData.modoFotos === 'altaCalidad' && !tempData.stampConfig) {
+            setModalOpen('ALTA_CALIDAD_CONFIG');
+            return;
+          }
+          confirmarCrearProyecto();
+        }} className="w-full bg-brand-600 text-white py-3 rounded font-bold border-2 border-brand-800">CREAR</button>
       </Modal>
 
       {/* PANTALLA COMPLETA: CONFIG SELLO ALTA CALIDAD */}
@@ -659,7 +665,7 @@ const VistaProyectos = ({
         const prevClr1 = fondo === 'white' ? '#000000' : fondo === 'black' ? '#FCBF26' : '#ffffff';
         const prevClr2 = fondo === 'white' ? '#000000' : '#ffffff';
         const prevDiv = fondo === 'white' ? '#cbd5e1' : fondo === 'glass' ? 'rgba(255,255,255,0.50)' : 'rgba(255,255,255,0.30)';
-        const logoInputRef2 = React.createRef();
+        const logoInputRef2 = { current: null };
         return (
           <div className="fixed inset-0 z-[400] bg-white flex flex-col">
             {/* Header */}
@@ -671,7 +677,7 @@ const VistaProyectos = ({
               <div className="w-7" />
             </div>
             {/* Contenido */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
               {/* Explicación */}
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                 <p className="text-xs text-amber-800 font-medium leading-snug">En esta opción las fotos se guardarán en tu equipo con el sello ya impreso en alta resolución. También se sube una versión comprimida sellada para la app.</p>
@@ -776,7 +782,12 @@ const VistaProyectos = ({
             </div>
             {/* Botón confirmar */}
             <div className="shrink-0 p-4 border-t border-slate-200" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
-              <button onClick={() => setModalOpen('CREAR_PROYECTO')} className="w-full bg-slate-900 text-white py-3 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform">
+              <button onClick={() => {
+                if (!tempData.stampConfig) {
+                  setTempData(prev => ({ ...prev, stampConfig: { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' } }));
+                }
+                setModalOpen('CREAR_PROYECTO');
+              }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform">
                 CONFIRMAR
               </button>
             </div>

@@ -498,6 +498,7 @@ export const estamparMetadatos = async (imagenSource, datos, logoBase64, stampCo
 
       function finalizar() {
         canvas.toBlob((b) => {
+          if (!b) { reject(new Error('canvas.toBlob returned null')); return; }
           const reader = new FileReader();
           reader.readAsArrayBuffer(b);
           reader.onloadend = () => resolve({ buffer: reader.result, width: w, height: h });

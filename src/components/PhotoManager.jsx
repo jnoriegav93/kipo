@@ -427,8 +427,12 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                 codFat: datos?.pasivo || '', pasivo: datos?.pasivo || '',
                 direccion: datos?.direccion || '', ubicacion: datos?.ubicacion || '',
               };
-              const stamped = await estamparMetadatos(blob, datosEstampado, logoBase64, stampCfg);
-              blobToUpload = new Blob([stamped.buffer], { type: 'image/jpeg' });
+              try {
+                const stamped = await estamparMetadatos(blob, datosEstampado, logoBase64, stampCfg);
+                blobToUpload = new Blob([stamped.buffer], { type: 'image/jpeg' });
+              } catch (stampErr) {
+                console.warn('Sello fallido en versión Firebase, subiendo sin sello:', stampErr);
+              }
             }
             const path = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}.jpg`;
             const downloadUrl = await uploadImage(blobToUpload, path);
