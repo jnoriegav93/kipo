@@ -650,7 +650,11 @@ const VistaProyectos = ({
             </div>
           </button>
         )}
+        {!tempData.nombre?.trim() && (
+          <p className="text-[10px] text-red-500 font-bold text-center -mt-1 mb-1">Escribe un nombre para el proyecto</p>
+        )}
         <button onClick={() => {
+          if (!tempData.nombre?.trim()) return;
           if (tempData.modoFotos === 'altaCalidad' && !tempData.stampConfig) {
             setAltaCalidadMissingConfig(true);
             setAltaCalidadSinLogoStep(false);
@@ -658,7 +662,7 @@ const VistaProyectos = ({
             return;
           }
           confirmarCrearProyecto();
-        }} className="w-full bg-brand-600 text-white py-3 rounded font-bold border-2 border-brand-800">CREAR</button>
+        }} className={`w-full py-3 rounded font-bold border-2 transition-colors ${tempData.nombre?.trim() ? 'bg-brand-600 text-white border-brand-800' : 'bg-slate-200 text-slate-400 border-slate-300'}`}>CREAR</button>
       </Modal>
 
       {/* PANTALLA COMPLETA: CONFIG SELLO ALTA CALIDAD */}
