@@ -27,6 +27,9 @@ const VistaProyectos = ({
   const [colorMenuPos, setColorMenuPos] = React.useState(null); // Posición del menú de color (para evitar overflow)
   const [altaCalidadMissingConfig, setAltaCalidadMissingConfig] = React.useState(false);
   const [altaCalidadSinLogoStep, setAltaCalidadSinLogoStep] = React.useState(false);
+  const [creandoProyecto, setCreandoProyecto] = React.useState(false);
+  const [creandoDia, setCreandoDia] = React.useState(false);
+  const [editandoNombre, setEditandoNombre] = React.useState(null); // { proyId, valor }
 
   // DERIVED STATE: Always use the fresh project data from the list, not the potentially stale prop
   const activeProjectData = React.useMemo(() => {
@@ -314,6 +317,31 @@ const VistaProyectos = ({
     setTimeout(() => setCodigoCopiado(false), 2000);
   };
 
+  const handleCrearProyecto = async () => {
+    if (creandoProyecto) return;
+    setCreandoProyecto(true);
+    try { await confirmarCrearProyecto(); }
+    finally { setCreandoProyecto(false); }
+  };
+
+  const handleCrearDia = async () => {
+    if (creandoDia) return;
+    setCreandoDia(true);
+    try { await confirmarCrearDia(); }
+    finally { setCreandoDia(false); }
+  };
+
+  const guardarNombreProyecto = async (proyId, nuevoNombre) => {
+    const nombre = nuevoNombre.trim();
+    setEditandoNombre(null);
+    if (!nombre) return;
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const { db } = await import('../firebaseConfig');
+      await updateDoc(doc(db, 'proyectos', proyId), { nombre });
+    } catch (err) { console.error('Error actualizando nombre:', err); }
+  };
+
   return (
     <div className={`flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
 
@@ -380,10 +408,24 @@ const VistaProyectos = ({
                     <div className="flex justify-between items-center w-full gap-2">
 
                       {/* Título + Tipo */}
-                      <div className="flex-1">
-                        <h3 className={`font-black text-xl ${theme.text} uppercase leading-none break-words`}>
-                          {proy.nombre}
-                        </h3>
+                      <div className="flex-1 min-w-0">
+                        {editandoNombre?.proyId === proy.id ? (
+                          <input
+                            autoFocus
+                            value={editandoNombre.valor}
+                            onChange={e => setEditandoNombre({ ...editandoNombre, valor: e.target.value })}
+                            onBlur={() => guardarNombreProyecto(proy.id, editandoNombre.valor)}
+                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditandoNombre(null); }}
+                            className={`font-black text-xl uppercase leading-none w-full bg-transparent border-b-2 border-brand-500 outline-none ${theme.text}`}
+                          />
+                        ) : (
+                          <h3
+                            className={`font-black text-xl ${theme.text} uppercase leading-none break-words cursor-pointer active:opacity-60`}
+                            onClick={() => setEditandoNombre({ proyId: proy.id, valor: proy.nombre })}
+                          >
+                            {proy.nombre}
+                          </h3>
+                        )}
                         <span className={`text-[10px] font-normal ${theme.textSec} uppercase tracking-wider leading-none block mt-0.5`}>
                           {proy.tipo || 'LEVANTAMIENTO'}
                         </span>
@@ -654,15 +696,17 @@ const VistaProyectos = ({
           <p className="text-[10px] text-red-500 font-bold text-center -mt-1 mb-1">Escribe un nombre para el proyecto</p>
         )}
         <button onClick={() => {
-          if (!tempData.nombre?.trim()) return;
+          if (!tempData.nombre?.trim() || creandoProyecto) return;
           if (tempData.modoFotos === 'altaCalidad' && !tempData.stampConfig) {
             setAltaCalidadMissingConfig(true);
             setAltaCalidadSinLogoStep(false);
             setModalOpen('ALTA_CALIDAD_CONFIG');
             return;
           }
-          confirmarCrearProyecto();
-        }} className={`w-full py-3 rounded font-bold border-2 transition-colors ${tempData.nombre?.trim() ? 'bg-brand-600 text-white border-brand-800' : 'bg-slate-200 text-slate-400 border-slate-300'}`}>CREAR</button>
+          handleCrearProyecto();
+        }} disabled={creandoProyecto} className={`w-full py-3 rounded font-bold border-2 transition-colors ${tempData.nombre?.trim() && !creandoProyecto ? 'bg-brand-600 text-white border-brand-800' : 'bg-slate-200 text-slate-400 border-slate-300'}`}>
+          {creandoProyecto ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Creando...</span> : 'CREAR'}
+        </button>
       </Modal>
 
       {/* PANTALLA COMPLETA: CONFIG SELLO ALTA CALIDAD */}
@@ -837,7 +881,9 @@ const VistaProyectos = ({
       <Modal isOpen={modalOpen === 'CREAR_DIA'} onClose={() => setModalOpen(null)} title="Nuevo Día" theme={theme}>
         <ThemedInput autoFocus placeholder="Nombre (ej: Lunes 05)" val={tempData.nombre || ''} onChange={e => setTempData({ ...tempData, nombre: e.target.value })} theme={theme} />
         <div className="h-4"></div>
-        <button onClick={confirmarCrearDia} className="w-full bg-brand-600 text-white py-3 rounded font-bold border-2 border-brand-800">AGREGAR</button>
+        <button onClick={handleCrearDia} disabled={creandoDia} className={`w-full py-3 rounded font-bold border-2 transition-colors ${creandoDia ? 'bg-slate-200 text-slate-400 border-slate-300' : 'bg-brand-600 text-white border-brand-800'}`}>
+          {creandoDia ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Agregando...</span> : 'AGREGAR'}
+        </button>
       </Modal>
 
       {/* PANTALLA COMPLETA DE EXPORTACIÓN */}
