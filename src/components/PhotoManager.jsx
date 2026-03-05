@@ -195,6 +195,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
   // compartirModal: null | { sectionId, step: 'elegir'|'config' }
   const [compartirModal, setCompartirModal] = useState(null);
   const [compartiendo, setCompartiendo] = useState(false);
+  const [iosShareFallbackUrl, setIosShareFallbackUrl] = useState(null);
   const [stampConfigCompartir, setStampConfigCompartir] = useState(() => {
     try { const s = localStorage.getItem('kipo_stamp_config'); if (s) return JSON.parse(s); } catch {}
     return DEFAULT_STAMP_CONFIG;
@@ -347,32 +348,39 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           };
         });
 
-        // MODO ALTA CALIDAD: guardar foto original estampada en dispositivo
+        // Pre-fetch logo y datos de estampado una sola vez para ambas rutas (HR + Firebase)
+        let altaCalidadLogo = null;
+        let stampCfgAC = null;
+        let datosEstampado = null;
         if (altaCalidad) {
-          try {
-            const stampCfg = proyectoActual.stampConfig || { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
-            let logoBase64 = null;
-            if (proyectoActual?.logoEmpresa) {
-              try { logoBase64 = await urlABase64(proyectoActual.logoEmpresa); } catch {}
-            }
-            const datosEstampado = {
-              numero: datos?.numero || '',
-              proyecto: proyectoActual?.nombre || '',
-              gps: coords.lat ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '',
-              fecha: datos?.fecha || new Date().toISOString(),
-              hora: datos?.hora || '',
-              codFat: datos?.pasivo || '',
-              pasivo: datos?.pasivo || '',
-              direccion: datos?.direccion || '',
-              ubicacion: datos?.ubicacion || '',
-            };
-            // Alta res: sin límite de escala (resolución original del dispositivo)
-            const canvasHR = document.createElement('canvas');
-            canvasHR.width = img.width; canvasHR.height = img.height;
-            canvasHR.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
-            canvasHR.toBlob(async (blobHR) => {
-              if (!blobHR) return;
-              const stampedHR = await estamparMetadatos(blobHR, datosEstampado, logoBase64, stampCfg);
+          stampCfgAC = proyectoActual.stampConfig || { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
+          if (proyectoActual?.logoEmpresa) {
+            try { altaCalidadLogo = await urlABase64(proyectoActual.logoEmpresa); } catch {}
+          }
+          datosEstampado = {
+            numero: datos?.numero || '',
+            proyecto: proyectoActual?.nombre || '',
+            gps: coords.lat ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '',
+            fecha: datos?.fecha || new Date().toISOString(),
+            hora: datos?.hora || '',
+            codFat: datos?.pasivo || '',
+            pasivo: datos?.pasivo || '',
+            direccion: datos?.direccion || '',
+            ubicacion: datos?.ubicacion || '',
+          };
+        }
+
+        // MODO ALTA CALIDAD: guardar foto original estampada en dispositivo (fire-and-forget)
+        if (altaCalidad) {
+          let hrFired = false;
+          const canvasHR = document.createElement('canvas');
+          canvasHR.width = img.width; canvasHR.height = img.height;
+          canvasHR.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
+          canvasHR.toBlob(async (blobHR) => {
+            if (hrFired || !blobHR) return;
+            hrFired = true;
+            try {
+              const stampedHR = await estamparMetadatos(blobHR, datosEstampado, altaCalidadLogo, stampCfgAC);
               const blobHRStamped = new Blob([stampedHR.buffer], { type: 'image/jpeg' });
               const urlHR = URL.createObjectURL(blobHRStamped);
               const fileName = `kipo_${section}_${item}_${Date.now()}.jpg`;
@@ -381,84 +389,73 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                 try {
                   const shareFile = new File([blobHRStamped], fileName, { type: 'image/jpeg' });
                   await navigator.share({ files: [shareFile] });
+                  setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
                 } catch (e) {
-                  if (e.name !== 'AbortError') {
-                    const a = document.createElement('a');
-                    a.href = urlHR; a.download = fileName;
-                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  if (e.name === 'AbortError') {
+                    setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
+                  } else {
+                    // Share falló: mostrar overlay in-app para que el usuario haga long-press
+                    setIosShareFallbackUrl(urlHR);
                   }
                 }
               } else {
                 const a = document.createElement('a');
                 a.href = urlHR; a.download = fileName;
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
               }
-              setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
-            }, 'image/jpeg', 0.92);
-          } catch (err) {
-            console.error('Error generando foto alta calidad:', err);
-          }
+            } catch (err) {
+              console.error('Error generando foto alta calidad:', err);
+            }
+          }, 'image/jpeg', 0.92);
         }
 
-        // Subir versión comprimida a Firebase en segundo plano
-        canvasFull.toBlob(async (blob) => {
-          if (!blob) {
-            setDatos(prev => {
-              const prevFotos = { ...(prev.fotos || {}) };
-              if (prevFotos[section]) { const sec = { ...prevFotos[section] }; delete sec[item]; prevFotos[section] = sec; }
-              return { ...prev, fotos: prevFotos };
-            });
-            alert('Error al procesar la imagen.');
-            return;
-          }
-          try {
-            let blobToUpload = blob;
-            // En alta calidad: aplicar sello también a la versión comprimida de Firebase
-            if (altaCalidad) {
-              const stampCfg = proyectoActual.stampConfig || { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
-              let logoBase64 = null;
-              if (proyectoActual?.logoEmpresa) {
-                try { logoBase64 = await urlABase64(proyectoActual.logoEmpresa); } catch {}
-              }
-              const datosEstampado = {
-                numero: datos?.numero || '', proyecto: proyectoActual?.nombre || '',
-                gps: coords.lat ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '',
-                fecha: datos?.fecha || new Date().toISOString(), hora: datos?.hora || '',
-                codFat: datos?.pasivo || '', pasivo: datos?.pasivo || '',
-                direccion: datos?.direccion || '', ubicacion: datos?.ubicacion || '',
-              };
-              try {
-                const stamped = await estamparMetadatos(blob, datosEstampado, logoBase64, stampCfg);
-                blobToUpload = new Blob([stamped.buffer], { type: 'image/jpeg' });
-              } catch (stampErr) {
-                console.warn('Sello fallido en versión Firebase, subiendo sin sello:', stampErr);
-              }
-            }
-            const path = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}.jpg`;
-            const downloadUrl = await uploadImage(blobToUpload, path);
-            setDatos(prev => {
-              const prevFotos = prev.fotos || {};
-              return {
-                ...prev,
-                fotos: {
-                  ...prevFotos,
-                  [section]: {
-                    ...(prevFotos[section] || {}),
-                    [item]: { url: downloadUrl, thumb: thumbUrl, timestamp: new Date().toISOString() }
-                  }
+        // Subir a Firebase (con sello en alta calidad usando toDataURL síncrono)
+        const uploadPath = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}.jpg`;
+        const limpiarFoto = () => {
+          setDatos(prev => {
+            const prevFotos = { ...(prev.fotos || {}) };
+            if (prevFotos[section]) { const sec = { ...prevFotos[section] }; delete sec[item]; prevFotos[section] = sec; }
+            return { ...prev, fotos: prevFotos };
+          });
+        };
+        const guardarFoto = async (blobToUpload) => {
+          const downloadUrl = await uploadImage(blobToUpload, uploadPath);
+          setDatos(prev => {
+            const prevFotos = prev.fotos || {};
+            return {
+              ...prev,
+              fotos: {
+                ...prevFotos,
+                [section]: {
+                  ...(prevFotos[section] || {}),
+                  [item]: { url: downloadUrl, thumb: thumbUrl, timestamp: new Date().toISOString() }
                 }
-              };
-            });
+              }
+            };
+          });
+        };
+
+        if (altaCalidad) {
+          try {
+            // toDataURL es síncrono: evita problemas de callbacks anidados
+            const fullDataUrl = canvasFull.toDataURL('image/jpeg', 0.75);
+            const stamped = await estamparMetadatos(fullDataUrl, datosEstampado, altaCalidadLogo, stampCfgAC);
+            await guardarFoto(new Blob([stamped.buffer], { type: 'image/jpeg' }));
           } catch (err) {
-            console.error('Error subiendo foto:', err);
-            setDatos(prev => {
-              const prevFotos = { ...(prev.fotos || {}) };
-              if (prevFotos[section]) { const sec = { ...prevFotos[section] }; delete sec[item]; prevFotos[section] = sec; }
-              return { ...prev, fotos: prevFotos };
-            });
-            alert('Error al subir la foto. Verifique su conexión.');
+            console.error('Error estampando versión Firebase, subiendo sin sello:', err);
+            canvasFull.toBlob(async (blob) => {
+              if (!blob) { limpiarFoto(); alert('Error al procesar la imagen.'); return; }
+              try { await guardarFoto(blob); } catch { limpiarFoto(); alert('Error al subir la foto. Verifique su conexión.'); }
+            }, 'image/jpeg', 0.75);
           }
-        }, 'image/jpeg', 0.75);
+        } else {
+          canvasFull.toBlob(async (blob) => {
+            if (!blob) { limpiarFoto(); alert('Error al procesar la imagen.'); return; }
+            try { await guardarFoto(blob); }
+            catch (err) { console.error('Error subiendo foto:', err); limpiarFoto(); alert('Error al subir la foto. Verifique su conexión.'); }
+          }, 'image/jpeg', 0.75);
+        }
       };
 
       img.src = ev.target.result;
@@ -958,7 +955,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       {/* VISUALIZADOR */}
       {viewingPhoto && (
         <div className="fixed inset-0 z-[1000] bg-black flex flex-col">
-          <div className="flex justify-between items-center p-4 bg-black/80 backdrop-blur-md border-b border-white/10">
+          <div className="flex justify-between items-center px-4 pb-4 bg-black/80 backdrop-blur-md border-b border-white/10" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
             <div>
               {/* Intentar buscar el label bonito, si no usar el ID */}
               <h3 className="font-bold text-white text-lg">
@@ -1000,6 +997,22 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             >
               <Trash2 size={24} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* OVERLAY iOS: guardar foto alta calidad */}
+      {iosShareFallbackUrl && (
+        <div className="fixed inset-0 z-[2000] bg-black flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="px-4 py-3 flex items-center justify-between shrink-0">
+            <p className="text-white text-xs font-bold leading-snug">Mantén pulsada la imagen para guardar en Fotos</p>
+            <button
+              onClick={() => { URL.revokeObjectURL(iosShareFallbackUrl); setIosShareFallbackUrl(null); }}
+              className="text-white text-sm font-bold bg-white/20 rounded-lg px-3 py-1.5"
+            >Cerrar</button>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4">
+            <img src={iosShareFallbackUrl} alt="Foto" className="max-w-full max-h-full object-contain" />
           </div>
         </div>
       )}

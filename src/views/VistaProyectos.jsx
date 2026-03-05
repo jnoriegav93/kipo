@@ -25,6 +25,8 @@ const VistaProyectos = ({
 
   const [codigoCopiado, setCodigoCopiado] = React.useState(false);
   const [colorMenuPos, setColorMenuPos] = React.useState(null); // Posición del menú de color (para evitar overflow)
+  const [altaCalidadMissingConfig, setAltaCalidadMissingConfig] = React.useState(false);
+  const [altaCalidadSinLogoStep, setAltaCalidadSinLogoStep] = React.useState(false);
 
   // DERIVED STATE: Always use the fresh project data from the list, not the potentially stale prop
   const activeProjectData = React.useMemo(() => {
@@ -640,7 +642,7 @@ const VistaProyectos = ({
           <button onClick={() => setTempData({ ...tempData, modoFotos: 'altaCalidad' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.modoFotos === 'altaCalidad' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>ALTA CALIDAD</button>
         </div>
         {tempData.modoFotos === 'altaCalidad' && (
-          <button onClick={() => setModalOpen('ALTA_CALIDAD_CONFIG')} className="w-full mb-4 flex items-center justify-between px-4 py-3 rounded-xl border-2 border-slate-900 bg-slate-50 active:scale-95 transition-transform">
+          <button onClick={() => { setAltaCalidadMissingConfig(false); setAltaCalidadSinLogoStep(false); setModalOpen('ALTA_CALIDAD_CONFIG'); }} className="w-full mb-4 flex items-center justify-between px-4 py-3 rounded-xl border-2 border-slate-900 bg-slate-50 active:scale-95 transition-transform">
             <span className="font-black text-slate-900 text-xs uppercase tracking-widest">Configurar Sello</span>
             <div className="flex items-center gap-2">
               {tempData.stampLogoBase64 ? <Check size={14} className="text-green-600" /> : <AlertTriangle size={14} className="text-amber-500" />}
@@ -650,6 +652,8 @@ const VistaProyectos = ({
         )}
         <button onClick={() => {
           if (tempData.modoFotos === 'altaCalidad' && !tempData.stampConfig) {
+            setAltaCalidadMissingConfig(true);
+            setAltaCalidadSinLogoStep(false);
             setModalOpen('ALTA_CALIDAD_CONFIG');
             return;
           }
@@ -670,7 +674,7 @@ const VistaProyectos = ({
           <div className="fixed inset-0 z-[400] bg-white flex flex-col">
             {/* Header */}
             <div className="bg-slate-900 px-4 flex items-center justify-between shrink-0" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))', paddingBottom: '16px' }}>
-              <button onClick={() => setModalOpen('CREAR_PROYECTO')}>
+              <button onClick={() => { setAltaCalidadMissingConfig(false); setAltaCalidadSinLogoStep(false); setModalOpen('CREAR_PROYECTO'); }}>
                 <ChevronDown size={28} className="text-white rotate-90" />
               </button>
               <span className="font-black text-white text-base uppercase">Configurar Sello</span>
@@ -678,6 +682,12 @@ const VistaProyectos = ({
             </div>
             {/* Contenido */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {/* Alerta si se llegó sin configurar */}
+              {altaCalidadMissingConfig && (
+                <div className="bg-red-50 border border-red-300 rounded-xl p-3">
+                  <p className="text-xs font-bold text-red-700 leading-snug">⚠️ No se puede crear un proyecto de Alta Calidad sin configurar el sello. Completa la configuración y presiona CONFIRMAR.</p>
+                </div>
+              )}
               {/* Explicación */}
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                 <p className="text-xs text-amber-800 font-medium leading-snug">En esta opción las fotos se guardarán en tu equipo con el sello ya impreso en alta resolución. También se sube una versión comprimida sellada para la app.</p>
@@ -780,16 +790,41 @@ const VistaProyectos = ({
                 </div>
               </div>
             </div>
-            {/* Botón confirmar */}
-            <div className="shrink-0 p-4 border-t border-slate-200" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
-              <button onClick={() => {
-                if (!tempData.stampConfig) {
-                  setTempData(prev => ({ ...prev, stampConfig: { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' } }));
-                }
-                setModalOpen('CREAR_PROYECTO');
-              }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform">
-                CONFIRMAR
-              </button>
+            {/* Botón confirmar / sin-logo step */}
+            <div className="shrink-0 p-4 border-t border-slate-200 space-y-2" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+              {altaCalidadSinLogoStep ? (
+                <>
+                  <p className="text-[10px] text-center font-black text-amber-600 uppercase tracking-wide">No se ha cargado el logo</p>
+                  <button onClick={() => { setAltaCalidadSinLogoStep(false); logoInputRef2.current?.click(); }}
+                    className="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
+                    Cargar logo
+                  </button>
+                  <button onClick={() => {
+                    if (!tempData.stampConfig) {
+                      setTempData(prev => ({ ...prev, stampConfig: { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' } }));
+                    }
+                    setAltaCalidadSinLogoStep(false);
+                    setAltaCalidadMissingConfig(false);
+                    setModalOpen('CREAR_PROYECTO');
+                  }} className="w-full bg-white border-2 border-slate-900 text-slate-900 py-3 rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
+                    Continuar sin logo
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => {
+                  setAltaCalidadMissingConfig(false);
+                  if (!tempData.stampLogoBase64) {
+                    setAltaCalidadSinLogoStep(true);
+                    return;
+                  }
+                  if (!tempData.stampConfig) {
+                    setTempData(prev => ({ ...prev, stampConfig: { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' } }));
+                  }
+                  setModalOpen('CREAR_PROYECTO');
+                }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform">
+                  CONFIRMAR
+                </button>
+              )}
             </div>
           </div>
         );
