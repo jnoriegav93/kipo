@@ -23,12 +23,12 @@ export const Modal = ({ isOpen, onClose, title, children, theme, bottomSheet = f
   }
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className={`${theme.card} border-2 ${theme.border} w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden`}>
-        <div className={`${theme.header} p-4 border-b-2 ${theme.border} flex justify-between items-center`}>
+      <div className={`${theme.card} border-2 ${theme.border} w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col`}>
+        <div className={`${theme.header} p-4 border-b-2 ${theme.border} flex justify-between items-center shrink-0`}>
           <h3 className={`font-black ${theme.text} text-xl uppercase`}>{title}</h3>
           <button onClick={onClose}><X size={28} className={theme.text}/></button>
         </div>
-        <div className="p-4">
+        <div className="p-4 overflow-y-auto">
           {children}
         </div>
       </div>

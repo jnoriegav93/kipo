@@ -313,7 +313,9 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         }
       };
 
-      img.onload = () => {
+      img.onload = async () => {
+        const altaCalidad = proyectoActual?.modoFotos === 'altaCalidad';
+
         // --- Thumbnail pequeño (max 256px, JPEG 0.6) → se guarda en Firestore ---
         const MAX_T = 256;
         const scaleT = Math.min(MAX_T / img.width, MAX_T / img.height, 1);
@@ -324,7 +326,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         canvasThumb.getContext('2d').drawImage(img, 0, 0, wt, ht);
         const thumbUrl = canvasThumb.toDataURL('image/jpeg', 0.6);
 
-        // --- Full comprimida (max 1280px, ~300KB) → se sube a Firebase Storage ---
+        // --- Full comprimida (max 1280px) → se sube a Firebase Storage ---
         const MAX_F = 1280;
         const scaleF = Math.min(MAX_F / img.width, MAX_F / img.height, 1);
         const wf = Math.floor(img.width * scaleF);
@@ -345,24 +347,79 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           };
         });
 
-        // Subir a Firebase en segundo plano
+        // MODO ALTA CALIDAD: guardar foto original estampada en dispositivo
+        if (altaCalidad) {
+          try {
+            const stampCfg = proyectoActual.stampConfig || { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
+            let logoBase64 = null;
+            if (proyectoActual?.logoEmpresa) {
+              try { logoBase64 = await urlABase64(proyectoActual.logoEmpresa); } catch {}
+            }
+            const datosEstampado = {
+              numero: datos?.numero || '',
+              proyecto: proyectoActual?.nombre || '',
+              gps: coords.lat ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '',
+              fecha: datos?.fecha || new Date().toISOString(),
+              hora: datos?.hora || '',
+              codFat: datos?.pasivo || '',
+              pasivo: datos?.pasivo || '',
+              direccion: datos?.direccion || '',
+              ubicacion: datos?.ubicacion || '',
+            };
+            // Alta res: sin límite de escala (resolución original del dispositivo)
+            const canvasHR = document.createElement('canvas');
+            canvasHR.width = img.width; canvasHR.height = img.height;
+            canvasHR.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
+            canvasHR.toBlob(async (blobHR) => {
+              if (!blobHR) return;
+              const stampedHR = await estamparMetadatos(blobHR, datosEstampado, logoBase64, stampCfg);
+              const blobHRStamped = new Blob([stampedHR.buffer], { type: 'image/jpeg' });
+              const urlHR = URL.createObjectURL(blobHRStamped);
+              const a = document.createElement('a');
+              a.href = urlHR;
+              a.download = `kipo_${section}_${item}_${Date.now()}.jpg`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
+            }, 'image/jpeg', 0.92);
+          } catch (err) {
+            console.error('Error generando foto alta calidad:', err);
+          }
+        }
+
+        // Subir versión comprimida a Firebase en segundo plano
         canvasFull.toBlob(async (blob) => {
           if (!blob) {
             setDatos(prev => {
               const prevFotos = { ...(prev.fotos || {}) };
-              if (prevFotos[section]) {
-                const sec = { ...prevFotos[section] };
-                delete sec[item];
-                prevFotos[section] = sec;
-              }
+              if (prevFotos[section]) { const sec = { ...prevFotos[section] }; delete sec[item]; prevFotos[section] = sec; }
               return { ...prev, fotos: prevFotos };
             });
             alert('Error al procesar la imagen.');
             return;
           }
           try {
+            let blobToUpload = blob;
+            // En alta calidad: aplicar sello también a la versión comprimida de Firebase
+            if (altaCalidad) {
+              const stampCfg = proyectoActual.stampConfig || { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
+              let logoBase64 = null;
+              if (proyectoActual?.logoEmpresa) {
+                try { logoBase64 = await urlABase64(proyectoActual.logoEmpresa); } catch {}
+              }
+              const datosEstampado = {
+                numero: datos?.numero || '', proyecto: proyectoActual?.nombre || '',
+                gps: coords.lat ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '',
+                fecha: datos?.fecha || new Date().toISOString(), hora: datos?.hora || '',
+                codFat: datos?.pasivo || '', pasivo: datos?.pasivo || '',
+                direccion: datos?.direccion || '', ubicacion: datos?.ubicacion || '',
+              };
+              const stamped = await estamparMetadatos(blob, datosEstampado, logoBase64, stampCfg);
+              blobToUpload = new Blob([stamped.buffer], { type: 'image/jpeg' });
+            }
             const path = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}.jpg`;
-            const downloadUrl = await uploadImage(blob, path);
+            const downloadUrl = await uploadImage(blobToUpload, path);
             setDatos(prev => {
               const prevFotos = prev.fotos || {};
               return {
@@ -380,11 +437,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             console.error('Error subiendo foto:', err);
             setDatos(prev => {
               const prevFotos = { ...(prev.fotos || {}) };
-              if (prevFotos[section]) {
-                const sec = { ...prevFotos[section] };
-                delete sec[item];
-                prevFotos[section] = sec;
-              }
+              if (prevFotos[section]) { const sec = { ...prevFotos[section] }; delete sec[item]; prevFotos[section] = sec; }
               return { ...prev, fotos: prevFotos };
             });
             alert('Error al subir la foto. Verifique su conexión.');
@@ -727,10 +780,12 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             <div className="flex-1 h-px bg-slate-300"></div>
           </div>
 
-          <button onClick={() => compartirFotos(activeTab)} className="w-full mb-4 flex items-center justify-center gap-2 bg-slate-900 text-white py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95 shadow-md">
-            <Share2 size={16} />
-            COMPARTIR FOTOS
-          </button>
+          {proyectoActual?.modoFotos !== 'altaCalidad' && (
+            <button onClick={() => compartirFotos(activeTab)} className="w-full mb-4 flex items-center justify-center gap-2 bg-slate-900 text-white py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95 shadow-md">
+              <Share2 size={16} />
+              COMPARTIR FOTOS
+            </button>
+          )}
 
           {activeTab === 'adicionales' ? (
             /* ADICIONALES: grid dinámico con botón "+" */

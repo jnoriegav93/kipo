@@ -78,10 +78,20 @@ const confirmarCrearProyecto = async () => {
     const diaUno = { id: `d_${Date.now()}`, nombre: 'Día 1', fecha: new Date().toLocaleDateString(), color: '#ef4444' };
     const idProyecto = String(Date.now());
 
+    const modoFotos = tempData.modoFotos || 'comprimido';
+    const stampConfig = modoFotos === 'altaCalidad' ? {
+        logoPosition: tempData.stampConfig?.logoPosition || 'right',
+        mostrarNroPoste: tempData.stampConfig?.mostrarNroPoste ?? true,
+        mostrarCodFat: tempData.stampConfig?.mostrarCodFat ?? false,
+        fondoSello: tempData.stampConfig?.fondoSello || 'white',
+    } : null;
+
     const nuevo = {
         id: idProyecto,
         nombre: tempData.nombre,
         tipo,
+        modoFotos,
+        ...(stampConfig && { stampConfig }),
         dias: [diaUno],
         ownerId: user.uid,
         ownerNombre: config?.nombrePersonal || user?.displayName || '',

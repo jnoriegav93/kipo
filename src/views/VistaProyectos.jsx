@@ -320,7 +320,7 @@ const VistaProyectos = ({
         <div className={`flex flex-col items-center justify-center h-full ${theme.textSec} p-4`}>
           <Folder size={64} className="mb-4 opacity-30" />
           <p className="mb-4 font-bold">No hay proyectos creados</p>
-          <button onClick={() => { setTempData({ tipo: 'levantamiento' }); setModalOpen('CREAR_PROYECTO'); }} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Plus size={20} /> CREAR PRIMER PROYECTO</button>
+          <button onClick={() => { setTempData({ tipo: 'levantamiento', modoFotos: 'comprimido' }); setModalOpen('CREAR_PROYECTO'); }} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Plus size={20} /> CREAR PRIMER PROYECTO</button>
         </div>
       ) : (
         <>
@@ -334,7 +334,7 @@ const VistaProyectos = ({
 
           <div className={`${theme.header} shrink-0 p-2 z-10 shadow-sm`}>
             <button
-              onClick={() => { setTempData({ tipo: 'levantamiento' }); setModalOpen('CREAR_PROYECTO'); }}
+              onClick={() => { setTempData({ tipo: 'levantamiento', modoFotos: 'comprimido' }); setModalOpen('CREAR_PROYECTO'); }}
               className={`w-full py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:border-brand-500 hover:text-brand-500 transition-colors active:scale-95`}
             >
               <Plus size={18} /> CREAR NUEVO PROYECTO
@@ -634,6 +634,53 @@ const VistaProyectos = ({
           <button onClick={() => setTempData({ ...tempData, tipo: 'levantamiento' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.tipo === 'levantamiento' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>LEVANTAMIENTO</button>
           <button onClick={() => setTempData({ ...tempData, tipo: 'liquidacion' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.tipo === 'liquidacion' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>LIQUIDACIÓN</button>
         </div>
+        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Calidad de fotos</p>
+        <div className="flex gap-2 mb-4">
+          <button onClick={() => setTempData({ ...tempData, modoFotos: 'comprimido' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.modoFotos !== 'altaCalidad' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>COMPRIMIR</button>
+          <button onClick={() => setTempData({ ...tempData, modoFotos: 'altaCalidad' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.modoFotos === 'altaCalidad' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>ALTA CALIDAD</button>
+        </div>
+        {tempData.modoFotos === 'altaCalidad' && (
+          <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Configuración del sello</p>
+            <div>
+              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Posición del logo</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[['left','Izquierda'],['right','Derecha']].map(([pos, label]) => (
+                  <button key={pos} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), logoPosition: pos } }))}
+                    className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(tempData.stampConfig?.logoPosition || 'right') === pos ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Identificadores</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[['mostrarNroPoste','Item'],['mostrarCodFat','Pasivo']].map(([key, label]) => {
+                  const val = tempData.stampConfig?.[key] ?? (key === 'mostrarNroPoste' ? true : false);
+                  return (
+                    <button key={key} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), [key]: !val } }))}
+                      className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Fondo del sello</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[['glass','Vidrio'],['white','Blanco'],['black','Negro']].map(([val, label]) => (
+                  <button key={val} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), fondoSello: val } }))}
+                    className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(tempData.stampConfig?.fondoSello || 'white') === val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[9px] text-slate-400 leading-tight">El logo se tomará del logo del proyecto (mismo que usas al compartir).</p>
+          </div>
+        )}
         <button onClick={confirmarCrearProyecto} className="w-full bg-brand-600 text-white py-3 rounded font-bold border-2 border-brand-800">CREAR</button>
       </Modal>
 
@@ -1464,7 +1511,7 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
 
       {/* 3. PESTAÑAS (Alto Contraste y Distinción) */}
       <div className="flex border-b-2 border-slate-300 mb-4">
-        {['EXCEL', 'ZIP', 'KMZ'].map(tab => (
+        {['EXCEL', ...(proyecto?.modoFotos !== 'altaCalidad' ? ['ZIP'] : []), 'KMZ'].map(tab => (
           <button
             key={tab}
             onClick={() => !exportandoTipo && setActiveTab(tab)}
@@ -1757,21 +1804,27 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
               </div>
               <div>
                 <h3 className="font-black text-lg text-slate-900 mb-1">¿Imprimir datos en las fotos?</h3>
-                <p className="text-sm text-slate-600 leading-snug">Con datos imprime el sello con GPS, fecha y proyecto. Sin datos usa las fotos originales limpias.</p>
+                <p className="text-sm text-slate-600 leading-snug">
+                  {proyecto?.modoFotos === 'altaCalidad'
+                    ? 'Este proyecto usa fotos de alta calidad con sello ya aplicado. Se exportará sin sello adicional.'
+                    : 'Con datos imprime el sello con GPS, fecha y proyecto. Sin datos usa las fotos originales limpias.'}
+                </p>
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  setModalExportStep(null);
-                  const { tipo, proyecto: proy, limiteCalculado } = exportPendiente;
-                  handleExportarServidor(tipo, proy, limiteCalculado, stampConfig);
-                  setExportPendiente(null);
-                }}
-                className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform"
-              >
-                CON DATOS
-              </button>
+              {proyecto?.modoFotos !== 'altaCalidad' && (
+                <button
+                  onClick={() => {
+                    setModalExportStep(null);
+                    const { tipo, proyecto: proy, limiteCalculado } = exportPendiente;
+                    handleExportarServidor(tipo, proy, limiteCalculado, stampConfig);
+                    setExportPendiente(null);
+                  }}
+                  className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform"
+                >
+                  CON DATOS
+                </button>
+              )}
               <button
                 onClick={() => {
                   setModalExportStep(null);
@@ -1779,9 +1832,9 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                   handleExportarServidor(tipo, proy, limiteCalculado, { ...stampConfig, sinDatos: true });
                   setExportPendiente(null);
                 }}
-                className="w-full border-2 border-slate-300 text-slate-700 font-bold py-3 rounded-xl active:scale-95 transition-transform"
+                className={`w-full font-bold py-3 rounded-xl active:scale-95 transition-transform ${proyecto?.modoFotos === 'altaCalidad' ? 'bg-slate-900 text-white' : 'border-2 border-slate-300 text-slate-700'}`}
               >
-                SIN DATOS
+                {proyecto?.modoFotos === 'altaCalidad' ? 'EXPORTAR' : 'SIN DATOS'}
               </button>
             </div>
           </div>

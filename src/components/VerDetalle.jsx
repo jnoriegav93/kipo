@@ -508,7 +508,7 @@ export default function VerDetalle({
                         <div className="flex justify-between items-center mb-2">
                           <p className={`text-[10px] font-bold ${theme.text} opacity-60`}>FOTOS</p>
                           <div className="flex gap-2">
-                            {!readOnly && (
+                            {!readOnly && proyectoActual?.modoFotos !== 'altaCalidad' && (
                               <button onClick={() => iniciarCompartir(tab.id, tab.title)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
                                 <Share2 size={12} /> COMPARTIR
                               </button>
@@ -585,7 +585,7 @@ export default function VerDetalle({
                       <div className="flex justify-between items-center mb-2">
                         <p className={`text-[10px] font-bold ${theme.text} opacity-60`}>PRINCIPALES</p>
                         <div className="flex gap-2">
-                          {!readOnly && (
+                          {!readOnly && proyectoActual?.modoFotos !== 'altaCalidad' && (
                             <button onClick={() => iniciarCompartir(tab.id, tab.title)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
                               <Share2 size={12} /> COMPARTIR
                             </button>
