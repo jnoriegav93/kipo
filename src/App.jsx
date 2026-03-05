@@ -4,6 +4,7 @@ import { db } from './firebaseConfig';
 
 // Componentes principales
 import Login from './Login';
+import UpdateBanner from './components/UpdateBanner';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import Configurador from './components/Configurador';
@@ -406,6 +407,7 @@ function App() {
 
   return (
     <div className={`h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
+      <UpdateBanner />
 
       <Header
         theme={theme}

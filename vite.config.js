@@ -22,7 +22,7 @@ export default defineConfig({
     react(),
     // Configuración de la PWA (App Móvil)
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'Kipo',
