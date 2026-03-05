@@ -205,6 +205,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
   const [sinLogoAdvertencia, setSinLogoAdvertencia] = useState(false);
   const logoModalInputRef = useRef(null);
   const prefetchRef = useRef(null);
+  const workerRef = useRef(null);
+  const workerPendingRef = useRef({});
+  const logoCacheRef = useRef(null);
+  const [hrToasts, setHrToasts] = useState([]);
 
   const updateStampConfig = (updater) => {
     setStampConfigCompartir(prev => {
@@ -279,6 +283,64 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     obtenerDireccion();
   }, [coords.lat, coords.lng]);
 
+  // Worker de estampado alta calidad (hilo separado, no bloquea UI)
+  useEffect(() => {
+    const worker = new Worker(new URL('../utils/stampWorker.js', import.meta.url));
+    worker.onmessage = ({ data }) => {
+      const handler = workerPendingRef.current[data.id];
+      if (handler) {
+        delete workerPendingRef.current[data.id];
+        if (data.ok) handler.resolve(data.buffer);
+        else handler.reject(new Error(data.error));
+      }
+    };
+    workerRef.current = worker;
+    return () => worker.terminate();
+  }, []);
+
+  // Pre-fetch logo del proyecto al cargar / cambiar proyecto
+  useEffect(() => {
+    if (!proyectoActual?.logoEmpresa) { logoCacheRef.current = null; return; }
+    urlABase64(proyectoActual.logoEmpresa)
+      .then(b64 => { logoCacheRef.current = b64; })
+      .catch(() => { logoCacheRef.current = null; });
+  }, [proyectoActual?.logoEmpresa]);
+
+  const stampViaWorker = (imageBitmap, datos, logoBase64, stampConfig, quality = 0.92) =>
+    new Promise((resolve, reject) => {
+      if (!workerRef.current) { reject(new Error('Worker no disponible')); return; }
+      const id = Math.random().toString(36).slice(2);
+      workerPendingRef.current[id] = { resolve, reject };
+      workerRef.current.postMessage({ id, imageBitmap, datos, logoBase64, stampConfig, quality }, [imageBitmap]);
+    });
+
+  const guardarHrToast = async (toast) => {
+    const { blob, fileName, id } = toast;
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isIOS && navigator.share) {
+      try {
+        const shareFile = new File([blob], fileName, { type: 'image/jpeg' });
+        await navigator.share({ files: [shareFile] });
+        setHrToasts(prev => prev.filter(t => t.id !== id));
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+    // Fallback: overlay in-app (iOS) o descarga directa (Android/desktop)
+    const urlHR = URL.createObjectURL(blob);
+    if (isIOS) {
+      setIosShareFallbackUrl(urlHR);
+      setHrToasts(prev => prev.filter(t => t.id !== id));
+    } else {
+      const a = document.createElement('a');
+      a.href = urlHR; a.download = fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
+      setHrToasts(prev => prev.filter(t => t.id !== id));
+    }
+  };
+
   const triggerCamera = (e, section, item) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -348,15 +410,11 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           };
         });
 
-        // Pre-fetch logo y datos de estampado una sola vez para ambas rutas (HR + Firebase)
-        let altaCalidadLogo = null;
+        // Datos de estampado (solo alta calidad)
         let stampCfgAC = null;
         let datosEstampado = null;
         if (altaCalidad) {
           stampCfgAC = proyectoActual.stampConfig || { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
-          if (proyectoActual?.logoEmpresa) {
-            try { altaCalidadLogo = await urlABase64(proyectoActual.logoEmpresa); } catch {}
-          }
           datosEstampado = {
             numero: datos?.numero || '',
             proyecto: proyectoActual?.nombre || '',
@@ -370,44 +428,20 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           };
         }
 
-        // MODO ALTA CALIDAD: guardar foto original estampada en dispositivo (fire-and-forget)
+        // MODO ALTA CALIDAD: sello via Worker en hilo separado (no bloquea UI)
         if (altaCalidad) {
-          let hrFired = false;
-          const canvasHR = document.createElement('canvas');
-          canvasHR.width = img.width; canvasHR.height = img.height;
-          canvasHR.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
-          canvasHR.toBlob(async (blobHR) => {
-            if (hrFired || !blobHR) return;
-            hrFired = true;
+          (async () => {
             try {
-              const stampedHR = await estamparMetadatos(blobHR, datosEstampado, altaCalidadLogo, stampCfgAC);
-              const blobHRStamped = new Blob([stampedHR.buffer], { type: 'image/jpeg' });
-              const urlHR = URL.createObjectURL(blobHRStamped);
+              const imageBitmap = await createImageBitmap(img);
+              const buffer = await stampViaWorker(imageBitmap, datosEstampado, logoCacheRef.current, stampCfgAC, 0.92);
+              const blobHRStamped = new Blob([buffer], { type: 'image/jpeg' });
               const fileName = `kipo_${section}_${item}_${Date.now()}.jpg`;
-              const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-              if (isIOS && navigator.share) {
-                try {
-                  const shareFile = new File([blobHRStamped], fileName, { type: 'image/jpeg' });
-                  await navigator.share({ files: [shareFile] });
-                  setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
-                } catch (e) {
-                  if (e.name === 'AbortError') {
-                    setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
-                  } else {
-                    // Share falló: mostrar overlay in-app para que el usuario haga long-press
-                    setIosShareFallbackUrl(urlHR);
-                  }
-                }
-              } else {
-                const a = document.createElement('a');
-                a.href = urlHR; a.download = fileName;
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(urlHR), 2000);
-              }
+              const toastId = `${section}_${item}_${Date.now()}`;
+              setHrToasts(prev => [...prev, { id: toastId, blob: blobHRStamped, fileName }]);
             } catch (err) {
-              console.error('Error generando foto alta calidad:', err);
+              console.error('Error worker HR:', err);
             }
-          }, 'image/jpeg', 0.92);
+          })();
         }
 
         // Subir a Firebase (con sello en alta calidad usando toDataURL síncrono)
@@ -440,7 +474,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           try {
             // toDataURL es síncrono: evita problemas de callbacks anidados
             const fullDataUrl = canvasFull.toDataURL('image/jpeg', 0.75);
-            const stamped = await estamparMetadatos(fullDataUrl, datosEstampado, altaCalidadLogo, stampCfgAC);
+            const stamped = await estamparMetadatos(fullDataUrl, datosEstampado, logoCacheRef.current, stampCfgAC);
             await guardarFoto(new Blob([stamped.buffer], { type: 'image/jpeg' }));
           } catch (err) {
             console.error('Error estampando versión Firebase, subiendo sin sello:', err);
@@ -998,6 +1032,26 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
               <Trash2 size={24} />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* TOASTS: fotos alta calidad listas para guardar */}
+      {hrToasts.length > 0 && (
+        <div className="fixed bottom-24 left-0 right-0 z-[1500] flex flex-col gap-2 px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          {hrToasts.map(toast => (
+            <div key={toast.id} className="bg-slate-900 rounded-2xl flex items-center gap-3 px-4 py-3 shadow-2xl border border-white/10">
+              <span className="text-xl shrink-0">📷</span>
+              <p className="text-white text-xs font-bold flex-1 leading-snug">Foto lista en alta calidad</p>
+              <button
+                onClick={() => guardarHrToast(toast)}
+                className="bg-orange-500 text-white text-xs font-black px-3 py-2 rounded-xl active:scale-95 transition-transform shrink-0"
+              >Guardar</button>
+              <button
+                onClick={() => setHrToasts(prev => prev.filter(t => t.id !== toast.id))}
+                className="text-white/50 shrink-0 p-1"
+              ><X size={16} /></button>
+            </div>
+          ))}
         </div>
       )}
 
