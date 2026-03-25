@@ -283,7 +283,7 @@ const estamparMetadatos = async (imageBuffer, datos, logoBuffer, stampConfig = {
     ctx.stroke();
     ctx.restore();
 
-    const fs = 26;
+    const fs = Math.round(cajaAlto * 0.25);
     const lineH = fs * 1.1;
     const blockH = fs + lineH;
     const blockStart = yBase + Math.max(vPad, (cajaAlto - blockH) / 2);
