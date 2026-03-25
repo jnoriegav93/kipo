@@ -1153,26 +1153,21 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
     if (descargandoId === archivo.id) return;
     setDescargandoId(archivo.id);
     try {
-      let blob = archivo.blob instanceof Blob ? archivo.blob : null;
+      let blob = blobsRef.current[archivo.id] instanceof Blob ? blobsRef.current[archivo.id] : null;
       if (!blob && archivo.downloadUrl) {
         const res = await fetch(archivo.downloadUrl);
         blob = await res.blob();
+        blobsRef.current[archivo.id] = blob;
+        // Activar botón compartir archivo (solo útil en móvil)
+        setResultadosExportacion(prev => prev.map(r => r.id === archivo.id ? { ...r, descargado: true } : r));
       }
       if (blob) {
-        blobsRef.current[archivo.id] = blob;
-
-        // En desktop (no soporta compartir archivos) disparar descarga directa
-        const testFile = new File([blob], archivo.name, { type: blob.type });
-        const puedeCompartir = navigator.share && navigator.canShare?.({ files: [testFile] });
-        if (!puedeCompartir) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = archivo.name;
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 2000);
-        }
-
-        setResultadosExportacion(prev => prev.map(r => r.id === archivo.id ? { ...r, descargado: true } : r));
+        // Disparar descarga: abre diálogo en PC, descarga a carpeta en móvil
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = archivo.name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
       }
     } catch (e) {
       console.error('Error descargando:', e);
@@ -1717,30 +1712,34 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                   <Link2 size={16} />
                 </button>
 
-                {/* Botón Descargar → Compartir Archivo */}
-                {!!archivo.descargado ? (
-                  <button
-                    onClick={() => handleCompartirArchivo(archivo)}
-                    className="p-2 rounded-lg border-2 border-green-400 text-green-600 hover:bg-green-50 active:scale-95 flex-shrink-0"
-                  >
-                    <Share2 size={16} />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => !archivo.cargando && handleDescargar(archivo)}
-                    disabled={archivo.cargando || descargandoId === archivo.id}
-                    className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
-                      archivo.cargando || descargandoId === archivo.id
-                        ? 'border-slate-100 text-slate-300 pointer-events-none'
-                        : 'border-slate-900 text-slate-900 hover:bg-slate-50 active:scale-95'
-                    }`}
-                  >
-                    {descargandoId === archivo.id
-                      ? <Loader2 size={16} className="animate-spin" />
-                      : <Download size={16} />
-                    }
-                  </button>
-                )}
+                {/* Botón Descargar */}
+                <button
+                  onClick={() => !archivo.cargando && handleDescargar(archivo)}
+                  disabled={archivo.cargando || !archivo.downloadUrl || descargandoId === archivo.id}
+                  className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
+                    archivo.cargando || !archivo.downloadUrl || descargandoId === archivo.id
+                      ? 'border-slate-100 text-slate-300 pointer-events-none'
+                      : 'border-slate-900 text-slate-900 hover:bg-slate-50 active:scale-95'
+                  }`}
+                >
+                  {descargandoId === archivo.id
+                    ? <Loader2 size={16} className="animate-spin" />
+                    : <Download size={16} />
+                  }
+                </button>
+
+                {/* Botón Compartir Archivo (solo útil en móvil, se activa tras descargar) */}
+                <button
+                  onClick={() => handleCompartirArchivo(archivo)}
+                  disabled={!archivo.descargado}
+                  className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
+                    archivo.descargado
+                      ? 'border-green-400 text-green-600 hover:bg-green-50 active:scale-95'
+                      : 'border-slate-100 text-slate-300 cursor-not-allowed'
+                  }`}
+                >
+                  <Share2 size={16} />
+                </button>
 
                 {/* Barra de progreso animada en el borde inferior */}
                 {archivo.cargando && (
