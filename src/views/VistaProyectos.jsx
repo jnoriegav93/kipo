@@ -1160,6 +1160,18 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
       }
       if (blob) {
         blobsRef.current[archivo.id] = blob;
+
+        // En desktop (no soporta compartir archivos) disparar descarga directa
+        const testFile = new File([blob], archivo.name, { type: blob.type });
+        const puedeCompartir = navigator.share && navigator.canShare?.({ files: [testFile] });
+        if (!puedeCompartir) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = archivo.name;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+
         setResultadosExportacion(prev => prev.map(r => r.id === archivo.id ? { ...r, descargado: true } : r));
       }
     } catch (e) {
