@@ -389,15 +389,6 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         canvasThumb.getContext('2d').drawImage(img, 0, 0, wt, ht);
         const thumbUrl = canvasThumb.toDataURL('image/jpeg', 0.6);
 
-        // --- Full comprimida (max 1280px) → se sube a Firebase Storage ---
-        const MAX_F = 1280;
-        const scaleF = Math.min(MAX_F / img.width, MAX_F / img.height, 1);
-        const wf = Math.floor(img.width * scaleF);
-        const hf = Math.floor(img.height * scaleF);
-        const canvasFull = document.createElement('canvas');
-        canvasFull.width = wf; canvasFull.height = hf;
-        canvasFull.getContext('2d').drawImage(img, 0, 0, wf, hf);
-
         // Mostrar thumb inmediatamente con estado "subiendo"
         setDatos(prev => {
           const prevFotos = prev.fotos || {};
@@ -410,41 +401,6 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           };
         });
 
-        // Datos de estampado (solo alta calidad)
-        let stampCfgAC = null;
-        let datosEstampado = null;
-        if (altaCalidad) {
-          stampCfgAC = proyectoActual.stampConfig || { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
-          datosEstampado = {
-            numero: datos?.numero || '',
-            proyecto: proyectoActual?.nombre || '',
-            gps: coords.lat ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '',
-            fecha: datos?.fecha || new Date().toISOString(),
-            hora: datos?.hora || '',
-            codFat: datos?.pasivo || '',
-            pasivo: datos?.pasivo || '',
-            direccion: datos?.direccion || '',
-            ubicacion: datos?.ubicacion || '',
-          };
-        }
-
-        // MODO ALTA CALIDAD: sello via Worker en hilo separado (no bloquea UI)
-        if (altaCalidad) {
-          (async () => {
-            try {
-              const imageBitmap = await createImageBitmap(img);
-              const buffer = await stampViaWorker(imageBitmap, datosEstampado, logoCacheRef.current, stampCfgAC, 0.92);
-              const blobHRStamped = new Blob([buffer], { type: 'image/jpeg' });
-              const fileName = `kipo_${section}_${item}_${Date.now()}.jpg`;
-              const toastId = `${section}_${item}_${Date.now()}`;
-              setHrToasts(prev => [...prev, { id: toastId, blob: blobHRStamped, fileName }]);
-            } catch (err) {
-              console.error('Error worker HR:', err);
-            }
-          })();
-        }
-
-        // Subir a Firebase (con sello en alta calidad usando toDataURL síncrono)
         const uploadPath = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}.jpg`;
         const limpiarFoto = () => {
           setDatos(prev => {
@@ -471,19 +427,20 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         };
 
         if (altaCalidad) {
-          try {
-            // toDataURL es síncrono: evita problemas de callbacks anidados
-            const fullDataUrl = canvasFull.toDataURL('image/jpeg', 0.75);
-            const stamped = await estamparMetadatos(fullDataUrl, datosEstampado, logoCacheRef.current, stampCfgAC);
-            await guardarFoto(new Blob([stamped.buffer], { type: 'image/jpeg' }));
-          } catch (err) {
-            console.error('Error estampando versión Firebase, subiendo sin sello:', err);
-            canvasFull.toBlob(async (blob) => {
-              if (!blob) { limpiarFoto(); alert('Error al procesar la imagen.'); return; }
-              try { await guardarFoto(blob); } catch { limpiarFoto(); alert('Error al subir la foto. Verifique su conexión.'); }
-            }, 'image/jpeg', 0.75);
-          }
+          // Alta calidad: subir archivo original sin comprimir ni sellar, no bloqueante
+          (async () => {
+            try { await guardarFoto(file); }
+            catch (err) { console.error('Error subiendo foto alta calidad:', err); limpiarFoto(); }
+          })();
         } else {
+          // Comprimido: redimensionar a 1280px, Q:0.75
+          const MAX_F = 1280;
+          const scaleF = Math.min(MAX_F / img.width, MAX_F / img.height, 1);
+          const wf = Math.floor(img.width * scaleF);
+          const hf = Math.floor(img.height * scaleF);
+          const canvasFull = document.createElement('canvas');
+          canvasFull.width = wf; canvasFull.height = hf;
+          canvasFull.getContext('2d').drawImage(img, 0, 0, wf, hf);
           canvasFull.toBlob(async (blob) => {
             if (!blob) { limpiarFoto(); alert('Error al procesar la imagen.'); return; }
             try { await guardarFoto(blob); }
