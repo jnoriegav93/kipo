@@ -79,19 +79,12 @@ const confirmarCrearProyecto = async () => {
     const idProyecto = String(Date.now());
 
     const modoFotos = tempData.modoFotos || 'comprimido';
-    const stampConfig = modoFotos === 'altaCalidad' ? {
-        logoPosition: tempData.stampConfig?.logoPosition || 'right',
-        mostrarNroPoste: tempData.stampConfig?.mostrarNroPoste ?? true,
-        mostrarCodFat: tempData.stampConfig?.mostrarCodFat ?? false,
-        fondoSello: tempData.stampConfig?.fondoSello || 'white',
-    } : null;
 
     const nuevo = {
         id: idProyecto,
         nombre: tempData.nombre,
         tipo,
         modoFotos,
-        ...(stampConfig && { stampConfig }),
         dias: [diaUno],
         ownerId: user.uid,
         ownerNombre: config?.nombrePersonal || user?.displayName || '',
@@ -113,21 +106,6 @@ const confirmarCrearProyecto = async () => {
     // 4. Guardar en Firebase
     try {
         await setDoc(doc(db, "proyectos", idProyecto), nuevo);
-        // Si hay logo base64 para alta calidad, subirlo a Storage
-        if (modoFotos === 'altaCalidad' && tempData.stampLogoBase64?.startsWith('data:')) {
-            try {
-                const { ref: sRef, uploadString, getDownloadURL } = await import('firebase/storage');
-                const { storage } = await import('../firebaseConfig');
-                const storageRef = sRef(storage, `logos_proyectos/${idProyecto}/${Date.now()}_logo`);
-                await uploadString(storageRef, tempData.stampLogoBase64, 'data_url');
-                const logoUrl = await getDownloadURL(storageRef);
-                await updateDoc(doc(db, "proyectos", idProyecto), { logoEmpresa: logoUrl });
-                setProyectos(prev => prev.map(p => p.id === idProyecto ? { ...p, logoEmpresa: logoUrl } : p));
-                setProyectoActual(prev => prev?.id === idProyecto ? { ...prev, logoEmpresa: logoUrl } : prev);
-            } catch (logoErr) {
-                console.error("Error subiendo logo:", logoErr);
-            }
-        }
         console.log("Proyecto creado en la nube con código:", codigoAcceso);
     } catch (error) {
         console.error("Error al crear proyecto:", error);

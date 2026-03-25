@@ -25,8 +25,7 @@ const VistaProyectos = ({
 
   const [codigoCopiado, setCodigoCopiado] = React.useState(false);
   const [colorMenuPos, setColorMenuPos] = React.useState(null); // Posición del menú de color (para evitar overflow)
-  const [altaCalidadMissingConfig, setAltaCalidadMissingConfig] = React.useState(false);
-  const [altaCalidadSinLogoStep, setAltaCalidadSinLogoStep] = React.useState(false);
+
   const [creandoProyecto, setCreandoProyecto] = React.useState(false);
   const [creandoDia, setCreandoDia] = React.useState(false);
   const [editandoNombre, setEditandoNombre] = React.useState(null); // { proyId, valor }
@@ -683,200 +682,17 @@ const VistaProyectos = ({
           <button onClick={() => setTempData({ ...tempData, modoFotos: 'comprimido' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.modoFotos !== 'altaCalidad' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>COMPRIMIR</button>
           <button onClick={() => setTempData({ ...tempData, modoFotos: 'altaCalidad' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.modoFotos === 'altaCalidad' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>ALTA CALIDAD</button>
         </div>
-        {tempData.modoFotos === 'altaCalidad' && (
-          <button onClick={() => { setAltaCalidadMissingConfig(false); setAltaCalidadSinLogoStep(false); setModalOpen('ALTA_CALIDAD_CONFIG'); }} className="w-full mb-4 flex items-center justify-between px-4 py-3 rounded-xl border-2 border-slate-900 bg-slate-50 active:scale-95 transition-transform">
-            <span className="font-black text-slate-900 text-xs uppercase tracking-widest">Configurar Sello</span>
-            <div className="flex items-center gap-2">
-              {tempData.stampLogoBase64 ? <Check size={14} className="text-green-600" /> : <AlertTriangle size={14} className="text-amber-500" />}
-              <ChevronDown size={16} className="text-slate-900 -rotate-90" />
-            </div>
-          </button>
-        )}
         {!tempData.nombre?.trim() && (
           <p className="text-[10px] text-red-500 font-bold text-center -mt-1 mb-1">Escribe un nombre para el proyecto</p>
         )}
         <button onClick={() => {
           if (!tempData.nombre?.trim() || creandoProyecto) return;
-          if (tempData.modoFotos === 'altaCalidad' && !tempData.stampConfig) {
-            setAltaCalidadMissingConfig(true);
-            setAltaCalidadSinLogoStep(false);
-            setModalOpen('ALTA_CALIDAD_CONFIG');
-            return;
-          }
           handleCrearProyecto();
         }} disabled={creandoProyecto} className={`w-full py-3 rounded font-bold border-2 transition-colors ${tempData.nombre?.trim() && !creandoProyecto ? 'bg-brand-600 text-white border-brand-800' : 'bg-slate-200 text-slate-400 border-slate-300'}`}>
           {creandoProyecto ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Creando...</span> : 'CREAR'}
         </button>
       </Modal>
 
-      {/* PANTALLA COMPLETA: CONFIG SELLO ALTA CALIDAD */}
-      {modalOpen === 'ALTA_CALIDAD_CONFIG' && (() => {
-        const sc = tempData.stampConfig || {};
-        const fondo = sc.fondoSello || 'white';
-        const prevBarBg = fondo === 'black' ? 'rgba(0,0,0,0.80)' : fondo === 'glass' ? 'rgba(50,50,50,0.45)' : 'rgba(255,255,255,0.92)';
-        const prevClr1 = fondo === 'white' ? '#000000' : fondo === 'black' ? '#FCBF26' : '#ffffff';
-        const prevClr2 = fondo === 'white' ? '#000000' : '#ffffff';
-        const prevDiv = fondo === 'white' ? '#cbd5e1' : fondo === 'glass' ? 'rgba(255,255,255,0.50)' : 'rgba(255,255,255,0.30)';
-        const logoInputRef2 = { current: null };
-        return (
-          <div className="fixed inset-0 z-[400] bg-white flex flex-col">
-            {/* Header */}
-            <div className="bg-slate-900 px-4 flex items-center justify-between shrink-0" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))', paddingBottom: '16px' }}>
-              <button onClick={() => { setAltaCalidadMissingConfig(false); setAltaCalidadSinLogoStep(false); setModalOpen('CREAR_PROYECTO'); }}>
-                <ChevronDown size={28} className="text-white rotate-90" />
-              </button>
-              <span className="font-black text-white text-base uppercase">Configurar Sello</span>
-              <div className="w-7" />
-            </div>
-            {/* Contenido */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
-              {/* Alerta si se llegó sin configurar */}
-              {altaCalidadMissingConfig && (
-                <div className="bg-red-50 border border-red-300 rounded-xl p-3">
-                  <p className="text-xs font-bold text-red-700 leading-snug">⚠️ No se puede crear un proyecto de Alta Calidad sin configurar el sello. Completa la configuración y presiona CONFIRMAR.</p>
-                </div>
-              )}
-              {/* Explicación */}
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-xs text-amber-800 font-medium leading-snug">En esta opción las fotos se guardarán en tu equipo con el sello ya impreso en alta resolución. También se sube una versión comprimida sellada para la app.</p>
-              </div>
-              {/* Logo */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
-                <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider">Logo del sello</p>
-                <input ref={logoInputRef2} type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                  const file = e.target.files?.[0]; if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = ev => setTempData(prev => ({ ...prev, stampLogoBase64: ev.target.result }));
-                  reader.readAsDataURL(file);
-                  e.target.value = '';
-                }} />
-                {tempData.stampLogoBase64 ? (
-                  <div className="flex items-center gap-3">
-                    <img src={tempData.stampLogoBase64} alt="Logo" className="h-12 object-contain border border-slate-200 rounded bg-white p-1" />
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs text-green-600 font-bold">✓ Logo cargado</span>
-                      <button onClick={() => setTempData(prev => ({ ...prev, stampLogoBase64: null }))} className="text-[10px] text-red-500 font-bold text-left">Quitar logo</button>
-                    </div>
-                    <button onClick={() => logoInputRef2.current?.click()} className="ml-auto text-xs text-brand-600 font-bold">Cambiar</button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <button onClick={() => logoInputRef2.current?.click()} className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-300 rounded-lg text-xs font-bold text-slate-600 active:scale-95 transition-transform">
-                      <UploadCloud size={16} /> SUBIR LOGO
-                    </button>
-                    <p className="text-[9px] text-slate-400 text-center">También puedes continuar sin logo</p>
-                  </div>
-                )}
-              </div>
-              {/* Config */}
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Posición del logo</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[['left','Izquierda'],['right','Derecha']].map(([pos, label]) => (
-                      <button key={pos} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), logoPosition: pos } }))}
-                        className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(sc.logoPosition || 'right') === pos ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Identificadores</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[['mostrarNroPoste','Item'],['mostrarCodFat','Pasivo']].map(([key, label]) => {
-                      const val = sc[key] ?? (key === 'mostrarNroPoste' ? true : false);
-                      return (
-                        <button key={key} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), [key]: !val } }))}
-                          className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Fondo del sello</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[['glass','Vidrio'],['white','Blanco'],['black','Negro']].map(([val, label]) => (
-                      <button key={val} onClick={() => setTempData(prev => ({ ...prev, stampConfig: { ...(prev.stampConfig || {}), fondoSello: val } }))}
-                        className={`py-2 rounded-lg text-xs font-black uppercase border-2 transition-all ${(sc.fondoSello || 'white') === val ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300'}`}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {/* Preview */}
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 text-center">Vista previa del sello</p>
-                <div className="relative rounded overflow-hidden border border-slate-300 bg-slate-300" style={{ height: '80px' }}>
-                  {tempData.stampLogoBase64 ? (
-                    <img src={tempData.stampLogoBase64} alt="Logo" className={`absolute top-1 ${(sc.logoPosition || 'right') === 'left' ? 'left-1' : 'right-1'} h-5 object-contain bg-white/80 border border-slate-400 rounded px-1`} />
-                  ) : (
-                    <div className={`absolute top-1 ${(sc.logoPosition || 'right') === 'left' ? 'left-1' : 'right-1'} bg-white/80 border border-slate-400 rounded px-1.5 py-0.5 text-[7px] font-black text-slate-600`}>LOGO</div>
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 flex items-center border-t border-slate-400" style={{ height: '38%', backgroundColor: prevBarBg }}>
-                    <div className="flex flex-col justify-center overflow-hidden shrink-0" style={{ width: '25%', padding: '1px 3px 1px 4px', gap: '1px' }}>
-                      <span className="font-black truncate leading-none" style={{ fontSize: '6px', color: prevClr1 }}>PROYECTO</span>
-                      <span className="font-black truncate leading-none" style={{ fontSize: '6px', color: prevClr2 }}>
-                        {(sc.mostrarNroPoste ?? true) && '001'}{(sc.mostrarNroPoste ?? true) && (sc.mostrarCodFat) && ' | '}{sc.mostrarCodFat && 'M25'}
-                        {!(sc.mostrarNroPoste ?? true) && !sc.mostrarCodFat && '—'}
-                      </span>
-                    </div>
-                    <div className="self-stretch shrink-0" style={{ width: '1px', margin: '2px 0', backgroundColor: prevDiv }}></div>
-                    <div className="flex flex-col justify-center items-center overflow-hidden shrink-0" style={{ width: '40%', padding: '1px 3px', gap: '1px' }}>
-                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2 }}>15/01/2025 · 09:30</span>
-                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2 }}>-12.345, -76.987</span>
-                    </div>
-                    <div className="self-stretch shrink-0" style={{ width: '1px', margin: '2px 0', backgroundColor: prevDiv }}></div>
-                    <div className="flex flex-col justify-center overflow-hidden flex-1" style={{ padding: '1px 4px 1px 3px', gap: '1px' }}>
-                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2, textAlign: 'right' }}>Av. Principal 123</span>
-                      <span className="truncate leading-none" style={{ fontSize: '6px', color: prevClr2, textAlign: 'right' }}>Arequipa, Perú</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {/* Botón confirmar / sin-logo step */}
-            <div className="shrink-0 p-4 border-t border-slate-200 space-y-2" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
-              {altaCalidadSinLogoStep ? (
-                <>
-                  <p className="text-[10px] text-center font-black text-amber-600 uppercase tracking-wide">No se ha cargado el logo</p>
-                  <button onClick={() => { setAltaCalidadSinLogoStep(false); logoInputRef2.current?.click(); }}
-                    className="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
-                    Cargar logo
-                  </button>
-                  <button onClick={() => {
-                    if (!tempData.stampConfig) {
-                      setTempData(prev => ({ ...prev, stampConfig: { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' } }));
-                    }
-                    setAltaCalidadSinLogoStep(false);
-                    setAltaCalidadMissingConfig(false);
-                    setModalOpen('CREAR_PROYECTO');
-                  }} className="w-full bg-white border-2 border-slate-900 text-slate-900 py-3 rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
-                    Continuar sin logo
-                  </button>
-                </>
-              ) : (
-                <button onClick={() => {
-                  setAltaCalidadMissingConfig(false);
-                  if (!tempData.stampLogoBase64) {
-                    setAltaCalidadSinLogoStep(true);
-                    return;
-                  }
-                  if (!tempData.stampConfig) {
-                    setTempData(prev => ({ ...prev, stampConfig: { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' } }));
-                  }
-                  setModalOpen('CREAR_PROYECTO');
-                }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform">
-                  CONFIRMAR
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })()}
 
       <Modal isOpen={modalOpen === 'CREAR_DIA'} onClose={() => setModalOpen(null)} title="Nuevo Día" theme={theme}>
         <ThemedInput autoFocus placeholder="Nombre (ej: Lunes 05)" val={tempData.nombre || ''} onChange={e => setTempData({ ...tempData, nombre: e.target.value })} theme={theme} />
@@ -2001,26 +1817,22 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
               <div>
                 <h3 className="font-black text-lg text-slate-900 mb-1">¿Imprimir datos en las fotos?</h3>
                 <p className="text-sm text-slate-600 leading-snug">
-                  {proyecto?.modoFotos === 'altaCalidad'
-                    ? 'Este proyecto usa fotos de alta calidad con sello ya aplicado. Se exportará sin sello adicional.'
-                    : 'Con datos imprime el sello con GPS, fecha y proyecto. Sin datos usa las fotos originales limpias.'}
+                  Con datos imprime el sello con GPS, fecha y proyecto. Sin datos usa las fotos originales limpias.
                 </p>
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              {proyecto?.modoFotos !== 'altaCalidad' && (
-                <button
-                  onClick={() => {
-                    setModalExportStep(null);
-                    const { tipo, proyecto: proy, limiteCalculado } = exportPendiente;
-                    handleExportarServidor(tipo, proy, limiteCalculado, stampConfig);
-                    setExportPendiente(null);
-                  }}
-                  className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform"
-                >
-                  CON DATOS
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setModalExportStep(null);
+                  const { tipo, proyecto: proy, limiteCalculado } = exportPendiente;
+                  handleExportarServidor(tipo, proy, limiteCalculado, stampConfig);
+                  setExportPendiente(null);
+                }}
+                className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform"
+              >
+                CON DATOS
+              </button>
               <button
                 onClick={() => {
                   setModalExportStep(null);
@@ -2028,9 +1840,9 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                   handleExportarServidor(tipo, proy, limiteCalculado, { ...stampConfig, sinDatos: true });
                   setExportPendiente(null);
                 }}
-                className={`w-full font-bold py-3 rounded-xl active:scale-95 transition-transform ${proyecto?.modoFotos === 'altaCalidad' ? 'bg-slate-900 text-white' : 'border-2 border-slate-300 text-slate-700'}`}
+                className="w-full border-2 border-slate-300 text-slate-700 font-bold py-3 rounded-xl active:scale-95 transition-transform"
               >
-                {proyecto?.modoFotos === 'altaCalidad' ? 'EXPORTAR' : 'SIN DATOS'}
+                SIN DATOS
               </button>
             </div>
           </div>
