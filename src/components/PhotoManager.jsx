@@ -428,10 +428,45 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         };
 
         if (altaCalidad) {
-          // Alta calidad: subir archivo original sin comprimir ni sellar, no bloqueante
+          // Alta calidad: subir original (urlHD) + comprimida (url), no bloqueante
           (async () => {
-            try { await guardarFoto(file); }
-            catch (err) { console.error('Error subiendo foto alta calidad:', err); limpiarFoto(); }
+            try {
+              // 1. Subir original al 100% → urlHD (para encarpetado/ZIP)
+              const urlHD = await uploadImage(file, uploadPath);
+              onFotoSubida?.(urlHD);
+
+              // 2. Crear versión comprimida 1280px → url (para EXCEL, KMZ y vista previa)
+              const MAX_F = 1280;
+              const scaleF = Math.min(MAX_F / img.width, MAX_F / img.height, 1);
+              const wf = Math.floor(img.width * scaleF);
+              const hf = Math.floor(img.height * scaleF);
+              const canvasFull = document.createElement('canvas');
+              canvasFull.width = wf; canvasFull.height = hf;
+              canvasFull.getContext('2d').drawImage(img, 0, 0, wf, hf);
+              const compressedBlob = await new Promise((res, rej) =>
+                canvasFull.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.75)
+              );
+              const uploadPathC = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}_c.jpg`;
+              const urlC = await uploadImage(compressedBlob, uploadPathC);
+              onFotoSubida?.(urlC);
+
+              setDatos(prev => {
+                const prevFotos = prev.fotos || {};
+                return {
+                  ...prev,
+                  fotos: {
+                    ...prevFotos,
+                    [section]: {
+                      ...(prevFotos[section] || {}),
+                      [item]: { url: urlC, urlHD, thumb: thumbUrl, timestamp: new Date().toISOString() }
+                    }
+                  }
+                };
+              });
+            } catch (err) {
+              console.error('Error subiendo foto alta calidad:', err);
+              limpiarFoto();
+            }
           })();
         } else {
           // Comprimido: redimensionar a 1280px, Q:0.75

@@ -391,24 +391,28 @@ const buildFflateZip = (files) =>
 // COLLECT SECTION PHOTOS (helper compartido ZIP/KMZ/Excel)
 // ============================================================
 
-const collectSectionPhotos = (p, tabId) => {
+const collectSectionPhotos = (p, tabId, useHD = false) => {
   const tab = TABS_CONFIG[tabId];
   const secFotos = (p.datos && p.datos.fotos && !Array.isArray(p.datos.fotos))
     ? (p.datos.fotos[tab.id] || {}) : {};
+  const resolveUrl = (val) => {
+    if (typeof val === 'string') return val;
+    return (useHD && val.urlHD) ? val.urlHD : val.url;
+  };
   const items = [];
   tab.items.forEach(tabItem => {
     if (tabItem.items) {
       tabItem.items.forEach(sub => {
         const val = secFotos[sub.id];
         if (val) {
-          const url = typeof val === 'string' ? val : val.url;
+          const url = resolveUrl(val);
           if (url && !url.startsWith('blob:')) items.push({ url, label: sub.label.replace('\n', ' ') });
         }
       });
     } else {
       const val = secFotos[tabItem.id];
       if (val) {
-        const url = typeof val === 'string' ? val : val.url;
+        const url = resolveUrl(val);
         if (url && !url.startsWith('blob:')) items.push({ url, label: tabItem.label.replace('\n', ' ') });
       }
     }
@@ -416,7 +420,7 @@ const collectSectionPhotos = (p, tabId) => {
   EXTRAS_ITEMS.forEach(extraLabel => {
     const val = secFotos[extraLabel];
     if (val) {
-      const url = typeof val === 'string' ? val : val.url;
+      const url = resolveUrl(val);
       if (url && !url.startsWith('blob:')) items.push({ url, label: extraLabel });
     }
   });
@@ -476,7 +480,7 @@ const generarZIP = async (proy, puntosProyecto, logoBuffer, limiteFotos, stampCo
 
       for (const tabId of Object.keys(TABS_CONFIG)) {
         const tab = TABS_CONFIG[tabId];
-        const secItems = collectSectionPhotos(p, tabId);
+        const secItems = collectSectionPhotos(p, tabId, true); // useHD=true para ZIP
         for (const item of secItems) {
           const cleanLabel = item.label.replace(/[/\\?*[\]:]/g, '_').substring(0, 50);
           allZipJobs.push({ url: item.url, path: `${carpetaPuntoPath}/${tab.title}/${cleanLabel}.jpg` });
@@ -486,7 +490,7 @@ const generarZIP = async (proy, puntosProyecto, logoBuffer, limiteFotos, stampCo
       const fotosGen = p.datos && p.datos.fotosGenerales;
       if (Array.isArray(fotosGen)) {
         fotosGen.forEach((f, i) => {
-          const url = typeof f === 'string' ? f : (f && f.url);
+          const url = typeof f === 'string' ? f : (f && (f.urlHD || f.url));
           if (url && !url.startsWith('blob:')) {
             allZipJobs.push({ url, path: `${carpetaPuntoPath}/GENERALES/General_${i + 1}.jpg` });
           }

@@ -1523,7 +1523,7 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
 
       {/* 3. PESTAÑAS (Alto Contraste y Distinción) */}
       <div className="flex border-b-2 border-slate-300 mb-4">
-        {['EXCEL', ...(proyecto?.modoFotos !== 'altaCalidad' ? ['ZIP'] : []), 'KMZ'].map(tab => (
+        {['EXCEL', 'ZIP', 'KMZ'].map(tab => (
           <button
             key={tab}
             onClick={() => !exportandoTipo && setActiveTab(tab)}
