@@ -191,7 +191,9 @@ function App() {
     intentarAgregarDatos,
     solicitarBorrarPunto,
     guardarPunto,
-    procesarFoto
+    procesarFoto,
+    cancelarPunto,
+    fotosSubidasRef
   } = usePuntosLogic({
     user,
     puntoSeleccionado, setPuntoSeleccionado,
@@ -713,6 +715,7 @@ function App() {
           modoEdicion={modoEdicion}
           setVista={setVista}
           guardarPunto={guardarPunto}
+          cancelarPunto={cancelarPunto}
           setModalOpen={setModalOpen}
           procesarFoto={procesarFoto}
           inputCamaraRef={inputCamaraRef}
@@ -799,6 +802,7 @@ function App() {
             initialTab={photoTab}
             puntoId={puntoSeleccionado}
             logoApp={logoApp}
+            onFotoSubida={(url) => fotosSubidasRef.current.push(url)}
           />
         </div>
       )}

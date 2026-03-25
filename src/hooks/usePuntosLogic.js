@@ -1,6 +1,7 @@
+import { useRef } from 'react';
 import { prepararFoto, procesarImagenInput } from '../utils/helpers';
 import { enviarMensajeSistema, detectarCambiosFotos, detectarCambiosCaracteristicas, formatId } from '../utils/bitacoraAuto';
-import { uploadImage } from '../utils/storage';
+import { uploadImage, deleteImage } from '../utils/storage';
 
 // 👇 EL GANCHO (HOOK) RECIBE TODO EL ESTADO NECESARIO
 export const usePuntosLogic = ({
@@ -23,6 +24,9 @@ export const usePuntosLogic = ({
 
 
 
+
+  // Ref para rastrear URLs subidas en la sesión actual (limpieza si se cancela)
+  const fotosSubidasRef = useRef([]);
 
   const solicitarBorrarPunto = () => {
     const puntoABorrar = puntos.find(p => p.id === puntoSeleccionado);
@@ -79,7 +83,15 @@ export const usePuntosLogic = ({
     }
   };
 
+  const cancelarPunto = () => {
+    const urls = [...fotosSubidasRef.current];
+    fotosSubidasRef.current = [];
+    urls.forEach(url => deleteImage(url).catch(() => {}));
+    setVista(vistaAnterior);
+  };
+
   const iniciarEdicion = () => {
+    fotosSubidasRef.current = [];
     const punto = puntos.find(p => p.id === puntoSeleccionado);
     if (punto) {
       setDatosFormulario({
@@ -95,6 +107,7 @@ export const usePuntosLogic = ({
   };
 
   const abrirFormulario = () => {
+    fotosSubidasRef.current = [];
     setModoEdicion(false);
     setModoLectura(false);
     setVistaAnterior('mapa'); // Siempre volver al mapa al cancelar/guardar nuevo punto
@@ -112,6 +125,7 @@ export const usePuntosLogic = ({
 
   // --- FUNCIÓN GUARDAR PUNTO (V2 - COMPATIBILIDAD TOTAL FIREBASE) ---
   const guardarPunto = async () => {
+    fotosSubidasRef.current = []; // Fotos confirmadas, ya no son huérfanas
     // 1. Cierre inmediato visual - volver a vista anterior
     setVista(vistaAnterior);
 
@@ -302,6 +316,8 @@ export const usePuntosLogic = ({
     intentarAgregarDatos,
     solicitarBorrarPunto,
     guardarPunto,
-    procesarFoto
+    procesarFoto,
+    cancelarPunto,
+    fotosSubidasRef
   };
 };

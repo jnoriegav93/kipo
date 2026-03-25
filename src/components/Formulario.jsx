@@ -13,6 +13,7 @@ export default function Formulario({
   modoEdicion,
   setVista,
   guardarPunto,
+  cancelarPunto,
   setModalOpen,
   inputCamaraRef,
   setPhotoTab
@@ -69,7 +70,7 @@ export default function Formulario({
           <h2 className={`font-black ${theme.text} text-xl uppercase`}>
             {modoLectura ? 'DETALLE' : (modoEdicion ? 'EDITAR' : 'NUEVO')}
           </h2>
-          <button onClick={() => setVista('mapa')} className={`${theme.text} hover:opacity-70 p-2 rounded-full`}>
+          <button onClick={() => cancelarPunto ? cancelarPunto() : setVista('mapa')} className={`${theme.text} hover:opacity-70 p-2 rounded-full`}>
             <X size={28} />
           </button>
         </div>

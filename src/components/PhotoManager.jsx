@@ -188,7 +188,7 @@ const getFotoUrl = (foto) => {
 
 const DEFAULT_STAMP_CONFIG = { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
 
-export default function PhotoManager({ onClose, datos, setDatos, proyectoActual, puntoTemporal, initialTab = 'napMec', puntoId, logoApp }) {
+export default function PhotoManager({ onClose, datos, setDatos, proyectoActual, puntoTemporal, initialTab = 'napMec', puntoId, logoApp, onFotoSubida }) {
   const fotosActuales = datos?.fotos || {}; // Inicializar vacío seguro
   const [viewingPhoto, setViewingPhoto] = useState(null);
   const [regenerandoThumbs, setRegenerandoThumbs] = useState(new Set());
@@ -411,6 +411,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         };
         const guardarFoto = async (blobToUpload) => {
           const downloadUrl = await uploadImage(blobToUpload, uploadPath);
+          onFotoSubida?.(downloadUrl);
           setDatos(prev => {
             const prevFotos = prev.fotos || {};
             return {
