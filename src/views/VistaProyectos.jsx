@@ -1732,7 +1732,7 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                     className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
                       archivo.cargando || descargandoId === archivo.id
                         ? 'border-slate-100 text-slate-300 pointer-events-none'
-                        : 'border-purple-300 text-purple-600 hover:bg-purple-50 active:scale-95'
+                        : 'border-slate-900 text-slate-900 hover:bg-slate-50 active:scale-95'
                     }`}
                   >
                     {descargandoId === archivo.id
