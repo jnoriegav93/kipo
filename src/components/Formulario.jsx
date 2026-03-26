@@ -255,14 +255,22 @@ const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, them
     .filter(s => s.vc > 0);
 
   // Agrupar secciones consecutivas de la misma familia (cols) cuando son "pequeñas" (vc < cols)
+  // y el total de vc no supera familyCols (para que los botones mantengan su tamaño).
   const groups = [];
   let i = 0;
   while (i < sections.length) {
     const cur = sections[i];
     if (cur.vc < cur.cols) {
       const group = [cur];
+      let usedVc = cur.vc;
       let j = i + 1;
-      while (j < sections.length && sections[j].cols === cur.cols && sections[j].vc < sections[j].cols) {
+      while (
+        j < sections.length &&
+        sections[j].cols === cur.cols &&
+        sections[j].vc < sections[j].cols &&
+        usedVc + sections[j].vc <= cur.cols
+      ) {
+        usedVc += sections[j].vc;
         group.push(sections[j]);
         j++;
       }
@@ -275,7 +283,9 @@ const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, them
   }
 
   const renderSection = (s, inRow = false) => {
-    // En fila: cols = vc (sin celdas vacías). Solo el título lleva separador visual.
+    // En fila: cols = vc para que no haya celdas vacías dentro de la sección.
+    // El tamaño de cada botón es idéntico al modo standalone porque el outer grid
+    // usa familyCols como base → cada columna = 1/familyCols del ancho total.
     const innerCols = inRow ? s.vc : s.cols;
     return s.type === 'single'
       ? <SelectorGrid      titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion} onSelect={s.onSelect}  theme={theme} />
@@ -289,21 +299,18 @@ const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, them
           return <div key={group[0].key}>{renderSection(group[0])}</div>;
         }
 
-        // Fila compartida: span proporcional a vc (todos los botones en una fila, sin espacio vacío)
-        const totalSpan = group.reduce((sum, s) => sum + s.vc, 0);
+        // Grid base = familyCols (4 o 5). Cada sección ocupa s.vc columnas.
+        // El espacio sobrante queda vacío → botones mantienen tamaño original.
+        const familyCols = group[0].cols;
 
         return (
           <div
             key={gi}
-            className="grid gap-3"
-            style={{ gridTemplateColumns: `repeat(${totalSpan}, minmax(0, 1fr))` }}
+            className="grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${familyCols}, minmax(0, 1fr))` }}
           >
-            {group.map((s, si) => (
-              <div
-                key={s.key}
-                className={si > 0 ? 'border-l-2 border-slate-200 pl-2' : ''}
-                style={{ gridColumn: `span ${s.vc}` }}
-              >
+            {group.map((s) => (
+              <div key={s.key} style={{ gridColumn: `span ${s.vc}` }}>
                 {renderSection(s, true)}
               </div>
             ))}
