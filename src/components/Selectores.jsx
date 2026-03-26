@@ -2,34 +2,42 @@ import React, { useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 
 // Subcomponentes auxiliares
-export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, textSize = 'text-lg', theme }) => (
-  <div>
-    <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider`}>{titulo}</h3>
-    <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {opciones.filter(o => o.visible).map(op => (
-        <button key={op.v} onClick={() => onSelect(op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${seleccion === op.v ? theme.gridBtnActive : theme.gridBtn}`}>
-          <span className="px-1 break-words leading-tight">{op.v}</span>
-        </button>
-      ))}
-    </div>
-  </div>
-);
-
-export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols, textSize = 'text-[12px]', theme }) => (
-  <div>
-    <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider`}>{titulo}</h3>
-    <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {opciones.filter(o => o.visible).map(op => {
-        const isActive = seleccion.includes(op.v);
-        return (
-          <button key={op.v} onClick={() => onToggle(op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${isActive ? theme.gridBtnActive : theme.gridBtn}`}>
+export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, textSize = 'text-lg', theme }) => {
+  const visibles = opciones.filter(o => o.visible);
+  if (visibles.length === 0) return null;
+  return (
+    <div>
+      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider`}>{titulo}</h3>
+      <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        {visibles.map(op => (
+          <button key={op.v} onClick={() => onSelect(op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${seleccion === op.v ? theme.gridBtnActive : theme.gridBtn}`}>
             <span className="px-1 break-words leading-tight">{op.v}</span>
           </button>
-        )
-      })}
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols, textSize = 'text-[12px]', theme }) => {
+  const visibles = opciones.filter(o => o.visible);
+  if (visibles.length === 0) return null;
+  return (
+    <div>
+      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider`}>{titulo}</h3>
+      <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        {visibles.map(op => {
+          const isActive = seleccion.includes(op.v);
+          return (
+            <button key={op.v} onClick={() => onToggle(op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${isActive ? theme.gridBtnActive : theme.gridBtn}`}>
+              <span className="px-1 break-words leading-tight">{op.v}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 
 // --- COMPONENTE DE LISTA CON CONTADORES ---

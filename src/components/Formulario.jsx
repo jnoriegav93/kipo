@@ -230,28 +230,88 @@ export default function Formulario({
 
 // 1. BLOQUE LEVANTAMIENTO
 const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, theme, disabled }) => {
+  const toggle = (v) => {
+    if (disabled) return;
+    const exists = datosFormulario.extrasSeleccionados.includes(v);
+    const nuevos = exists
+      ? datosFormulario.extrasSeleccionados.filter(x => x !== v)
+      : [...datosFormulario.extrasSeleccionados, v];
+    setDatosFormulario(prev => ({ ...prev, extrasSeleccionados: nuevos }));
+  };
+
+  // Orden: familia-4 primero, familia-5, familia-3
+  const allSections = [
+    { key: 'material', titulo: 'MATERIAL DEL POSTE', cols: 4, opciones: config.botonesPoste.materiales, seleccion: datosFormulario.material, onSelect: v => setDatosFormulario(prev => ({ ...prev, material: v })), type: 'single' },
+    { key: 'tipo',     titulo: 'TIPO DE RED',         cols: 4, opciones: config.botonesPoste.tipos,      seleccion: datosFormulario.tipo,      onSelect: v => setDatosFormulario(prev => ({ ...prev, tipo: v })),     type: 'single' },
+    { key: 'fuerza',   titulo: 'FUERZA (kg)',          cols: 4, opciones: config.botonesPoste.fuerzas,    seleccion: datosFormulario.fuerza,    onSelect: v => setDatosFormulario(prev => ({ ...prev, fuerza: v })),   type: 'single' },
+    { key: 'altura',   titulo: 'ALTURA (m)',            cols: 5, opciones: config.botonesPoste.alturas,   seleccion: datosFormulario.altura,    onSelect: v => setDatosFormulario(prev => ({ ...prev, altura: v })),   type: 'single' },
+    { key: 'cables',   titulo: 'CANTIDAD DE CABLES',   cols: 5, opciones: config.botonesPoste.cables,    seleccion: datosFormulario.cables,    onSelect: v => setDatosFormulario(prev => ({ ...prev, cables: v })),   type: 'single' },
+    { key: 'extras',   titulo: 'EXTRAS',               cols: 3, opciones: config.botonesPoste.extras,    seleccion: datosFormulario.extrasSeleccionados, onToggle: toggle, type: 'multi' },
+  ];
+
+  // Filtrar vacías y añadir vc (visible count)
+  const sections = allSections
+    .map(s => ({ ...s, vc: s.opciones.filter(o => o.visible).length }))
+    .filter(s => s.vc > 0);
+
+  // Agrupar secciones consecutivas de la misma familia (cols) cuando son "pequeñas" (vc < cols)
+  const groups = [];
+  let i = 0;
+  while (i < sections.length) {
+    const cur = sections[i];
+    if (cur.vc < cur.cols) {
+      const group = [cur];
+      let j = i + 1;
+      while (j < sections.length && sections[j].cols === cur.cols && sections[j].vc < sections[j].cols) {
+        group.push(sections[j]);
+        j++;
+      }
+      groups.push(group);
+      i = j;
+    } else {
+      groups.push([cur]);
+      i++;
+    }
+  }
+
+  const renderSection = (s, inRow = false) => {
+    // En fila compartida: máx 2 cols internos para mantener botones tapeables
+    const innerCols = inRow ? Math.min(s.vc, 2) : s.cols;
+    const textSize  = inRow ? 'text-sm' : 'text-lg';
+    return s.type === 'single'
+      ? <SelectorGrid      titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion}  onSelect={s.onSelect}  theme={theme} textSize={textSize} />
+      : <SelectorGridMulti titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion}  onToggle={s.onToggle} theme={theme} />;
+  };
+
   return (
-    <div className={`space-y-4 animate-in fade-in py-2 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-      {/* Datos Físicos del Poste */}
-      <SelectorGrid titulo="ALTURA (m)" cols={5} opciones={config.botonesPoste.alturas} seleccion={datosFormulario.altura} onSelect={v => setDatosFormulario(prev => ({ ...prev, altura: v }))} theme={theme} />
-      <SelectorGrid titulo="FUERZA (kg)" cols={4} opciones={config.botonesPoste.fuerzas} seleccion={datosFormulario.fuerza} onSelect={v => setDatosFormulario(prev => ({ ...prev, fuerza: v }))} theme={theme} />
-      <SelectorGrid titulo="MATERIAL DEL POSTE" cols={4} opciones={config.botonesPoste.materiales} seleccion={datosFormulario.material} onSelect={v => setDatosFormulario(prev => ({ ...prev, material: v }))} theme={theme} />
+    <div className={`space-y-3 animate-in fade-in py-2 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      {groups.map((group, gi) => {
+        if (group.length === 1) {
+          return <div key={group[0].key}>{renderSection(group[0])}</div>;
+        }
 
-      {/* Datos de Red */}
-      <SelectorGrid titulo="TIPO DE RED" cols={4} opciones={config.botonesPoste.tipos} seleccion={datosFormulario.tipo} onSelect={v => setDatosFormulario(prev => ({ ...prev, tipo: v }))} theme={theme} />
+        // Fila compartida: span proporcional a min(vc, 2) por sección
+        const spans      = group.map(s => Math.min(s.vc, 2));
+        const totalSpan  = spans.reduce((a, b) => a + b, 0);
 
-      {/* CANTIDAD DE CABLES */}
-      <SelectorGrid titulo="CANTIDAD DE CABLES" cols={5} opciones={config.botonesPoste.cables} seleccion={datosFormulario.cables} onSelect={v => setDatosFormulario(prev => ({ ...prev, cables: v }))} theme={theme} />
-
-      {/* Extras */}
-      <SelectorGridMulti titulo="EXTRAS" cols={3} textSize="text-[14px]" opciones={config.botonesPoste.extras} seleccion={datosFormulario.extrasSeleccionados}
-        onToggle={v => {
-          if (disabled) return;
-          const exists = datosFormulario.extrasSeleccionados.includes(v);
-          const nuevos = exists ? datosFormulario.extrasSeleccionados.filter(x => x !== v) : [...datosFormulario.extrasSeleccionados, v];
-          setDatosFormulario(prev => ({ ...prev, extrasSeleccionados: nuevos }));
-        }} theme={theme}
-      />
+        return (
+          <div
+            key={gi}
+            className="grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${totalSpan}, minmax(0, 1fr))` }}
+          >
+            {group.map((s, si) => (
+              <div
+                key={s.key}
+                className="rounded-xl border-2 border-slate-200 p-2.5"
+                style={{ gridColumn: `span ${spans[si]}` }}
+              >
+                {renderSection(s, true)}
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
