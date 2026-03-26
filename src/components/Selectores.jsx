@@ -117,7 +117,7 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
 
                   {/* Cantidad fija del armado (solo referencia visual) */}
                   {cantArmado > 0 && (
-                    <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-500 text-slate-900 font-black text-lg tabular-nums">
+                    <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-green-500 text-white font-black text-lg tabular-nums">
                       {cantArmado}
                     </div>
                   )}
