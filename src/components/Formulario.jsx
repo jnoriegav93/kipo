@@ -243,9 +243,9 @@ const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, them
   const allSections = [
     { key: 'material', titulo: 'MATERIAL DEL POSTE', cols: 4, opciones: config.botonesPoste.materiales, seleccion: datosFormulario.material, onSelect: v => setDatosFormulario(prev => ({ ...prev, material: v })), type: 'single' },
     { key: 'tipo',     titulo: 'TIPO DE RED',         cols: 4, opciones: config.botonesPoste.tipos,      seleccion: datosFormulario.tipo,      onSelect: v => setDatosFormulario(prev => ({ ...prev, tipo: v })),     type: 'single' },
-    { key: 'fuerza',   titulo: 'FUERZA (kg)',          cols: 4, opciones: config.botonesPoste.fuerzas,    seleccion: datosFormulario.fuerza,    onSelect: v => setDatosFormulario(prev => ({ ...prev, fuerza: v })),   type: 'single' },
+    { key: 'fuerza',   titulo: 'FUERZA',               cols: 4, opciones: config.botonesPoste.fuerzas,    seleccion: datosFormulario.fuerza,    onSelect: v => setDatosFormulario(prev => ({ ...prev, fuerza: v })),   type: 'single' },
     { key: 'altura',   titulo: 'ALTURA (m)',            cols: 5, opciones: config.botonesPoste.alturas,   seleccion: datosFormulario.altura,    onSelect: v => setDatosFormulario(prev => ({ ...prev, altura: v })),   type: 'single' },
-    { key: 'cables',   titulo: 'CANTIDAD DE CABLES',   cols: 5, opciones: config.botonesPoste.cables,    seleccion: datosFormulario.cables,    onSelect: v => setDatosFormulario(prev => ({ ...prev, cables: v })),   type: 'single' },
+    { key: 'cables',   titulo: 'CABLES',               cols: 5, opciones: config.botonesPoste.cables,    seleccion: datosFormulario.cables,    onSelect: v => setDatosFormulario(prev => ({ ...prev, cables: v })),   type: 'single' },
     { key: 'extras',   titulo: 'EXTRAS',               cols: 3, opciones: config.botonesPoste.extras,    seleccion: datosFormulario.extrasSeleccionados, onToggle: toggle, type: 'multi' },
   ];
 
@@ -288,8 +288,8 @@ const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, them
     // usa familyCols como base → cada columna = 1/familyCols del ancho total.
     const innerCols = inRow ? s.vc : s.cols;
     return s.type === 'single'
-      ? <SelectorGrid      titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion} onSelect={s.onSelect}  theme={theme} />
-      : <SelectorGridMulti titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion} onToggle={s.onToggle} theme={theme} />;
+      ? <SelectorGrid      titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion} onSelect={s.onSelect}  theme={theme} titleLine={inRow} />
+      : <SelectorGridMulti titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion} onToggle={s.onToggle} theme={theme} titleLine={inRow} />;
   };
 
   return (

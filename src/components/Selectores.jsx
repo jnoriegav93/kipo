@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 
 // Subcomponentes auxiliares
-export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, textSize = 'text-lg', theme }) => {
+export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, textSize = 'text-lg', theme, titleLine = false }) => {
   const visibles = opciones.filter(o => o.visible);
   if (visibles.length === 0) return null;
   return (
     <div>
-      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider`}>{titulo}</h3>
+      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider${titleLine ? ' border-b-2 border-slate-200 pb-1' : ''}`}>{titulo}</h3>
       <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {visibles.map(op => (
           <button key={op.v} onClick={() => onSelect(op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${seleccion === op.v ? theme.gridBtnActive : theme.gridBtn}`}>
@@ -19,12 +19,12 @@ export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, text
   );
 };
 
-export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols, textSize = 'text-[12px]', theme }) => {
+export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols, textSize = 'text-[12px]', theme, titleLine = false }) => {
   const visibles = opciones.filter(o => o.visible);
   if (visibles.length === 0) return null;
   return (
     <div>
-      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider`}>{titulo}</h3>
+      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider${titleLine ? ' border-b-2 border-slate-200 pb-1' : ''}`}>{titulo}</h3>
       <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {visibles.map(op => {
           const isActive = seleccion.includes(op.v);
