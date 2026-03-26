@@ -7,7 +7,7 @@ export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, text
   if (visibles.length === 0) return null;
   return (
     <div>
-      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider${titleLine ? ' border-b-2 border-slate-200 pb-1' : ''}`}>{titulo}</h3>
+      <h3 className={`text-xs font-black ${theme.text} mb-2 uppercase tracking-wider${titleLine ? ' border-l-2 border-b-2 border-slate-400 pl-1.5 pb-1' : ' ml-1'}`}>{titulo}</h3>
       <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {visibles.map(op => (
           <button key={op.v} onClick={() => onSelect(op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${seleccion === op.v ? theme.gridBtnActive : theme.gridBtn}`}>
@@ -24,7 +24,7 @@ export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols,
   if (visibles.length === 0) return null;
   return (
     <div>
-      <h3 className={`text-xs font-black ${theme.text} mb-2 ml-1 uppercase tracking-wider${titleLine ? ' border-b-2 border-slate-200 pb-1' : ''}`}>{titulo}</h3>
+      <h3 className={`text-xs font-black ${theme.text} mb-2 uppercase tracking-wider${titleLine ? ' border-l-2 border-b-2 border-slate-400 pl-1.5 pb-1' : ' ml-1'}`}>{titulo}</h3>
       <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {visibles.map(op => {
           const isActive = seleccion.includes(op.v);
