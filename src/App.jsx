@@ -125,6 +125,31 @@ function App() {
     setNotifSupervisados(prev => ({ ...prev, [proyectoId]: 0 }));
   }, []);
 
+  // Geocodificación al abrir formulario de nuevo punto
+  useEffect(() => {
+    if (vista !== 'formulario' || modoEdicion) return;
+    const lat = puntoTemporal?.lat;
+    const lng = puntoTemporal?.lng;
+    if (!lat || !lng || datosFormulario.direccion) return;
+    const nominatimBase = import.meta.env.DEV ? '/api/nominatim' : 'https://nominatim.openstreetmap.org';
+    fetch(`${nominatimBase}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.address) {
+          const road = data.address.road || data.address.street || '';
+          const house = data.address.house_number || '';
+          const direccion = `${road} ${house}`.trim() || 'Ingresa la dirección';
+          const city = data.address.city || data.address.town || data.address.village || data.address.municipality || '';
+          const state = data.address.state || data.address.region || '';
+          const ubicacion = [city, state].filter(Boolean).join(', ') || '';
+          setDatosFormulario(prev => ({ ...prev, direccion, ubicacion }));
+        } else {
+          setDatosFormulario(prev => ({ ...prev, direccion: 'Ingresa la dirección' }));
+        }
+      })
+      .catch(() => setDatosFormulario(prev => ({ ...prev, direccion: 'Ingresa la dirección' })));
+  }, [vista, puntoTemporal?.lat, puntoTemporal?.lng]);
+
   // Historial de vistas para navegación "Volver"
   const vistaHistorial = React.useRef(['mapa']);
   const setVistaConHistorial = React.useCallback((nuevaVista) => {
