@@ -346,7 +346,8 @@ const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario, theme,
                     ? [] // Deseleccionar
                     : [{ id: armado.id, nombre: armado.nombre, items: armado.items }]; // Solo este
 
-                  setDatosFormulario(prev => ({ ...prev, armadosSeleccionados: nuevos }));
+                  // Reset deltas al cambiar armado
+                  setDatosFormulario(prev => ({ ...prev, armadosSeleccionados: nuevos, ferreteriaExtra: {} }));
                 }}
                 className={`h-12 px-1 rounded-xl text-[13px] font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${isSelected ? theme.gridBtnActive : theme.gridBtn}`}
               >

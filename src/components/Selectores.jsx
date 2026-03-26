@@ -45,54 +45,47 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
   const itemsVisibles = config.catalogoFerreteria.filter(f => f.visible !== false);
   const [alerta, setAlerta] = useState(null);
 
+  const armado = armadoSeleccionado?.[0];
+  const armadoItemIds = new Set((armado?.items || []).map(i => i.idRef));
+
+  // Ítems del armado al tope, el resto debajo (orden original preservado dentro de cada grupo)
+  const itemsOrdenados = [...itemsVisibles].sort((a, b) => {
+    const aIn = armadoItemIds.has(a.id);
+    const bIn = armadoItemIds.has(b.id);
+    return aIn === bIn ? 0 : aIn ? -1 : 1;
+  });
+
   const actualizarCantidad = (itemId, delta) => {
     if (disabled) return;
-    
-    // Si intenta restar (delta = -1)
-    if (delta < 0) {
-      // Verificar si hay armado seleccionado
+    const cantidadActual = datos[itemId] || 0;
+    const nuevaCantidad = cantidadActual + delta;
+
+    // Solo restringir cuando el resultado sería negativo
+    if (nuevaCantidad < 0) {
       if (!armadoSeleccionado || armadoSeleccionado.length === 0) {
-        setAlerta({
-          mensaje: 'Debes seleccionar un armado antes de restar ferretería'
-        });
+        setAlerta({ mensaje: 'Debes seleccionar un armado antes de restar ferretería' });
         return;
       }
-
-      // Verificar si la ferretería existe en el armado seleccionado
-      const armado = armadoSeleccionado[0]; // Selección única
-      const itemEnArmado = armado.items.find(item => item.idRef === itemId);
-      
+      const armadoActual = armadoSeleccionado[0];
+      const itemEnArmado = armadoActual.items.find(item => item.idRef === itemId);
       if (!itemEnArmado) {
         const ferreteria = config.catalogoFerreteria.find(f => f.id === itemId);
-        setAlerta({
-          mensaje: `"${ferreteria?.nombre || 'Esta ferretería'}" no existe en el armado "${armado.nombre}"`
-        });
+        setAlerta({ mensaje: `"${ferreteria?.nombre || 'Esta ferretería'}" no existe en el armado "${armadoActual.nombre}"` });
         return;
       }
-
-      // Verificar que no exceda la cantidad disponible
       const cantidadDisponible = itemEnArmado.cant;
-      const cantidadActual = datos[itemId] || 0;
-      const nuevaCantidad = cantidadActual + delta;
-      
       if (Math.abs(nuevaCantidad) > cantidadDisponible) {
         const ferreteria = config.catalogoFerreteria.find(f => f.id === itemId);
-        setAlerta({
-          mensaje: `Solo puedes restar hasta ${cantidadDisponible} ${ferreteria?.unidad || 'unidades'} de "${ferreteria?.nombre}". El armado "${armado.nombre}" solo tiene esa cantidad.`
-        });
+        setAlerta({ mensaje: `Solo puedes restar hasta ${cantidadDisponible} ${ferreteria?.unidad || 'unidades'} de "${ferreteria?.nombre}". El armado "${armadoActual.nombre}" solo tiene esa cantidad.` });
         return;
       }
     }
 
-    // Actualizar cantidad (permitir negativos)
-    const current = datos[itemId] || 0;
-    const nuevo = current + delta;
-
     const nuevosDatos = { ...datos };
-    if (nuevo === 0) {
+    if (nuevaCantidad === 0) {
       delete nuevosDatos[itemId];
     } else {
-      nuevosDatos[itemId] = nuevo;
+      nuevosDatos[itemId] = nuevaCantidad;
     }
     setDatos(nuevosDatos);
   };
@@ -104,23 +97,33 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
       <div className="space-y-3">
         <h3 className={`text-xs font-black ${theme.text} opacity-70 uppercase ml-1`}>FERRETERÍA EXTRA</h3>
         <div className="grid grid-cols-1 gap-2">
-          {itemsVisibles.map(item => {
+          {itemsOrdenados.map(item => {
             const cantidad = datos[item.id] || 0;
             const isActive = cantidad !== 0;
             const isNegative = cantidad < 0;
+            const cantArmado = armado?.items.find(i => i.idRef === item.id)?.cant || 0;
 
             return (
               <div key={item.id} className={`${theme.card} border-2 ${isActive ? (isNegative ? 'border-red-500 bg-red-500/5' : 'border-brand-500 bg-brand-500/5') : theme.border} p-2 rounded-xl flex items-center justify-between transition-all`}>
-                
+
                 {/* NOMBRE Y UNIDAD */}
                 <div className="flex-1 pl-2">
                   <div className={`font-bold text-sm leading-tight ${theme.text}`}>{item.nombre}</div>
                   <div className="text-[10px] opacity-60 uppercase font-black">{item.unidad}</div>
                 </div>
 
-                {/* CONTROLES (- 0 +) */}
+                {/* CONTROLES (- delta +) */}
                 <div className="flex items-center gap-3 bg-slate-900/5 rounded-lg p-1">
-                  <button 
+
+                  {/* Cantidad fija del armado (solo referencia visual) */}
+                  {cantArmado > 0 && (
+                    <div className="flex flex-col items-center pr-2 mr-1 border-r-2 border-slate-200">
+                      <span className="text-base font-black text-slate-600 tabular-nums leading-none">{cantArmado}</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide">arm</span>
+                    </div>
+                  )}
+
+                  <button
                     onClick={() => actualizarCantidad(item.id, -1)}
                     className={`w-10 h-10 flex items-center justify-center rounded-lg border-2 ${theme.border} ${theme.bg} active:scale-90 transition-transform`}
                   >
@@ -131,7 +134,7 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
                     {cantidad}
                   </div>
 
-                  <button 
+                  <button
                     onClick={() => actualizarCantidad(item.id, 1)}
                     className={`w-10 h-10 flex items-center justify-center rounded-lg bg-slate-900 text-white active:scale-90 transition-transform shadow-lg`}
                   >
