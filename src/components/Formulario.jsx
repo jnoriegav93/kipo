@@ -275,12 +275,11 @@ const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, them
   }
 
   const renderSection = (s, inRow = false) => {
-    // En fila compartida: máx 2 cols internos para mantener botones tapeables
-    const innerCols = inRow ? Math.min(s.vc, 2) : s.cols;
-    const textSize  = inRow ? 'text-sm' : 'text-lg';
+    // En fila: cols = vc (sin celdas vacías). Solo el título lleva separador visual.
+    const innerCols = inRow ? s.vc : s.cols;
     return s.type === 'single'
-      ? <SelectorGrid      titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion}  onSelect={s.onSelect}  theme={theme} textSize={textSize} />
-      : <SelectorGridMulti titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion}  onToggle={s.onToggle} theme={theme} />;
+      ? <SelectorGrid      titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion} onSelect={s.onSelect}  theme={theme} />
+      : <SelectorGridMulti titulo={s.titulo} cols={innerCols} opciones={s.opciones} seleccion={s.seleccion} onToggle={s.onToggle} theme={theme} />;
   };
 
   return (
@@ -290,21 +289,20 @@ const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulario, them
           return <div key={group[0].key}>{renderSection(group[0])}</div>;
         }
 
-        // Fila compartida: span proporcional a min(vc, 2) por sección
-        const spans      = group.map(s => Math.min(s.vc, 2));
-        const totalSpan  = spans.reduce((a, b) => a + b, 0);
+        // Fila compartida: span proporcional a vc (todos los botones en una fila, sin espacio vacío)
+        const totalSpan = group.reduce((sum, s) => sum + s.vc, 0);
 
         return (
           <div
             key={gi}
-            className="grid gap-2"
+            className="grid gap-3"
             style={{ gridTemplateColumns: `repeat(${totalSpan}, minmax(0, 1fr))` }}
           >
             {group.map((s, si) => (
               <div
                 key={s.key}
-                className="rounded-xl border-2 border-slate-200 p-2.5"
-                style={{ gridColumn: `span ${spans[si]}` }}
+                className={si > 0 ? 'border-l-2 border-slate-200 pl-2' : ''}
+                style={{ gridColumn: `span ${s.vc}` }}
               >
                 {renderSection(s, true)}
               </div>
