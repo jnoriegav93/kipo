@@ -489,6 +489,7 @@ function App() {
           handleMapaClick={mapaSupervision
             ? () => { setPuntoSeleccionado(null); setConexionSeleccionada(null); }
             : (e) => {
+              if (modoMover) return;
               setConexionSeleccionada(null);
               mapInteractions.handleMapaClick({
                 e, menuAbierto, modoFibra, puntoSeleccionado, vista, diaActual,

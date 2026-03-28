@@ -343,18 +343,12 @@ export const usePuntosLogic = ({
     ));
 
     // 4. Persistir en Firebase
-    const paquete = {
-      modo: 'editar',
+    agregarTarea('mover_punto', {
       coleccion: 'puntos',
       idDoc: String(puntoId),
-      datos: {
-        ...puntoActual,
-        coords: nuevasCoords,
-        datos: datosMover,
-        timestamp: new Date().toISOString()
-      }
-    };
-    agregarTarea('guardar_punto', paquete);
+      coords: nuevasCoords,
+      datos: datosMover
+    });
 
     // 5. Bitácora
     if (proyectoActual?.id) {

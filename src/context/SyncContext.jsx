@@ -99,7 +99,13 @@ export const SyncProvider = ({ children }) => {
         }
       } 
       
-      // 👇 CASO 2: BORRAR (ESTO ES LO QUE FALTABA)
+      // CASO 2: MOVER PUNTO (actualiza coords + datos en Firestore)
+      else if (tarea.tipo === 'mover_punto') {
+        const { coleccion, idDoc, coords, datos } = tarea.datos;
+        await updateDoc(doc(db, coleccion, idDoc), { coords, datos });
+      }
+
+      // 👇 CASO 3: BORRAR (ESTO ES LO QUE FALTABA)
       else if (tarea.tipo === 'borrar_punto') {
           const { coleccion, idDoc } = tarea.datos;
           await deleteDoc(doc(db, coleccion, idDoc));

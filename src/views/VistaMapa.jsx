@@ -130,23 +130,6 @@ const VistaMapa = ({
           </div>
         )}
 
-        {/* Botones CONFIRMAR / CANCELAR tras soltar el marcador */}
-        {pendingCoords && (
-          <div className="absolute bottom-24 left-4 right-4 z-[400] flex gap-3">
-            <button
-              onClick={cancelarMover}
-              className="flex-1 h-12 rounded-xl border-2 border-slate-300 bg-white font-black text-slate-900 text-sm active:scale-95 transition-transform shadow-md"
-            >
-              CANCELAR
-            </button>
-            <button
-              onClick={confirmarMover}
-              className="flex-1 h-12 rounded-xl bg-green-600 text-white font-black text-sm active:scale-95 transition-transform shadow-lg border-b-4 border-green-800 active:border-b-0 active:mt-1"
-            >
-              CONFIRMAR
-            </button>
-          </div>
-        )}
 
         {/* Banner de supervisión */}
         {modoSupervision && (
@@ -166,6 +149,24 @@ const VistaMapa = ({
           </div>
         )}
       </div>
+
+      {/* Botones CONFIRMAR / CANCELAR tras soltar el marcador */}
+      {pendingCoords && (
+        <div className="absolute bottom-24 left-4 right-4 z-[400] flex gap-3">
+          <button
+            onClick={cancelarMover}
+            className="flex-1 h-12 rounded-xl border-2 border-slate-300 bg-white font-black text-slate-900 text-sm active:scale-95 transition-transform shadow-md"
+          >
+            CANCELAR
+          </button>
+          <button
+            onClick={confirmarMover}
+            className="flex-1 h-12 rounded-xl bg-green-600 text-white font-black text-sm active:scale-95 transition-transform shadow-lg border-b-4 border-green-800 active:border-b-0 active:mt-1"
+          >
+            CONFIRMAR
+          </button>
+        </div>
+      )}
 
       {/* Botón flotante MOVER (sobre la barra inferior, solo cuando hay punto seleccionado y no modoMover) */}
       {puntoSeleccionado && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (

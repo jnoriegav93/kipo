@@ -1,9 +1,55 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPinOff } from 'lucide-react';
 import { getColorFibra, agruparPorTramo, calcularOffsetCoords } from '../utils/fibraUtils';
+
+// --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
+const DragMoverController = ({ modoMover, puntoSeleccionado, puntosVisiblesMapa, iconSize, obtenerColorDia, onPuntoDragEnd }) => {
+  const map = useMap();
+  const markerRef = useRef(null);
+  const onDragEndRef = useRef(onPuntoDragEnd);
+
+  // Mantener callback siempre fresco sin recrear el marcador
+  useEffect(() => { onDragEndRef.current = onPuntoDragEnd; });
+
+  useEffect(() => {
+    // Limpiar marcador anterior
+    if (markerRef.current) {
+      markerRef.current.remove();
+      markerRef.current = null;
+    }
+    if (!modoMover || !puntoSeleccionado) return;
+
+    const punto = puntosVisiblesMapa.find(p => p.id === puntoSeleccionado);
+    if (!punto) return;
+
+    const colorDia = obtenerColorDia(punto.diaId);
+    const baseSize = 24 * iconSize;
+    const icon = L.divIcon({
+      className: 'custom-icon',
+      html: `<div style="width:${baseSize}px;height:${baseSize}px;background:${colorDia};border:4px solid #facc15;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.5);"></div>`,
+      iconSize: [baseSize, baseSize],
+      iconAnchor: [baseSize / 2, baseSize / 2]
+    });
+
+    const marker = L.marker([punto.coords.lat, punto.coords.lng], { draggable: true, icon, zIndexOffset: 2000 });
+    marker.on('dragend', () => {
+      const { lat, lng } = marker.getLatLng();
+      onDragEndRef.current(puntoSeleccionado, lat, lng);
+    });
+    marker.addTo(map);
+    markerRef.current = marker;
+
+    return () => {
+      marker.remove();
+      markerRef.current = null;
+    };
+  }, [modoMover, puntoSeleccionado]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+};
 
 // --- PARTE 1: EL AYUDANTE (CON SALTO INICIAL Y DESCANSO) ---
 const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick, reintentarGPS, yaSaltoAlInicio, setYaSaltoAlInicio }) => {
@@ -223,8 +269,20 @@ export const MapaReal = ({
           />
         })}
 
+        {/* Controlador del marcador arrastrable (nativo Leaflet) */}
+        <DragMoverController
+          modoMover={modoMover}
+          puntoSeleccionado={puntoSeleccionado}
+          puntosVisiblesMapa={puntosVisiblesMapa}
+          iconSize={iconSize}
+          obtenerColorDia={obtenerColorDia}
+          onPuntoDragEnd={onPuntoDragEnd}
+        />
+
         {/* Renderizado de puntos */}
         {puntosVisiblesMapa.map(p => {
+          // El punto seleccionado en modo mover se maneja por DragMoverController
+          if (modoMover && p.id === puntoSeleccionado) return null;
           const colorDia = obtenerColorDia(p.diaId);
           const isSelected = puntoSeleccionado === p.id;
           const isInRecorrido = modoFibra && dibujandoFibra && puntosRecorrido.includes(p.id);
@@ -237,23 +295,12 @@ export const MapaReal = ({
                         </div>`,
             iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
           });
-          const isDraggable = modoMover && !pendingCoords && p.id === puntoSeleccionado;
-          const pos = (pendingCoords && p.id === puntoSeleccionado)
-            ? [pendingCoords.lat, pendingCoords.lng]
-            : [p.coords.lat, p.coords.lng];
           return <Marker
             key={p.id}
-            position={pos}
+            position={[p.coords.lat, p.coords.lng]}
             icon={customIcon}
-            draggable={isDraggable}
             eventHandlers={{
-              click: (e) => { L.DomEvent.stopPropagation(e); handlePuntoClick(e, p.id); },
-              ...(isDraggable ? {
-                dragend: (e) => {
-                  const { lat, lng } = e.target.getLatLng();
-                  if (onPuntoDragEnd) onPuntoDragEnd(p.id, lat, lng);
-                }
-              } : {})
+              click: (e) => { L.DomEvent.stopPropagation(e); handlePuntoClick(e, p.id); }
             }}
           />
         })}
