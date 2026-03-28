@@ -51,6 +51,7 @@ export const MapaReal = ({
   conexionSeleccionada,
   handleConexionClick,
   modoMover,
+  pendingCoords,
   onPuntoDragEnd
 }) => {
 
@@ -236,10 +237,13 @@ export const MapaReal = ({
                         </div>`,
             iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
           });
-          const isDraggable = modoMover && p.id === puntoSeleccionado;
+          const isDraggable = modoMover && !pendingCoords && p.id === puntoSeleccionado;
+          const pos = (pendingCoords && p.id === puntoSeleccionado)
+            ? [pendingCoords.lat, pendingCoords.lng]
+            : [p.coords.lat, p.coords.lng];
           return <Marker
             key={p.id}
-            position={[p.coords.lat, p.coords.lng]}
+            position={pos}
             icon={customIcon}
             draggable={isDraggable}
             eventHandlers={{

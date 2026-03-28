@@ -210,10 +210,14 @@ function App() {
 
   // Lógica de puntos
   const [modoMover, setModoMover] = React.useState(false);
+  const [pendingCoords, setPendingCoords] = React.useState(null);
 
-  // Resetear modoMover al deseleccionar punto
+  // Resetear modoMover y pendingCoords al deseleccionar punto
   React.useEffect(() => {
-    if (!puntoSeleccionado) setModoMover(false);
+    if (!puntoSeleccionado) {
+      setModoMover(false);
+      setPendingCoords(null);
+    }
   }, [puntoSeleccionado]);
 
   const {
@@ -534,11 +538,18 @@ function App() {
           setVistaAnterior={setVistaAnterior}
           // Props de MOVER
           modoMover={mapaSupervision ? false : modoMover}
+          pendingCoords={mapaSupervision ? null : pendingCoords}
           iniciarMover={() => setModoMover(true)}
-          cancelarMover={() => setModoMover(false)}
+          cancelarMover={() => { setModoMover(false); setPendingCoords(null); }}
+          confirmarMover={() => {
+            if (pendingCoords) {
+              moverPunto(pendingCoords.puntoId, pendingCoords.lat, pendingCoords.lng);
+              setPendingCoords(null);
+              setModoMover(false);
+            }
+          }}
           onPuntoDragEnd={(puntoId, lat, lng) => {
-            setModoMover(false);
-            moverPunto(puntoId, lat, lng);
+            setPendingCoords({ puntoId, lat, lng });
           }}
           // Props de FIBRA
           modoFibra={mapaSupervision ? false : modoFibra}

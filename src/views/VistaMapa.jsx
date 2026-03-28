@@ -10,7 +10,7 @@ const VistaMapa = ({
   setYaSaltoAlInicio, isDark, verDetalle, iniciarEdicion,
   solicitarBorrarPunto, intentarAgregarDatos,
   setVistaAnterior,
-  modoMover, iniciarMover, cancelarMover, onPuntoDragEnd,
+  modoMover, pendingCoords, iniciarMover, cancelarMover, confirmarMover, onPuntoDragEnd,
   // Props de supervisión
   modoSupervision = false,
   onVolverSupervision,
@@ -68,6 +68,7 @@ const VistaMapa = ({
             conexionSeleccionada={conexionSeleccionada}
             handleConexionClick={handleConexionClick}
             modoMover={modoMover}
+            pendingCoords={pendingCoords}
             onPuntoDragEnd={onPuntoDragEnd}
           />
         ) : (
@@ -116,8 +117,8 @@ const VistaMapa = ({
           </div>
         )}
 
-        {/* Hint modoMover */}
-        {modoMover && (
+        {/* Hint modoMover — arrastrando */}
+        {modoMover && !pendingCoords && (
           <div className="absolute top-2 left-0 right-0 flex justify-center z-[400] px-4">
             <div className="bg-slate-900/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-3">
               <Move size={14} strokeWidth={2.5} />
@@ -126,6 +127,24 @@ const VistaMapa = ({
                 CANCELAR
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Botones CONFIRMAR / CANCELAR tras soltar el marcador */}
+        {pendingCoords && (
+          <div className="absolute bottom-24 left-4 right-4 z-[400] flex gap-3">
+            <button
+              onClick={cancelarMover}
+              className="flex-1 h-12 rounded-xl border-2 border-slate-300 bg-white font-black text-slate-900 text-sm active:scale-95 transition-transform shadow-md"
+            >
+              CANCELAR
+            </button>
+            <button
+              onClick={confirmarMover}
+              className="flex-1 h-12 rounded-xl bg-green-600 text-white font-black text-sm active:scale-95 transition-transform shadow-lg border-b-4 border-green-800 active:border-b-0 active:mt-1"
+            >
+              CONFIRMAR
+            </button>
           </div>
         )}
 
