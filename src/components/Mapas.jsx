@@ -49,7 +49,9 @@ export const MapaReal = ({
   yaSaltoAlInicio,
   setYaSaltoAlInicio,
   conexionSeleccionada,
-  handleConexionClick
+  handleConexionClick,
+  modoMover,
+  onPuntoDragEnd
 }) => {
 
   const [miUbicacion, setMiUbicacion] = useState(null);
@@ -234,7 +236,22 @@ export const MapaReal = ({
                         </div>`,
             iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
           });
-          return <Marker key={p.id} position={[p.coords.lat, p.coords.lng]} icon={customIcon} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); handlePuntoClick(e, p.id); } }} />
+          const isDraggable = modoMover && p.id === puntoSeleccionado;
+          return <Marker
+            key={p.id}
+            position={[p.coords.lat, p.coords.lng]}
+            icon={customIcon}
+            draggable={isDraggable}
+            eventHandlers={{
+              click: (e) => { L.DomEvent.stopPropagation(e); handlePuntoClick(e, p.id); },
+              ...(isDraggable ? {
+                dragend: (e) => {
+                  const { lat, lng } = e.target.getLatLng();
+                  if (onPuntoDragEnd) onPuntoDragEnd(p.id, lat, lng);
+                }
+              } : {})
+            }}
+          />
         })}
 
         {/* Polylines temporales del trazo de fibra actual */}

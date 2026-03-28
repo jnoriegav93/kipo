@@ -308,6 +308,61 @@ export const usePuntosLogic = ({
 
 
 
+  // --- FUNCIÓN MOVER PUNTO ---
+  const moverPunto = async (puntoId, nuevaLat, nuevaLng) => {
+    const puntoActual = puntos.find(p => p.id === puntoId);
+    if (!puntoActual) return;
+
+    // 1. Actualizar coords optimistamente
+    const nuevasCoords = { ...puntoActual.coords, lat: nuevaLat, lng: nuevaLng };
+    setPuntos(prev => prev.map(p => p.id === puntoId ? { ...p, coords: nuevasCoords } : p));
+
+    // 2. Geocoding con nuevas coords
+    let direccion = puntoActual.datos?.direccion || '';
+    let ubicacion = puntoActual.datos?.ubicacion || '';
+    try {
+      const nominatimBase = import.meta.env.DEV ? '/api/nominatim' : 'https://nominatim.openstreetmap.org';
+      const res = await fetch(`${nominatimBase}/reverse?format=json&lat=${nuevaLat}&lon=${nuevaLng}&zoom=18&addressdetails=1`);
+      const data = await res.json();
+      if (data.address) {
+        const road = data.address.road || data.address.street || '';
+        const house = data.address.house_number || '';
+        direccion = `${road} ${house}`.trim() || 'Ingresa la dirección';
+        const city = data.address.city || data.address.town || data.address.village || data.address.municipality || '';
+        const state = data.address.state || data.address.region || '';
+        ubicacion = [city, state].filter(Boolean).join(', ') || '';
+      }
+    } catch (e) {
+      console.warn('Geocoding falló al mover punto:', e);
+    }
+
+    // 3. Actualizar estado con dirección y ubicación nuevas
+    const datosMover = { ...puntoActual.datos, direccion, ubicacion };
+    setPuntos(prev => prev.map(p =>
+      p.id === puntoId ? { ...p, coords: nuevasCoords, datos: datosMover } : p
+    ));
+
+    // 4. Persistir en Firebase
+    const paquete = {
+      modo: 'editar',
+      coleccion: 'puntos',
+      idDoc: String(puntoId),
+      datos: {
+        ...puntoActual,
+        coords: nuevasCoords,
+        datos: datosMover,
+        timestamp: new Date().toISOString()
+      }
+    };
+    agregarTarea('guardar_punto', paquete);
+
+    // 5. Bitácora
+    if (proyectoActual?.id) {
+      const id = formatId(puntoActual.datos);
+      enviarMensajeSistema(proyectoActual.id, `Punto movido:\n${id}`, user.uid);
+    }
+  };
+
   // 👇 2. AL FINAL, DEVUELVE LAS FUNCIONES
   return {
     abrirFormulario,
@@ -318,6 +373,7 @@ export const usePuntosLogic = ({
     guardarPunto,
     procesarFoto,
     cancelarPunto,
-    fotosSubidasRef
+    fotosSubidasRef,
+    moverPunto
   };
 };

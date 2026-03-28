@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Edit3, Trash2, Plus, ArrowLeft, Cable, X } from 'lucide-react';
+import { Eye, Edit3, Trash2, Plus, ArrowLeft, Cable, Move } from 'lucide-react';
 import { MapaReal } from '../components/Mapas';
 import BarraFibra from '../components/BarraFibra';
 
@@ -10,6 +10,7 @@ const VistaMapa = ({
   setYaSaltoAlInicio, isDark, verDetalle, iniciarEdicion,
   solicitarBorrarPunto, intentarAgregarDatos,
   setVistaAnterior,
+  modoMover, iniciarMover, cancelarMover, onPuntoDragEnd,
   // Props de supervisión
   modoSupervision = false,
   onVolverSupervision,
@@ -66,6 +67,8 @@ const VistaMapa = ({
             setYaSaltoAlInicio={setYaSaltoAlInicio}
             conexionSeleccionada={conexionSeleccionada}
             handleConexionClick={handleConexionClick}
+            modoMover={modoMover}
+            onPuntoDragEnd={onPuntoDragEnd}
           />
         ) : (
           <div className={`h-full w-full flex flex-col items-center justify-center ${theme.bg} ${theme.text}`}>
@@ -113,6 +116,19 @@ const VistaMapa = ({
           </div>
         )}
 
+        {/* Hint modoMover */}
+        {modoMover && (
+          <div className="absolute top-2 left-0 right-0 flex justify-center z-[400] px-4">
+            <div className="bg-slate-900/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-3">
+              <Move size={14} strokeWidth={2.5} />
+              <span>Arrastra el poste a la nueva posición</span>
+              <button onClick={cancelarMover} className="bg-white/20 px-2 py-1 rounded-full text-[10px] font-black active:bg-white/40">
+                CANCELAR
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Banner de supervisión */}
         {modoSupervision && (
           <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none z-40">
@@ -131,6 +147,19 @@ const VistaMapa = ({
           </div>
         )}
       </div>
+
+      {/* Botón flotante MOVER (sobre la barra inferior, solo cuando hay punto seleccionado y no modoMover) */}
+      {puntoSeleccionado && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
+        <div className="absolute bottom-24 right-4 z-[400]">
+          <button
+            onClick={iniciarMover}
+            className="w-14 h-14 bg-slate-900 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-slate-700"
+          >
+            <Move size={22} strokeWidth={2.5} />
+            <span className="text-[9px] font-black tracking-wide">MOVER</span>
+          </button>
+        </div>
+      )}
 
       {/* Barra inferior: se oculta cuando modoFibra está activo */}
       {!modoFibra && (

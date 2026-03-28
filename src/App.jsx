@@ -209,6 +209,13 @@ function App() {
   });
 
   // Lógica de puntos
+  const [modoMover, setModoMover] = React.useState(false);
+
+  // Resetear modoMover al deseleccionar punto
+  React.useEffect(() => {
+    if (!puntoSeleccionado) setModoMover(false);
+  }, [puntoSeleccionado]);
+
   const {
     abrirFormulario,
     iniciarEdicion,
@@ -218,7 +225,8 @@ function App() {
     guardarPunto,
     procesarFoto,
     cancelarPunto,
-    fotosSubidasRef
+    fotosSubidasRef,
+    moverPunto
   } = usePuntosLogic({
     user,
     puntoSeleccionado, setPuntoSeleccionado,
@@ -524,6 +532,14 @@ function App() {
           solicitarBorrarPunto={solicitarBorrarPunto}
           intentarAgregarDatos={intentarAgregarDatos}
           setVistaAnterior={setVistaAnterior}
+          // Props de MOVER
+          modoMover={mapaSupervision ? false : modoMover}
+          iniciarMover={() => setModoMover(true)}
+          cancelarMover={() => setModoMover(false)}
+          onPuntoDragEnd={(puntoId, lat, lng) => {
+            setModoMover(false);
+            moverPunto(puntoId, lat, lng);
+          }}
           // Props de FIBRA
           modoFibra={mapaSupervision ? false : modoFibra}
           setModoFibra={setModoFibra}
