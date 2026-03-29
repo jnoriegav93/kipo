@@ -1,6 +1,5 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import { db, storage } from '../firebaseConfig'; 
-// 👇 1. IMPORTANTE: AGREGAMOS 'deleteDoc'
+import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
+import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -12,6 +11,35 @@ export const SyncProvider = ({ children }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [cola, setCola] = useState([]);
   const [procesando, setProcesando] = useState(false);
+  const [erroresTareas, setErroresTareas] = useState({});
+  const erroresRef = useRef({});
+
+  const _setError = (taskId, mensaje) => {
+    const intentos = (erroresRef.current[taskId]?.intentos || 0) + 1;
+    erroresRef.current = { ...erroresRef.current, [taskId]: { mensaje, intentos } };
+    setErroresTareas({ ...erroresRef.current });
+  };
+
+  const _clearError = (taskId) => {
+    const next = { ...erroresRef.current };
+    delete next[taskId];
+    erroresRef.current = next;
+    setErroresTareas(next);
+  };
+
+  const eliminarTarea = (id) => {
+    setCola(prev => prev.filter(t => t.id !== id));
+    _clearError(id);
+  };
+
+  const reintentarTarea = (id) => {
+    _clearError(id);
+    setCola(prev => {
+      const tarea = prev.find(t => t.id === id);
+      if (!tarea) return prev;
+      return [tarea, ...prev.filter(t => t.id !== id)];
+    });
+  };
 
   // 1. Cargar cola al iniciar
   useEffect(() => {
@@ -73,53 +101,47 @@ export const SyncProvider = ({ children }) => {
       return item;
   };
 
-  // --- MOTOR DE SUBIDA (ACTUALIZADO CON BORRADO) ---
+  // --- MOTOR DE SUBIDA ---
   const procesarCola = async () => {
     if (procesando || cola.length === 0) return;
+    // Buscar primera tarea que no haya fallado 3 veces
+    const tareaIndex = cola.findIndex(t => (erroresRef.current[t.id]?.intentos || 0) < 3);
+    if (tareaIndex === -1) return; // todas bloqueadas, esperar reintento manual
+    const tarea = cola[tareaIndex];
     setProcesando(true);
-    const tarea = cola[0]; 
 
     try {
       console.log(`🟡 Procesando tarea: ${tarea.tipo}`, tarea);
 
-      // CASO 1: GUARDAR O EDITAR
       if (tarea.tipo === 'guardar_punto') {
         const { modo, coleccion, datos, idDoc } = tarea.datos;
         const fotosProcesadas = await procesarFotosRecursivo(datos?.datos?.fotos, datos.ownerId);
-        
-        const datosFinales = { 
-            ...datos, 
-            datos: { ...datos.datos, fotos: fotosProcesadas }
-        };
-
+        const datosFinales = { ...datos, datos: { ...datos.datos, fotos: fotosProcesadas } };
         if (modo === 'crear') {
-            await addDoc(collection(db, coleccion), datosFinales);
+          await addDoc(collection(db, coleccion), datosFinales);
         } else {
-            await updateDoc(doc(db, coleccion, idDoc), { datos: datosFinales.datos });
+          await updateDoc(doc(db, coleccion, idDoc), { datos: datosFinales.datos });
         }
-      } 
-      
-      // CASO 2: MOVER PUNTO (actualiza coords + datos en Firestore)
-      else if (tarea.tipo === 'mover_punto') {
+      } else if (tarea.tipo === 'mover_punto') {
         const { coleccion, idDoc, coords, datos } = tarea.datos;
         await updateDoc(doc(db, coleccion, idDoc), { coords, datos });
-      }
-
-      // 👇 CASO 3: BORRAR (ESTO ES LO QUE FALTABA)
-      else if (tarea.tipo === 'borrar_punto') {
-          const { coleccion, idDoc } = tarea.datos;
-          await deleteDoc(doc(db, coleccion, idDoc));
-          console.log(`🗑️ Documento ${idDoc} eliminado de ${coleccion}`);
+      } else if (tarea.tipo === 'borrar_punto') {
+        const { coleccion, idDoc } = tarea.datos;
+        await deleteDoc(doc(db, coleccion, idDoc));
       }
 
       console.log(`✅ Tarea ${tarea.id} completada.`);
       setCola(prev => prev.filter(t => t.id !== tarea.id));
+      _clearError(tarea.id);
 
     } catch (error) {
       console.error("❌ Error sync:", error);
-      // Opcional: Si el error es "documento no encontrado" al borrar, ignoramos y seguimos
+      // Borrar no encontrado: limpiar igual
       if (tarea.tipo === 'borrar_punto' && error.code === 'not-found') {
-          setCola(prev => prev.filter(t => t.id !== tarea.id));
+        setCola(prev => prev.filter(t => t.id !== tarea.id));
+        _clearError(tarea.id);
+      } else {
+        _setError(tarea.id, error.message || 'Error desconocido');
       }
     } finally {
       setProcesando(false);
@@ -127,13 +149,15 @@ export const SyncProvider = ({ children }) => {
   };
 
   const getEstadoSync = () => {
-    if (!isOnline) return 'offline'; 
-    if (cola.length > 0) return 'syncing';
-    return 'synced'; 
+    if (!isOnline) return 'offline';
+    if (cola.length === 0) return 'synced';
+    const todasBloqueadas = cola.every(t => (erroresRef.current[t.id]?.intentos || 0) >= 3);
+    if (todasBloqueadas) return 'error';
+    return 'syncing';
   };
 
   return (
-    <SyncContext.Provider value={{ isOnline, cola, agregarTarea, estadoSync: getEstadoSync() }}>
+    <SyncContext.Provider value={{ isOnline, cola, agregarTarea, estadoSync: getEstadoSync(), erroresTareas, procesando, eliminarTarea, reintentarTarea }}>
       {children}
     </SyncContext.Provider>
   );

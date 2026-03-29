@@ -6,6 +6,7 @@ export default function Header({
   setMenuAbierto,
   estadoSync,
   cola,
+  onClickSync,
   setGpsTrigger,
   mostrarEtiquetas,
   setMostrarEtiquetas,
@@ -50,27 +51,33 @@ export default function Header({
       <div className="flex items-center gap-1">
           
           {/* 0. INDICADOR DE SINCRONIZACIÓN */}
-          <div className={`
-            flex items-center justify-center w-10 h-10 rounded-xl border-2 transition-all duration-300 relative
-            ${estadoSync === 'synced' 
-              ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' 
-              : estadoSync === 'syncing' 
-                ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400' 
-                : estadoSync === 'offline' 
-                  ? 'bg-slate-700/50 border-slate-600 text-slate-500' 
-                  : `${theme.bg} ${theme.border} text-slate-400`
-            }
-          `}>
+          <button
+            onClick={onClickSync}
+            className={`
+              flex items-center justify-center w-10 h-10 rounded-xl border-2 transition-all duration-300 relative active:scale-95
+              ${estadoSync === 'synced'
+                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
+                : estadoSync === 'syncing'
+                  ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'
+                  : estadoSync === 'error'
+                    ? 'bg-red-500/10 border-red-500/50 text-red-400'
+                    : estadoSync === 'offline'
+                      ? 'bg-slate-700/50 border-slate-600 text-slate-500'
+                      : `${theme.bg} ${theme.border} text-slate-400`
+              }
+            `}
+          >
             {estadoSync === 'syncing' && <RefreshCw size={20} className="animate-spin" />}
             {estadoSync === 'synced' && <Cloud size={20} />}
             {estadoSync === 'offline' && <CloudOff size={20} />}
-            
+            {estadoSync === 'error' && <Cloud size={20} />}
+
             {cola.length > 0 && (
               <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white z-10 shadow-sm border border-white/20">
-                {cola.length}
+                {cola.length > 9 ? '9+' : cola.length}
               </span>
             )}
-          </div>
+          </button>
 
           {/* 1. BOTÓN GPS */}
           <button 

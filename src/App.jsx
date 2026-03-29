@@ -6,6 +6,7 @@ import { db } from './firebaseConfig';
 import Login from './Login';
 import UpdateBanner from './components/UpdateBanner';
 import Header from './components/Header';
+import QueueModal from './components/QueueModal';
 import Sidebar from './components/Sidebar';
 import Configurador from './components/Configurador';
 import Formulario from './components/Formulario';
@@ -44,7 +45,8 @@ import { DATA_INICIAL } from './data/constantes';
 function App() {
   // Autenticación y sincronización
   const { user, deviceBlocked, cerrarSesion } = useAuth();
-  const { estadoSync, cola, agregarTarea } = useSync();
+  const { estadoSync, cola, agregarTarea, erroresTareas, procesando: syncProcesando, eliminarTarea, reintentarTarea, isOnline } = useSync();
+  const [queueModalAbierto, setQueueModalAbierto] = React.useState(false);
   const { logoApp, setLogoApp, handleCargarLogo } = useLogo(user);
 
   // Tema
@@ -453,6 +455,7 @@ function App() {
         setMenuAbierto={setMenuAbierto}
         estadoSync={estadoSync}
         cola={cola}
+        onClickSync={() => setQueueModalAbierto(true)}
         setGpsTrigger={setGpsTrigger}
         mostrarEtiquetas={mostrarEtiquetas}
         setMostrarEtiquetas={setMostrarEtiquetas}
@@ -462,6 +465,18 @@ function App() {
         mapStyle={mapStyle}
         setMapStyle={setMapStyle}
         totalNotificaciones={totalNotificaciones}
+      />
+
+      <QueueModal
+        isOpen={queueModalAbierto}
+        onClose={() => setQueueModalAbierto(false)}
+        cola={cola}
+        erroresTareas={erroresTareas}
+        procesando={syncProcesando}
+        isOnline={isOnline}
+        eliminarTarea={eliminarTarea}
+        reintentarTarea={reintentarTarea}
+        theme={theme}
       />
 
       <Sidebar
