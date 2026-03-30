@@ -140,16 +140,16 @@ function App() {
         if (data.address) {
           const road = data.address.road || data.address.street || '';
           const house = data.address.house_number || '';
-          const direccion = `${road} ${house}`.trim() || 'Ingresa la dirección';
+          const direccion = `${road} ${house}`.trim() || '-';
           const city = data.address.city || data.address.town || data.address.village || data.address.municipality || '';
           const state = data.address.state || data.address.region || '';
           const ubicacion = [city, state].filter(Boolean).join(', ') || '';
           setDatosFormulario(prev => ({ ...prev, direccion, ubicacion }));
         } else {
-          setDatosFormulario(prev => ({ ...prev, direccion: 'Ingresa la dirección' }));
+          setDatosFormulario(prev => ({ ...prev, direccion: '-' }));
         }
       })
-      .catch(() => setDatosFormulario(prev => ({ ...prev, direccion: 'Ingresa la dirección' })));
+      .catch(() => setDatosFormulario(prev => ({ ...prev, direccion: '-' })));
   }, [vista, puntoTemporal?.lat, puntoTemporal?.lng]);
 
   // Historial de vistas para navegación "Volver"

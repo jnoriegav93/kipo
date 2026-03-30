@@ -264,7 +264,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         if (data.address) {
           const road = data.address.road || data.address.street || '';
           const house = data.address.house_number || '';
-          const direccion = `${road} ${house}`.trim() || 'Ingresa la dirección';
+          const direccion = `${road} ${house}`.trim() || '-';
 
           const city = data.address.city || data.address.town || data.address.village || data.address.municipality || '';
           const state = data.address.state || data.address.region || '';
@@ -272,11 +272,11 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
 
           setDatos(prev => ({ ...prev, direccion, ubicacion }));
         } else {
-          setDatos(prev => ({ ...prev, direccion: 'Ingresa la dirección' }));
+          setDatos(prev => ({ ...prev, direccion: '-' }));
         }
       } catch (error) {
         // En caso de error (ej: CORS en localhost), mostrar mensaje
-        setDatos(prev => ({ ...prev, direccion: 'Ingresa la dirección' }));
+        setDatos(prev => ({ ...prev, direccion: '-' }));
       }
     };
 

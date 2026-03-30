@@ -327,7 +327,7 @@ export const usePuntosLogic = ({
       if (data.address) {
         const road = data.address.road || data.address.street || '';
         const house = data.address.house_number || '';
-        direccion = `${road} ${house}`.trim() || 'Ingresa la dirección';
+        direccion = `${road} ${house}`.trim() || '-';
         const city = data.address.city || data.address.town || data.address.village || data.address.municipality || '';
         const state = data.address.state || data.address.region || '';
         ubicacion = [city, state].filter(Boolean).join(', ') || '';
