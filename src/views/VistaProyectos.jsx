@@ -36,10 +36,12 @@ const VistaProyectos = ({
   }, [proyectos, proyectoActual]);
 
   // Estado para exportación
+  const exportKey = `kipo_export_results_${user?.uid || 'anon'}`;
+  const exportPendingKey = `kipo_export_pending_${user?.uid || 'anon'}`;
   const [exportandoTipo, setExportandoTipo] = React.useState(null); // 'ZIP' | 'EXCEL' | 'KMZ' | null
   const [resultadosExportacion, setResultadosExportacion] = React.useState(() => {
     try {
-      const saved = localStorage.getItem('kipo_export_results');
+      const saved = localStorage.getItem(`kipo_export_results_${user?.uid || 'anon'}`);
       if (!saved) return [];
       const parsed = JSON.parse(saved);
       // Descartar resultados de más de 48h (los links del servidor expiran)
@@ -53,11 +55,11 @@ const VistaProyectos = ({
   React.useEffect(() => {
     const completados = resultadosExportacion.filter(r => !r.cargando);
     if (completados.length > 0) {
-      localStorage.setItem('kipo_export_results', JSON.stringify(completados));
+      localStorage.setItem(exportKey, JSON.stringify(completados));
     } else {
-      localStorage.removeItem('kipo_export_results');
+      localStorage.removeItem(exportKey);
     }
-  }, [resultadosExportacion]);
+  }, [resultadosExportacion, exportKey]);
 
   // Cancelar Exportación
   const cancelarExportacion = () => {
@@ -79,13 +81,13 @@ const VistaProyectos = ({
     }]);
     try {
       const exportId = await crearExportacion(proy.id, tipo, limiteFotos, stampConfig);
-      localStorage.setItem('kipo_export_pending', JSON.stringify({
+      localStorage.setItem(exportPendingKey, JSON.stringify({
         exportId, tipo, proyectoId: proy.id, timestamp: Date.now()
       }));
       const unsubscribe = suscribirseAExportacion(exportId, (exportData) => {
         if (exportData.status === 'listo') {
           unsubscribe();
-          localStorage.removeItem('kipo_export_pending');
+          localStorage.removeItem(exportPendingKey);
           const ts = Date.now();
           const nuevosResultados = (exportData.resultados || []).map((r, i) => ({
             id: `srv_${exportId}_${i}`,
@@ -101,7 +103,7 @@ const VistaProyectos = ({
           });
         } else if (exportData.status === 'error') {
           unsubscribe();
-          localStorage.removeItem('kipo_export_pending');
+          localStorage.removeItem(exportPendingKey);
           setResultadosExportacion(prev => prev.filter(r => r.id !== tempId));
           setAlertData({ title: 'Error del servidor', message: exportData.error || 'Error procesando la exportación.' });
         }
@@ -115,15 +117,15 @@ const VistaProyectos = ({
 
   // Recuperar exportación pendiente si el usuario cerró la app mientras el servidor procesaba
   React.useEffect(() => {
-    const raw = localStorage.getItem('kipo_export_pending');
+    const raw = localStorage.getItem(exportPendingKey);
     if (!raw) return;
     let pending;
-    try { pending = JSON.parse(raw); } catch { localStorage.removeItem('kipo_export_pending'); return; }
+    try { pending = JSON.parse(raw); } catch { localStorage.removeItem(exportPendingKey); return; }
     const { exportId, tipo, proyectoId, timestamp } = pending;
     if (proyectoId !== proyectoActual?.id) return;
     // Links del servidor expiran en 48h, no tiene sentido recuperar más tarde
     if (Date.now() - timestamp > 48 * 60 * 60 * 1000) {
-      localStorage.removeItem('kipo_export_pending');
+      localStorage.removeItem(exportPendingKey);
       return;
     }
     const tempId = `srv_recovery_${exportId}`;
@@ -134,7 +136,7 @@ const VistaProyectos = ({
     const unsubscribe = suscribirseAExportacion(exportId, (exportData) => {
       if (exportData.status === 'listo') {
         unsubscribe();
-        localStorage.removeItem('kipo_export_pending');
+        localStorage.removeItem(exportPendingKey);
         const ts = Date.now();
         const nuevosResultados = (exportData.resultados || []).map((r, i) => ({
           id: `srv_${exportId}_${i}`,
@@ -151,7 +153,7 @@ const VistaProyectos = ({
         setModalOpen('EXPORTAR_HUB');
       } else if (exportData.status === 'error') {
         unsubscribe();
-        localStorage.removeItem('kipo_export_pending');
+        localStorage.removeItem(exportPendingKey);
         setResultadosExportacion(prev => prev.filter(r => r.id !== tempId));
         setAlertData({ title: 'Error del servidor', message: exportData.error || 'Error procesando.' });
       }
