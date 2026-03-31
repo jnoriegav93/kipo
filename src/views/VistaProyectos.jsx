@@ -771,108 +771,123 @@ const VistaProyectos = ({
         )
       }
 
-      {/* MODAL SUPERVISORES */}
+      {/* MODAL COLABORADORES */}
       {
-        modalLocalOpen?.startsWith('SUPERVISORES_') && proyectoActual && (
-          <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalLocalOpen(null)}>
-            <div className={`${theme.card} rounded-2xl max-w-md w-full shadow-2xl border-2 ${theme.border} overflow-hidden`} onClick={(e) => e.stopPropagation()}>
-
-              {/* Header */}
-              <div className={`${theme.header} px-6 py-4 border-b-2 ${theme.border} flex items-center justify-between`}>
-                <div className="flex items-center gap-3">
-                  <div className="bg-green-100 p-2 rounded-lg">
-                    <Users size={20} className="text-green-600" />
+        modalLocalOpen?.startsWith('SUPERVISORES_') && proyectoActual && (() => {
+          const PERMISOS_INFO = {
+            lectura: { label: 'Supervisor', color: 'bg-blue-100 text-blue-700' },
+            edicion: { label: 'Editor', color: 'bg-green-100 text-green-700' },
+            ambos:   { label: 'Sup + Editor', color: 'bg-purple-100 text-purple-700' },
+          };
+          // Estado local para el permiso seleccionado en cada solicitud pendiente
+          // Usamos un ref trick: renderizamos un sub-componente para manejar estado por solicitud
+          const SolicitudItem = ({ sol }) => {
+            const [permisoElegido, setPermisoElegido] = React.useState('lectura');
+            return (
+              <div className={`${theme.card} border-2 border-amber-400 rounded-xl p-3`}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-black ${theme.text} truncate`}>{sol.nombrePersonal || sol.nombre}</p>
+                    <p className={`text-xs ${theme.subtext} truncate`}>{sol.empresaPersonal || 'Sin empresa'}</p>
                   </div>
-                  <div>
-                    <h3 className={`font-black text-lg ${theme.text} uppercase`}>Supervisores</h3>
-                    <p className={`text-xs ${theme.textSec} font-medium`}>
-                      {proyectoActual.compartidoCon?.length || 0} activo{proyectoActual.compartidoCon?.length !== 1 ? 's' : ''}
-                      {proyectoActual.solicitudesPendientes?.length > 0 && ` • ${proyectoActual.solicitudesPendientes.length} pendiente${proyectoActual.solicitudesPendientes.length > 1 ? 's' : ''}`}
-                    </p>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button onClick={() => aprobarSupervisor(proyectoActual.id, sol, permisoElegido)}
+                      className="bg-green-600 text-white p-1.5 rounded-lg active:scale-95 transition-all" title="Aprobar">
+                      <Check size={16} />
+                    </button>
+                    <button onClick={() => rechazarSupervisor(proyectoActual.id, sol)}
+                      className="bg-red-500 text-white p-1.5 rounded-lg active:scale-95 transition-all" title="Rechazar">
+                      <XCircle size={16} />
+                    </button>
                   </div>
                 </div>
-                <button onClick={() => setModalLocalOpen(null)} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
-                  <X size={24} />
-                </button>
+                {/* Selector de permiso */}
+                <div className="flex gap-1.5">
+                  {Object.entries(PERMISOS_INFO).map(([key, { label, color }]) => (
+                    <button key={key} onClick={() => setPermisoElegido(key)}
+                      className={`flex-1 py-1 rounded-lg text-[10px] font-black border-2 transition-all ${permisoElegido === key ? color + ' border-current' : `${theme.subtext} border-slate-200`}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
+            );
+          };
 
-              {/* Contenido */}
-              <div className="p-6 max-h-96 overflow-y-auto space-y-3">
+          return (
+            <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalLocalOpen(null)}>
+              <div className={`${theme.card} rounded-2xl max-w-md w-full shadow-2xl border-2 ${theme.border} overflow-hidden`} onClick={(e) => e.stopPropagation()}>
 
-                {/* Solicitudes pendientes */}
-                {proyectoActual.solicitudesPendientes?.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider mb-2`}>Solicitudes Pendientes</h4>
-                    {proyectoActual.solicitudesPendientes.map(sol => (
-                      <div key={sol.uid} className={`${theme.card} border-2 border-slate-600 rounded-lg p-4`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <p className={`text-sm font-black ${theme.text}`}>{sol.nombrePersonal || sol.nombre}</p>
-                            <p className={`text-xs ${theme.textSec} mt-0.5`}>{sol.empresaPersonal || 'Sin empresa'}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => aprobarSupervisor(proyectoActual.id, sol)}
-                              className="bg-green-600 text-white p-2 rounded-lg hover:bg-green-700 active:scale-95 transition-all"
-                              title="Aprobar"
-                            >
-                              <Check size={18} />
+                {/* Header */}
+                <div className={`${theme.header} px-6 py-4 border-b-2 ${theme.border} flex items-center justify-between`}>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-purple-100 p-2 rounded-lg">
+                      <Users size={20} className="text-purple-600" />
+                    </div>
+                    <div>
+                      <h3 className={`font-black text-lg ${theme.text} uppercase`}>Colaboradores</h3>
+                      <p className={`text-xs ${theme.subtext} font-medium`}>
+                        {proyectoActual.compartidoCon?.length || 0} activo{proyectoActual.compartidoCon?.length !== 1 ? 's' : ''}
+                        {proyectoActual.solicitudesPendientes?.length > 0 && ` • ${proyectoActual.solicitudesPendientes.length} pendiente${proyectoActual.solicitudesPendientes.length > 1 ? 's' : ''}`}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setModalLocalOpen(null)} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
+                    <X size={24} />
+                  </button>
+                </div>
+
+                {/* Contenido */}
+                <div className="p-4 max-h-[70vh] overflow-y-auto space-y-3">
+
+                  {/* Solicitudes pendientes */}
+                  {proyectoActual.solicitudesPendientes?.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider`}>Solicitudes Pendientes</h4>
+                      {proyectoActual.solicitudesPendientes.map(sol => (
+                        <SolicitudItem key={sol.uid} sol={sol} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Colaboradores activos */}
+                  {proyectoActual.compartidoCon?.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider ${proyectoActual.solicitudesPendientes?.length > 0 ? 'mt-2' : ''}`}>Colaboradores Activos</h4>
+                      {proyectoActual.compartidoCon.map(uid => {
+                        const info = proyectoActual.supervisoresInfo?.[uid];
+                        const permiso = proyectoActual.permisos?.[uid] || 'lectura';
+                        const { label, color } = PERMISOS_INFO[permiso] || PERMISOS_INFO.lectura;
+                        return (
+                          <div key={uid} className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 flex items-center justify-between gap-3`}>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-black ${theme.text} truncate`}>{info?.nombre || 'Colaborador'}</p>
+                              <p className={`text-xs ${theme.subtext} truncate`}>{info?.empresa || 'Sin empresa'}</p>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${color}`}>{label}</span>
+                            <button onClick={() => eliminarSupervisor(proyectoActual.id, uid)}
+                              className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg active:scale-95 transition-all shrink-0" title="Eliminar acceso">
+                              <Trash2 size={16} />
                             </button>
-                            <button
-                              onClick={() => rechazarSupervisor(proyectoActual.id, sol)}
-                              className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 active:scale-95 transition-all"
-                              title="Rechazar"
-                            >
-                              <XCircle size={18} />
-                            </button>
                           </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
 
-                {/* Supervisores activos */}
-                {proyectoActual.compartidoCon?.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider mb-2 ${proyectoActual.solicitudesPendientes?.length > 0 ? 'mt-4' : ''}`}>Supervisores Activos</h4>
-                    {proyectoActual.compartidoCon.map(supervisorUid => {
-                      const info = proyectoActual.supervisoresInfo?.[supervisorUid];
-                      return (
-                        <div key={supervisorUid} className={`${theme.card} border-2 ${theme.border} rounded-lg p-4 flex items-center justify-between`}>
-                          <div>
-                            <p className={`text-sm font-black ${theme.text}`}>{info?.nombre || 'Supervisor'}</p>
-                            <p className={`text-xs ${theme.textSec} mt-0.5`}>{info?.empresa || 'Sin empresa'}</p>
-                          </div>
-                          <button
-                            onClick={() => eliminarSupervisor(proyectoActual.id, supervisorUid)}
-                            className="text-red-600 hover:bg-red-50 p-2 rounded-lg active:scale-95 transition-all"
-                            title="Eliminar acceso"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Estado vacío */}
-                {proyectoActual.compartidoCon?.length === 0 && proyectoActual.solicitudesPendientes?.length === 0 && (
-                  <div className="text-center py-8">
-                    <Users size={48} className={`${theme.textSec} mx-auto mb-3 opacity-30`} />
-                    <p className={`text-sm ${theme.textSec} font-medium`}>
-                      No hay supervisores aún
-                    </p>
-                    <p className={`text-xs ${theme.textSec} mt-1`}>
-                      Comparte el código de acceso para agregar supervisores
-                    </p>
-                  </div>
-                )}
+                  {/* Estado vacío */}
+                  {!proyectoActual.compartidoCon?.length && !proyectoActual.solicitudesPendientes?.length && (
+                    <div className="text-center py-8">
+                      <Users size={48} className={`${theme.subtext} mx-auto mb-3 opacity-30`} />
+                      <p className={`text-sm ${theme.subtext} font-medium`}>No hay colaboradores aún</p>
+                      <p className={`text-xs ${theme.subtext} mt-1`}>Comparte el código de acceso para invitar colaboradores</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )
+          );
+        })()
       }
 
       {/* MODAL LISTA PUNTOS - PANTALLA COMPLETA */}

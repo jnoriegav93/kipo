@@ -285,19 +285,20 @@ const solicitarBorrarProyecto = (proyId) => {
 };
 
 // --- FUNCIONES DE SUPERVISIÓN ---
-const aprobarSupervisor = async (proyectoId, solicitud) => {
+const aprobarSupervisor = async (proyectoId, solicitud, permiso = 'lectura') => {
     try {
         const proyectoRef = doc(db, "proyectos", proyectoId);
-        
-        const infoSupervisor = {
+
+        const infoColaborador = {
             nombre: solicitud.nombrePersonal || solicitud.nombre || '',
-            empresa: solicitud.empresaPersonal || ''
+            empresa: solicitud.empresaPersonal || '',
+            permiso
         };
 
         await updateDoc(proyectoRef, {
             compartidoCon: arrayUnion(solicitud.uid),
-            [`permisos.${solicitud.uid}`]: 'lectura',
-            [`supervisoresInfo.${solicitud.uid}`]: infoSupervisor,
+            [`permisos.${solicitud.uid}`]: permiso,
+            [`supervisoresInfo.${solicitud.uid}`]: infoColaborador,
             solicitudesPendientes: arrayRemove(solicitud)
         });
 
@@ -308,8 +309,8 @@ const aprobarSupervisor = async (proyectoId, solicitud) => {
                 compartidoCon: (p.compartidoCon || []).includes(solicitud.uid)
                     ? (p.compartidoCon || [])
                     : [...(p.compartidoCon || []), solicitud.uid],
-                permisos: { ...p.permisos, [solicitud.uid]: 'lectura' },
-                supervisoresInfo: { ...(p.supervisoresInfo || {}), [solicitud.uid]: infoSupervisor },
+                permisos: { ...p.permisos, [solicitud.uid]: permiso },
+                supervisoresInfo: { ...(p.supervisoresInfo || {}), [solicitud.uid]: infoColaborador },
                 solicitudesPendientes: (p.solicitudesPendientes || []).filter(s => s.uid !== solicitud.uid)
             } : p
         ));
@@ -320,15 +321,16 @@ const aprobarSupervisor = async (proyectoId, solicitud) => {
                 compartidoCon: (prev.compartidoCon || []).includes(solicitud.uid)
                     ? (prev.compartidoCon || [])
                     : [...(prev.compartidoCon || []), solicitud.uid],
-                permisos: { ...prev.permisos, [solicitud.uid]: 'lectura' },
-                supervisoresInfo: { ...(prev.supervisoresInfo || {}), [solicitud.uid]: infoSupervisor },
+                permisos: { ...prev.permisos, [solicitud.uid]: permiso },
+                supervisoresInfo: { ...(prev.supervisoresInfo || {}), [solicitud.uid]: infoColaborador },
                 solicitudesPendientes: (prev.solicitudesPendientes || []).filter(s => s.uid !== solicitud.uid)
             }));
         }
 
-        setAlertData({ title: "Aprobado", message: `${solicitud.nombre} ahora puede ver este proyecto.` });
+        const labels = { lectura: 'supervisor', edicion: 'editor', ambos: 'supervisor y editor' };
+        setAlertData({ title: "Aprobado", message: `${solicitud.nombrePersonal || solicitud.nombre} se agregó como ${labels[permiso] || permiso}.` });
     } catch (error) {
-        console.error("Error al aprobar supervisor:", error);
+        console.error("Error al aprobar colaborador:", error);
         setAlertData({ title: "Error", message: "No se pudo aprobar la solicitud." });
     }
 };
@@ -393,7 +395,7 @@ const eliminarSupervisor = async (proyectoId, supervisorUid) => {
             }));
         }
 
-        setAlertData({ title: "Eliminado", message: "Supervisor eliminado del proyecto." });
+        setAlertData({ title: "Eliminado", message: "Colaborador eliminado del proyecto." });
     } catch (error) {
         console.error("Error al eliminar supervisor:", error);
         setAlertData({ title: "Error", message: "No se pudo eliminar el supervisor." });
