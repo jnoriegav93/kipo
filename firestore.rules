@@ -6,13 +6,14 @@ service cloud.firestore {
     match /proyectos/{proyectoId} {
       // Leer: dueño o cualquier colaborador (compartidoCon)
       allow read: if request.auth != null && (
+        resource == null ||
         resource.data.ownerId == request.auth.uid ||
         request.auth.uid in resource.data.get('compartidoCon', [])
       );
-      // Crear: solo autenticados (crean su propio proyecto)
+      // Crear (setDoc con doc nuevo): autenticado y ownerId coincide
       allow create: if request.auth != null &&
         request.resource.data.ownerId == request.auth.uid;
-      // Editar: dueño (gestión completa) o editor (solo ciertos campos)
+      // Editar: dueño o editor
       allow update: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||
         (
