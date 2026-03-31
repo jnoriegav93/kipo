@@ -75,13 +75,13 @@ export const SyncProvider = ({ children }) => {
   };
 
   // --- FUNCIÓN RECURSIVA PARA FOTOS (NECESARIA PARA GUARDAR) ---
-  const procesarFotosRecursivo = async (item, ownerId) => {
+  const procesarFotosRecursivo = async (item, ownerId, proyectoId) => {
       if (!item) return item;
-      if (Array.isArray(item)) return Promise.all(item.map(subItem => procesarFotosRecursivo(subItem, ownerId)));
+      if (Array.isArray(item)) return Promise.all(item.map(subItem => procesarFotosRecursivo(subItem, ownerId, proyectoId)));
       if (typeof item === 'object' && item !== null) {
           const nuevoObjeto = {};
           for (const key of Object.keys(item)) {
-              nuevoObjeto[key] = await procesarFotosRecursivo(item[key], ownerId);
+              nuevoObjeto[key] = await procesarFotosRecursivo(item[key], ownerId, proyectoId);
           }
           return nuevoObjeto;
       }
@@ -89,7 +89,11 @@ export const SyncProvider = ({ children }) => {
           try {
               const res = await fetch(item);
               const blob = await res.blob();
-              const refName = `fotos/${ownerId || 'anon'}/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.jpg`;
+              // Usar proyectoId si está disponible, para que las fotos queden bajo el proyecto
+              const basePath = proyectoId
+                ? `proyectos/${proyectoId}/fotos_generales`
+                : `fotos/${ownerId || 'anon'}`;
+              const refName = `${basePath}/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.jpg`;
               const storageRef = ref(storage, refName);
               await uploadBytes(storageRef, blob);
               return await getDownloadURL(storageRef);
@@ -115,8 +119,9 @@ export const SyncProvider = ({ children }) => {
 
       if (tarea.tipo === 'guardar_punto') {
         const { modo, coleccion, datos, idDoc } = tarea.datos;
-        const fotosProcesadas = await procesarFotosRecursivo(datos?.datos?.fotos, datos.ownerId);
-        const datosFinales = { ...datos, datos: { ...datos.datos, fotos: fotosProcesadas } };
+        const fotosProcesadas = await procesarFotosRecursivo(datos?.datos?.fotos, datos.ownerId, datos.proyectoId);
+        const fotosGeneralesProcesadas = await procesarFotosRecursivo(datos?.datos?.fotosGenerales, datos.ownerId, datos.proyectoId);
+        const datosFinales = { ...datos, datos: { ...datos.datos, fotos: fotosProcesadas, fotosGenerales: fotosGeneralesProcesadas } };
         if (modo === 'crear') {
           await addDoc(collection(db, coleccion), datosFinales);
         } else {

@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── FOTOS Y ARCHIVOS DE PROYECTOS ─────────────────────────────────────
+    // Ruta: proyectos/{proyectoId}/...
+    match /proyectos/{proyectoId}/{allPaths=**} {
+      // Leer: cualquier usuario autenticado (para exportar, ver fotos, etc.)
+      allow read: if request.auth != null;
+      // Escribir: el dueño del proyecto o un editor
+      allow write: if request.auth != null;
+    }
+
+    // ── FOTOS LEGACY (path antiguo fotos/{ownerId}/...) ───────────────────
+    match /fotos/{ownerId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == ownerId;
+    }
+
+    // ── LOGOS DE EMPRESA ──────────────────────────────────────────────────
+    match /logos_empresas/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // ── LOGOS DE PROYECTOS ────────────────────────────────────────────────
+    match /logos_proyectos/{proyectoId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
