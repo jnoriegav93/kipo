@@ -170,9 +170,27 @@ function App() {
     proyectos, setProyectos,
     proyectosSupervisados, setProyectosSupervisados,
     puntos, setPuntos,
+    puntosCompartidos,
     conexiones, setConexiones,
     config: configNube, setConfig
   } = useFirebaseData(user);
+
+  // Todos los puntos visibles: propios + de proyectos donde soy editor (deduplicados)
+  const todosLosPuntos = React.useMemo(() => {
+    const map = new Map();
+    [...puntos, ...puntosCompartidos].forEach(p => map.set(p.id, p));
+    return Array.from(map.values());
+  }, [puntos, puntosCompartidos]);
+
+  // Separar proyectos compartidos: solo supervisión vs con permiso de edición
+  const proyectosEditor = React.useMemo(() =>
+    proyectosSupervisados.filter(p => p.permisoActual === 'edicion' || p.permisoActual === 'ambos'),
+    [proyectosSupervisados]
+  );
+  const proyectosSupervision = React.useMemo(() =>
+    proyectosSupervisados.filter(p => p.permisoActual === 'lectura' || p.permisoActual === 'solo_lectura' || p.permisoActual === 'ambos'),
+    [proyectosSupervisados]
+  );
 
   const config = configNube || DATA_INICIAL;
 
@@ -242,7 +260,7 @@ function App() {
     datosFormulario, setDatosFormulario,
     memoriaUltimoPunto, setMemoriaUltimoPunto,
     diaActual, proyectoActual,
-    puntos, setPuntos, setConexiones,
+    puntos: todosLosPuntos, setPuntos, setConexiones,
     setVista,
     setConfirmData, setAlertData,
     agregarTarea, theme,
@@ -438,9 +456,10 @@ function App() {
     }
   };
 
-  // Filtros de visibilidad
-  const puntosVisiblesMapa = filtrosVisibilidad.getPuntosVisibles(puntos, diasVisibles, proyectos);
-  const totalPuntosProyecto = proyectoActual ? puntos.filter(p => p.proyectoId === proyectoActual.id).length : 0;
+  // Filtros de visibilidad — usar todosLosPuntos para incluir puntos de proyectos donde soy editor
+  const todosLosProyectos = React.useMemo(() => [...proyectos, ...proyectosEditor], [proyectos, proyectosEditor]);
+  const puntosVisiblesMapa = filtrosVisibilidad.getPuntosVisibles(todosLosPuntos, diasVisibles, todosLosProyectos);
+  const totalPuntosProyecto = proyectoActual ? todosLosPuntos.filter(p => p.proyectoId === proyectoActual.id).length : 0;
   const conexionesVisiblesBase = filtrosVisibilidad.getConexionesVisibles(conexiones, diasVisibles, proyectos);
   const conexionesVisiblesMapa = fibrasVisibles ? conexionesVisiblesBase : [];
 
@@ -488,8 +507,8 @@ function App() {
         setVista={setVistaConHistorial}
         cerrarSesion={cerrarSesion}
         config={config}
-        totalProyectos={proyectos.length}
-        totalSupervision={proyectosSupervisados.length}
+        totalProyectos={todosLosProyectos.length}
+        totalSupervision={proyectosSupervision.length}
         totalNotifProyectos={totalNotifProyectos}
         totalNotifSupervisados={totalNotifSupervisados}
         isDark={isDark}
@@ -645,9 +664,9 @@ function App() {
         <VistaProyectos
           theme={theme}
           isDark={isDark}
-          proyectos={proyectos}
+          proyectos={todosLosProyectos}
           proyectoActual={proyectoActual}
-          puntos={puntos}
+          puntos={todosLosPuntos}
           diasVisibles={diasVisibles}
           config={config}
           logoApp={logoApp}
@@ -701,7 +720,7 @@ function App() {
         <VistaSupervision
           theme={theme}
           user={user}
-          proyectosSupervisados={proyectosSupervisados}
+          proyectosSupervisados={proyectosSupervision}
           solicitudesPendientes={solicitudesEnviadas.filter(s => !proyectosSupervisados.some(p => p.id === s.id))}
           onVolver={volverVistaAnterior}
           setModalCodigoAbierto={setModalCodigoAbierto}

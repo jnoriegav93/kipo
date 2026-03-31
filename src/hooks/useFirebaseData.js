@@ -7,6 +7,7 @@ export const useFirebaseData = (user) => {
   const [proyectos, setProyectos] = useState([]);
   const [proyectosSupervisados, setProyectosSupervisados] = useState([]);
   const [puntos, setPuntos] = useState([]);
+  const [puntosCompartidos, setPuntosCompartidos] = useState([]);
   const [conexiones, setConexiones] = useState([]);
   const [config, setConfig] = useState(null);
 
@@ -77,12 +78,36 @@ if (!user) {
     };
   }, [user]);
 
+  // Efecto para cargar puntos de proyectos donde el usuario es editor
+  useEffect(() => {
+    if (!user || proyectosSupervisados.length === 0) {
+      setPuntosCompartidos([]);
+      return;
+    }
+    const proyectosEditor = proyectosSupervisados.filter(p => {
+      const permiso = p.permisoActual;
+      return permiso === 'edicion' || permiso === 'ambos';
+    });
+    if (proyectosEditor.length === 0) {
+      setPuntosCompartidos([]);
+      return;
+    }
+    const ids = proyectosEditor.map(p => p.id).slice(0, 30);
+    const q = query(collection(db, "puntos"), where("proyectoId", "in", ids));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+      setPuntosCompartidos(docs);
+    }, (error) => console.error("Error en PuntosCompartidos:", error));
+    return () => unsub();
+  }, [user, proyectosSupervisados]);
+
   // 3. RETURN (Entregamos los datos a App.jsx)
-  return { 
+  return {
     proyectos, setProyectos,
     proyectosSupervisados, setProyectosSupervisados,
-    puntos, setPuntos, 
-    conexiones, setConexiones, 
-    config, setConfig 
+    puntos, setPuntos,
+    puntosCompartidos,
+    conexiones, setConexiones,
+    config, setConfig
   };
 };
