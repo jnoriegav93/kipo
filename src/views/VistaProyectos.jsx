@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, ChevronDown, Eye, EyeOff, Trash2, MapPin,
-  FolderDown, FileDown, Share2, Folder, X, Key, Users, Check, XCircle, Copy, MessageCircle, Image as ImageIcon, Info, Download, Loader2, Minus, AlertTriangle, Lock, UploadCloud, Edit, Link2
+  FolderDown, FileDown, Share2, Folder, X, Key, Users, Check, XCircle, Copy, MessageCircle, Image as ImageIcon, Info, Download, Loader2, Minus, AlertTriangle, Lock, UploadCloud, Edit, Link2, Camera, FolderInput
 } from 'lucide-react';
 import { Modal, ThemedInput } from '../components/UI';
 import { compartirODescargar } from '../utils/helpers';
@@ -10,17 +10,20 @@ import { descargarReporteExcel, descargarFotosZip, handleExportKML } from '../ut
 import { crearExportacion, suscribirseAExportacion } from '../services/exportacionService';
 import { COLORES_DIA } from '../data/constantes';
 import ChatBitacora from '../components/ChatBitacora';
+import FotosProyecto from '../components/FotosProyecto';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 
 const VistaProyectos = ({
   theme, isDark, proyectos, proyectoActual, puntos, diasVisibles,
   config, logoApp, vista, setVista, setTempData, setModalOpen, modalOpen,
   seleccionarProyecto, diaActual, setDiaActual, toggleVisibilidadDia,
-  cambiarColorDia, toggleVisibilidadProyecto, cambiarColorProyecto,
+  cambiarColorDia, uniformizarColorDias, toggleVisibilidadProyecto, cambiarColorProyecto,
   solicitarBorrarProyecto, irUbicacionProyecto, setExportData, selectorColorAbierto,
   setSelectorColorAbierto, tempData, confirmarCrearProyecto, confirmarCrearDia,
   aprobarSupervisor, rechazarSupervisor, eliminarSupervisor, user, setAlertData, setConfirmData,
   setLogoApp, handleCargarLogo, setPuntoSeleccionado, setModoLectura, setModoEdicion, setDatosFormulario, setVistaAnterior, setMapViewState, modalPendiente, setModalPendiente, setMostrarOverlayGPS, onVolver,
-  notificacionesProyectos = {}, marcarChatLeido, conexiones
+  notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos
 }) => {
 
   const [codigoCopiado, setCodigoCopiado] = React.useState(false);
@@ -50,6 +53,8 @@ const VistaProyectos = ({
     } catch { return []; }
   });
   const abortControllerRef = React.useRef(null);
+  const ultimoTap = React.useRef(null);
+  const [fotosCountMap, setFotosCountMap] = React.useState({}); // { [proyId]: number }
 
   // Persistir resultados completados en localStorage
   React.useEffect(() => {
@@ -124,7 +129,7 @@ const VistaProyectos = ({
     const { exportId, tipo, proyectoId, timestamp } = pending;
     if (proyectoId !== proyectoActual?.id) return;
     // Links del servidor expiran en 48h, no tiene sentido recuperar más tarde
-    if (Date.now() - timestamp > 48 * 60 * 60 * 1000) {
+    if (Date.now() - timestamp > 60 * 60 * 1000) {
       localStorage.removeItem(exportPendingKey);
       return;
     }
@@ -269,6 +274,8 @@ const VistaProyectos = ({
   const [logoTemporal, setLogoTemporal] = React.useState(null);
   const logoOriginalRef = React.useRef(null);
   const [filtroPunto, setFiltroPunto] = React.useState('');
+  const [sortConfig, setSortConfig] = React.useState({ field: null, dir: 'asc' });
+  const [quitandoEspacios, setQuitandoEspacios] = React.useState(false);
 
   // Marcar como leído al abrir chat
   React.useEffect(() => {
@@ -276,6 +283,17 @@ const VistaProyectos = ({
       marcarChatLeido(proyectoActual.id);
     }
   }, [modalLocalOpen, proyectoActual?.id, marcarChatLeido]);
+
+  // Cargar conteo de fotos del proyecto activo para mostrar badge
+  React.useEffect(() => {
+    if (!proyectoActual?.id) return;
+    const proyId = proyectoActual.id;
+    // Solo cargar si no tenemos el conteo aún
+    if (fotosCountMap[proyId] !== undefined) return;
+    getDocs(collection(db, 'proyectos', proyId, 'fotosProyecto'))
+      .then(snap => setFotosCountMap(prev => ({ ...prev, [proyId]: snap.size })))
+      .catch(() => {});
+  }, [proyectoActual?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Función para calcular Info Poste (X/5)
   const calcularInfoPoste = (datos) => {
@@ -310,6 +328,46 @@ const VistaProyectos = ({
     });
 
     return count;
+  };
+
+  const toggleSort = (field) => {
+    setSortConfig(prev => ({
+      field,
+      dir: prev.field === field && prev.dir === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const aplicarSort = (lista) => {
+    const base = [...lista].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+    if (!sortConfig.field) return base;
+    return base.sort((a, b) => {
+      const valA = (sortConfig.field === 'item' ? a.datos?.numero : a.datos?.pasivo) || '';
+      const valB = (sortConfig.field === 'item' ? b.datos?.numero : b.datos?.pasivo) || '';
+      const cmp = valA.localeCompare(valB, 'es', { numeric: true });
+      return sortConfig.dir === 'asc' ? cmp : -cmp;
+    });
+  };
+
+  const quitarEspacios = async (campo) => {
+    if (!proyectoActual || proyectoActual.esCompartido) return;
+    setQuitandoEspacios(campo);
+    try {
+      const { doc: docRef, updateDoc } = await import('firebase/firestore');
+      const { db: fireDb } = await import('../firebaseConfig');
+      const dataField = campo === 'item' ? 'datos.numero' : 'datos.pasivo';
+      const puntosProyecto = puntos.filter(p => proyectoActual.dias?.some(d => d.id === p.diaId));
+      for (const punto of puntosProyecto) {
+        const valorActual = campo === 'item' ? punto.datos?.numero : punto.datos?.pasivo;
+        if (valorActual && valorActual.includes(' ')) {
+          const sinEspacios = valorActual.replace(/\s+/g, '');
+          await updateDoc(docRef(fireDb, 'puntos', String(punto.id)), { [dataField]: sinEspacios });
+        }
+      }
+    } catch (e) {
+      console.error('Error quitando espacios:', e);
+    } finally {
+      setQuitandoEspacios(false);
+    }
   };
 
   const copiarCodigo = (codigo) => {
@@ -376,18 +434,34 @@ const VistaProyectos = ({
             {proyectos.map(proy => {
               const esActivo = proyectoActual?.id === proy.id;
               const colorProyecto = proy.colorGlobal || COLORES_DIA[0];
+              const esCompartido = !!proy.esCompartido; // proyecto donde soy editor/supervisor
 
               if (!esActivo) {
                 const notifCount = notificacionesProyectos[proy.id] || 0;
+                const idsDiasInactivo = proy.dias?.map(d => d.id) || [];
+                const algunoVisible = idsDiasInactivo.some(id => diasVisibles.includes(id));
                 return (
                   <div
                     key={proy.id}
                     onClick={() => seleccionarProyecto(proy)}
-                    className={`relative w-full rounded-xl ${isDark ? theme.card : 'bg-slate-200'} border-2 ${theme.border} p-5 cursor-pointer hover:opacity-80 transition-all active:scale-95 shadow-sm`}
+                    className={`relative w-full rounded-xl border-2 ${esCompartido ? 'border-brand-500 bg-orange-50' : isDark ? theme.card : 'bg-slate-200 border-slate-900'} p-4 cursor-pointer hover:opacity-80 transition-all active:scale-95 shadow-sm`}
                   >
-                    <h3 className={`font-black text-lg uppercase ${theme.textSec} text-center tracking-widest select-none`}>
-                      {proy.nombre}
-                    </h3>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0 text-center">
+                        <h3 className={`font-black text-lg uppercase ${theme.textSec} tracking-widest select-none truncate`}>
+                          {proy.nombre}
+                        </h3>
+                        {esCompartido && proy.ownerNombre && (
+                          <p className={`text-[10px] ${theme.textSec} mt-0.5 opacity-60`}>
+                            Proyecto de: {proy.ownerNombre}
+                          </p>
+                        )}
+                      </div>
+                      {algunoVisible
+                        ? <Eye size={16} className={`shrink-0 ${esCompartido ? 'text-brand-500' : theme.textSec} opacity-60`} strokeWidth={2.5} />
+                        : <EyeOff size={16} className={`shrink-0 ${esCompartido ? 'text-brand-500' : theme.textSec} opacity-60`} strokeWidth={2.5} />
+                      }
+                    </div>
                     {notifCount > 0 && (
                       <span className="absolute -top-2 -right-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white border-2 border-white shadow-sm px-1">
                         <MessageCircle size={10} className="mr-0.5" />{notifCount > 9 ? '9+' : notifCount}
@@ -400,9 +474,10 @@ const VistaProyectos = ({
               const totalPuntosProy = puntos.filter(p => proy.dias.some(d => d.id === p.diaId)).length;
               const idsDias = proy.dias.map(d => d.id);
               const todosVisibles = idsDias.every(id => diasVisibles.includes(id));
+              const algunoVisible = idsDias.some(id => diasVisibles.includes(id));
 
               return (
-                <div key={proy.id} className={`rounded-xl border-2 ${theme.border} ${theme.card} shadow-2xl animate-in zoom-in-95 duration-200 relative`}>
+                <div key={proy.id} className={`rounded-xl border-2 ${esCompartido ? 'border-brand-500' : theme.border} ${theme.card} shadow-2xl animate-in zoom-in-95 duration-200 relative`}>
 
                   {/* ENCABEZADO CON TÍTULO + TIPO + PUNTOS/GPS */}
                   <div className={`px-4 pt-3 pb-2 ${theme.card} rounded-t-xl`}>
@@ -410,7 +485,7 @@ const VistaProyectos = ({
 
                       {/* Título + Tipo */}
                       <div className="flex-1 min-w-0">
-                        {editandoNombre?.proyId === proy.id ? (
+                        {!esCompartido && editandoNombre?.proyId === proy.id ? (
                           <input
                             autoFocus
                             value={editandoNombre.valor}
@@ -421,15 +496,20 @@ const VistaProyectos = ({
                           />
                         ) : (
                           <h3
-                            className={`font-black text-xl ${theme.text} uppercase leading-none break-words cursor-pointer active:opacity-60`}
-                            onClick={() => setEditandoNombre({ proyId: proy.id, valor: proy.nombre })}
+                            className={`font-black text-xl ${theme.text} uppercase leading-none break-words ${!esCompartido ? 'cursor-pointer active:opacity-60' : ''}`}
+                            onClick={() => !esCompartido && setEditandoNombre({ proyId: proy.id, valor: proy.nombre })}
                           >
                             {proy.nombre}
                           </h3>
                         )}
                         <span className={`text-[10px] font-normal ${theme.textSec} uppercase tracking-wider leading-none block mt-0.5`}>
-                          {proy.tipo || 'LEVANTAMIENTO'}
+                          {proy.tipo || 'LEVANTAMIENTO'} · {proy.modoFotos === 'altaCalidad' ? 'ALTA' : 'COMP'}
                         </span>
+                        {esCompartido && proy.ownerNombre && (
+                          <span className={`text-[10px] ${theme.textSec} leading-none block mt-0.5 opacity-70`}>
+                            Proyecto de: {proy.ownerNombre}
+                          </span>
+                        )}
                       </div>
 
                       {/* Puntos + Ojo + GPS */}
@@ -446,9 +526,9 @@ const VistaProyectos = ({
                         </button>
                         <button
                           onClick={(e) => toggleVisibilidadProyecto(e, proy)}
-                          className={`p-2 rounded-lg border-2 ${theme.border} ${theme.bg} hover:border-brand-500 transition-all active:scale-90`}
+                          className={`p-2 rounded-lg border-2 ${theme.border} ${theme.bg} transition-all active:scale-90`}
                         >
-                          {todosVisibles ? <Eye size={16} className="text-slate-600" strokeWidth={2.5} /> : <EyeOff size={16} className={theme.textSec} strokeWidth={2.5} />}
+                          {algunoVisible ? <Eye size={16} className="text-slate-600" strokeWidth={2.5} /> : <EyeOff size={16} className={theme.textSec} strokeWidth={2.5} />}
                         </button>
                         <button
                           onClick={(e) => irUbicacionProyecto(e, proy.id)}
@@ -467,30 +547,28 @@ const VistaProyectos = ({
                   </div>
 
                   {/* FILA UNIFICADA: COLOR + CHAT + SUPERVISORES + LOCK (CÓDIGO) + EXPORTAR + BORRAR */}
+                  {(
                   <div className={`px-2 py-3 ${theme.card} border-b-2 ${theme.border} overflow-x-auto overflow-y-hidden`}>
-                    <div className="flex items-center justify-between w-full h-10 gap-1 min-w-max"> {/* min-w-max prevents wrap */}
+                    <div className="flex items-center justify-between w-full h-10 gap-1 min-w-max">
 
                       <div className="relative flex items-center shrink-0 pr-1">
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setColorMenuPos({ top: rect.bottom, left: rect.left });
-                            setSelectorColorAbierto(selectorColorAbierto === proy.id ? null : proy.id);
-                          }}
-                          className={`w-9 h-9 rounded-md border-2 ${theme.border} cursor-pointer hover:scale-110 shadow-sm transition-transform`}
-                          style={{ backgroundColor: colorProyecto }}
-                        ></div>
-                        {/* El menú se renderiza al final del componente para evitar clipping */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`FOTOS_${proy.id}`); }}
+                          className={`w-10 h-10 rounded-lg border-2 ${theme.border} ${theme.bg} flex items-center justify-center active:scale-95 transition-all`}
+                          title="Fotos del proyecto"
+                        >
+                          <Camera size={20} className={theme.text} strokeWidth={2.5} />
+                        </button>
+                        {(fotosCountMap[proy.id] || 0) > 0 && (
+                          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-black text-white border border-white">
+                            {(fotosCountMap[proy.id] || 0) > 9 ? '9+' : (fotosCountMap[proy.id] || 0)}
+                          </span>
+                        )}
                       </div>
 
-                      {/* DIVISOR 1: Entre Color y Chat */}
                       <div className="h-8 w-[1px] bg-slate-400 mx-1 shrink-0"></div>
 
-                      {/* 2. Botones de Acción (Chat, Supervisores, Lock) */}
                       <div className="flex items-center gap-1 flex-1 justify-center px-1">
-
-                        {/* Chat */}
                         <button
                           onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`CHAT_${proy.id}`); }}
                           className={`relative p-2 rounded-lg border-2 ${theme.border} ${theme.bg} hover:border-blue-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center`}
@@ -503,12 +581,10 @@ const VistaProyectos = ({
                             </span>
                           )}
                         </button>
-
-                        {/* Supervisores */}
                         <button
                           onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`SUPERVISORES_${proy.id}`); }}
                           className={`relative p-2 rounded-lg border-2 ${theme.border} ${theme.bg} hover:border-green-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center`}
-                          title="Supervisores"
+                          title="Colaboradores"
                         >
                           <Users size={20} className={`${theme.text}`} strokeWidth={2.5} />
                           {proy.solicitudesPendientes?.length > 0 && (
@@ -517,79 +593,66 @@ const VistaProyectos = ({
                             </span>
                           )}
                         </button>
-
-                        {/* Lock (Código) - AUTO COPIAR + ALERTA */}
+                        {/* Candado — activo para todos, muestra el código del proyecto */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            // 1. Copiar Código
                             copiarCodigo(proy.codigoAcceso || '');
-
-                            // 2. Mostrar Alerta (Con Código en Mensaje por si acaso customContent falla)
-                            setAlertData({
-                              title: proy.codigoAcceso || 'ERROR',
-                              message: "Código de acceso copiado al portapapeles.",
-                              textoBoton: "ACEPTAR"
-                            });
+                            setAlertData({ title: proy.codigoAcceso || 'ERROR', message: "Código de acceso copiado al portapapeles.", textoBoton: "ACEPTAR" });
                           }}
                           className={`p-2 rounded-lg border-2 ${theme.border} ${theme.bg} hover:border-amber-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center`}
                           title="Copiar Código"
                         >
                           <Lock size={20} className={`${theme.text}`} strokeWidth={2.5} />
                         </button>
-
                       </div>
 
-                      {/* DIVISOR 2: Entre Lock y Exportar */}
                       <div className="h-8 w-[1px] bg-slate-400 mx-1 shrink-0"></div>
 
-                      {/* 3. Exportar y Borrar */}
                       <div className="flex items-center gap-1 shrink-0 pl-1">
-
-                        {/* Exportar (Cuadrado) */}
+                        {/* Exportar — desactivado para invitados */}
                         <div className="relative">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              logoOriginalRef.current = logoApp; // Sync ref
-                              setLogoTemporal(logoApp); // Sync state
+                              if (esCompartido) return;
+                              logoOriginalRef.current = logoApp;
+                              setLogoTemporal(logoApp);
                               setModalOpen('EXPORTAR_HUB');
                             }}
-                            className={`p-2 rounded-lg border-2 ${theme.border} ${theme.bg} hover:border-blue-600 hover:text-blue-600 transition-all active:scale-95 w-10 h-10 flex items-center justify-center`}
+                            disabled={esCompartido}
+                            className={`p-2 rounded-lg border-2 transition-all w-10 h-10 flex items-center justify-center ${esCompartido ? 'border-slate-300 bg-slate-100 cursor-not-allowed opacity-40' : `${theme.border} ${theme.bg} hover:border-blue-600 hover:text-blue-600 active:scale-95`}`}
                             title="Compartir / Exportar"
                           >
-                            <Share2 size={20} strokeWidth={2.5} className={theme.text} />
+                            <Share2 size={20} strokeWidth={2.5} className={esCompartido ? 'text-slate-400' : theme.text} />
                           </button>
-                          {/* Mini barra de progreso si está exportando ESTE proyecto */}
-                          {exportandoTipo && (
+                          {exportandoTipo && !esCompartido && (
                             <div className="absolute -bottom-2.5 left-0 right-0 h-1.5 bg-slate-200 rounded overflow-hidden border border-slate-300 z-10">
                               <div className="h-full bg-blue-600 animate-progress"></div>
                             </div>
                           )}
                         </div>
-
-                        {/* DIVISOR VERTICAL ENTRE EXPORTAR Y BORRAR */}
                         <div className="h-8 w-[1px] bg-slate-400 mx-1 shrink-0"></div>
-
-                        {/* Borrar */}
+                        {/* Borrar — desactivado para invitados */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); solicitarBorrarProyecto(proy.id); }}
-                          disabled={resultadosExportacion.length > 0 && exportandoTipo}
-                          className={`p-2 rounded-lg bg-red-600 border-2 border-red-800 text-white hover:bg-red-700 transition-all active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed w-10 h-10 flex items-center justify-center`}
+                          onClick={(e) => { e.stopPropagation(); if (!esCompartido) solicitarBorrarProyecto(proy.id); }}
+                          disabled={esCompartido || (resultadosExportacion.length > 0 && exportandoTipo)}
+                          className={`p-2 rounded-lg border-2 transition-all w-10 h-10 flex items-center justify-center ${esCompartido ? 'border-slate-300 bg-slate-100 cursor-not-allowed opacity-40' : 'bg-red-600 border-red-800 text-white hover:bg-red-700 active:scale-90'}`}
                         >
-                          <Trash2 size={20} strokeWidth={2.5} />
+                          <Trash2 size={20} strokeWidth={2.5} className={esCompartido ? 'text-slate-400' : 'text-white'} />
                         </button>
                       </div>
 
                     </div>
                   </div>
+                  )}
 
                   {/* DÍAS */}
                   <div className={`${isDark ? 'bg-slate-950/50' : 'bg-slate-100'} p-3 space-y-2 rounded-b-xl`}>
 
-                    <button onClick={() => { setTempData({}); setModalOpen('CREAR_DIA'); }} className={`w-full py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs hover:border-brand-500 hover:text-brand-500 transition-colors`}>+ NUEVO DÍA DE TRABAJO</button>
+                    {!esCompartido && <button onClick={() => { setTempData({}); setModalOpen('CREAR_DIA'); }} className={`w-full py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs hover:border-brand-500 hover:text-brand-500 transition-colors`}>+ NUEVO DÍA DE TRABAJO</button>}
 
-                    {[...proy.dias].reverse().map(dia => {
+                    {([...proy.dias].reverse().filter(dia => !esCompartido || dia.id === proy.diaActivoId)).map(dia => {
                       const isSelected = diaActual && dia.id === diaActual;
                       const isVisible = diasVisibles.includes(dia.id);
                       const ptosDia = puntos.filter(p => p.diaId === dia.id).length;
@@ -623,7 +686,22 @@ const VistaProyectos = ({
                           <div className="flex items-center gap-4">
                             <div className="flex gap-1">
                               {COLORES_DIA.map(c => (
-                                <div key={c} onClick={() => cambiarColorDia(proy.id, dia.id, c)} className={`w-5 h-5 rounded cursor-pointer transition-transform ${dia.color === c ? 'ring-1 ring-offset-1 ring-black scale-125 z-10 shadow-sm' : 'opacity-40 hover:opacity-100'}`} style={{ backgroundColor: c }}></div>
+                                <div
+                                  key={c}
+                                  onClick={() => {
+                                    const ahora = Date.now();
+                                    const ul = ultimoTap.current;
+                                    if (ul && ul.color === c && ul.diaId === dia.id && ahora - ul.tiempo < 350) {
+                                      ultimoTap.current = null;
+                                      uniformizarColorDias(proy.id, c);
+                                    } else {
+                                      ultimoTap.current = { tiempo: ahora, color: c, diaId: dia.id };
+                                      cambiarColorDia(proy.id, dia.id, c);
+                                    }
+                                  }}
+                                  className={`w-5 h-5 rounded cursor-pointer transition-transform ${dia.color === c ? 'ring-1 ring-offset-1 ring-black scale-125 z-10 shadow-sm' : 'opacity-40 hover:opacity-100'}`}
+                                  style={{ backgroundColor: c }}
+                                ></div>
                               ))}
                             </div>
                             <button onClick={() => toggleVisibilidadDia(dia.id)}>
@@ -738,6 +816,20 @@ const VistaProyectos = ({
 
       {/* MODAL CHAT */}
       {
+        modalLocalOpen?.startsWith('FOTOS_') && proyectoActual && (
+          <FotosProyecto
+            proyectoId={proyectoActual.id}
+            proyectoNombre={proyectoActual.nombre || ''}
+            modoFotos={proyectoActual.modoFotos}
+            theme={theme}
+            user={user}
+            onClose={() => setModalLocalOpen(null)}
+            onCountChange={(count) => setFotosCountMap(prev => ({ ...prev, [proyectoActual.id]: count }))}
+          />
+        )
+      }
+
+      {
         modalLocalOpen?.startsWith('CHAT_') && (
           <div className={`fixed inset-0 z-[300] ${theme.card} flex flex-col`}>
 
@@ -850,10 +942,22 @@ const VistaProyectos = ({
                     </div>
                   )}
 
+                  {/* Propietario */}
+                  <div className="space-y-2">
+                    <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider`}>Propietario</h4>
+                    <div className={`${theme.card} border-2 border-amber-400 rounded-xl p-3 flex items-center justify-between gap-3`}>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-black ${theme.text} truncate`}>{proyectoActual.ownerNombre || 'Propietario'}</p>
+                        <p className={`text-xs ${theme.subtext} truncate`}>{proyectoActual.ownerEmpresa || 'Sin empresa'}</p>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 bg-amber-100 text-amber-700">PROPIETARIO</span>
+                    </div>
+                  </div>
+
                   {/* Colaboradores activos */}
                   {proyectoActual.compartidoCon?.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider ${proyectoActual.solicitudesPendientes?.length > 0 ? 'mt-2' : ''}`}>Colaboradores Activos</h4>
+                      <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider mt-2`}>Colaboradores Activos</h4>
                       {proyectoActual.compartidoCon.map(uid => {
                         const info = proyectoActual.supervisoresInfo?.[uid];
                         const permiso = proyectoActual.permisos?.[uid] || 'lectura';
@@ -865,10 +969,12 @@ const VistaProyectos = ({
                               <p className={`text-xs ${theme.subtext} truncate`}>{info?.empresa || 'Sin empresa'}</p>
                             </div>
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${color}`}>{label}</span>
-                            <button onClick={() => eliminarSupervisor(proyectoActual.id, uid)}
-                              className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg active:scale-95 transition-all shrink-0" title="Eliminar acceso">
-                              <Trash2 size={16} />
-                            </button>
+                            {!proyectoActual.esCompartido && (
+                              <button onClick={() => eliminarSupervisor(proyectoActual.id, uid)}
+                                className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg active:scale-95 transition-all shrink-0" title="Eliminar acceso">
+                                <Trash2 size={16} />
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -876,9 +982,9 @@ const VistaProyectos = ({
                   )}
 
                   {/* Estado vacío */}
-                  {!proyectoActual.compartidoCon?.length && !proyectoActual.solicitudesPendientes?.length && (
-                    <div className="text-center py-8">
-                      <Users size={48} className={`${theme.subtext} mx-auto mb-3 opacity-30`} />
+                  {!proyectoActual.compartidoCon?.length && !proyectoActual.solicitudesPendientes?.length && !proyectoActual.esCompartido && (
+                    <div className="text-center py-4">
+                      <Users size={36} className={`${theme.subtext} mx-auto mb-2 opacity-30`} />
                       <p className={`text-sm ${theme.subtext} font-medium`}>No hay colaboradores aún</p>
                       <p className={`text-xs ${theme.subtext} mt-1`}>Comparte el código de acceso para invitar colaboradores</p>
                     </div>
@@ -899,7 +1005,7 @@ const VistaProyectos = ({
               {/* Header */}
               <div className={`${theme.header} px-6 pb-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0`} style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
                 <div className="flex items-center gap-3">
-                  <div className="bg-slate-800 p-2 rounded-lg">
+                  <div className="bg-blue-600 p-2 rounded-lg">
                     <MapPin size={20} className="text-white" />
                   </div>
                   <h3 className={`font-black text-lg ${theme.text} uppercase`}>
@@ -918,20 +1024,56 @@ const VistaProyectos = ({
               <div className="flex-1 flex flex-col overflow-hidden p-4 space-y-3">
 
                 {/* Input de búsqueda/filtro */}
-                <div className="shrink-0">
+                <div className="shrink-0 flex gap-2 items-center">
                   <input
                     type="text"
                     placeholder="Buscar por item o elemento pasivo..."
                     value={filtroPunto}
                     onChange={(e) => setFiltroPunto(e.target.value)}
-                    className={`w-full px-4 py-3 rounded-lg border-2 ${theme.border} ${theme.bg} ${theme.text} font-bold placeholder-slate-400 focus:border-blue-500 focus:outline-none transition-colors text-base`}
+                    className={`flex-1 px-4 py-3 rounded-lg border-2 ${theme.border} ${theme.bg} ${theme.text} font-bold placeholder-slate-400 focus:border-blue-500 focus:outline-none transition-colors text-base`}
                   />
+                  {!proyectoActual?.esCompartido && onIniciarMoverPuntos && (
+                    <button
+                      onClick={() => { setModalLocalOpen(null); onIniciarMoverPuntos(); }}
+                      className="shrink-0 p-3 rounded-lg border-2 border-purple-500 text-purple-600 active:scale-95 transition-all"
+                      title="Mover puntos a otro proyecto"
+                    >
+                      <FolderInput size={20} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Barra de ordenamiento */}
+                <div className="flex overflow-x-auto gap-1.5 shrink-0 pb-0.5">
+                  <button onClick={() => toggleSort('item')} className={`px-3 py-1.5 rounded-lg border-2 text-[10px] font-black transition-all active:scale-95 shrink-0 ${sortConfig.field === 'item' ? 'bg-slate-900 border-slate-900 text-white' : `${theme.border} ${theme.text}`}`}>
+                    ITEM {sortConfig.field === 'item' ? (sortConfig.dir === 'asc' ? '↑' : '↓') : '↑↓'}
+                  </button>
+                  <button onClick={() => toggleSort('pasivo')} className={`px-3 py-1.5 rounded-lg border-2 text-[10px] font-black transition-all active:scale-95 shrink-0 ${sortConfig.field === 'pasivo' ? 'bg-slate-900 border-slate-900 text-white' : `${theme.border} ${theme.text}`}`}>
+                    PASIVO {sortConfig.field === 'pasivo' ? (sortConfig.dir === 'asc' ? '↑' : '↓') : '↑↓'}
+                  </button>
+                  {!proyectoActual.esCompartido && (
+                    <>
+                      <button
+                        onClick={() => setConfirmData({ title: 'SP ITEM', message: 'Se quitarán todos los espacios del campo ITEM en todos los puntos del proyecto.', actionText: 'CONFIRMAR', theme, onConfirm: () => { setConfirmData(null); quitarEspacios('item'); } })}
+                        disabled={!!quitandoEspacios}
+                        className="px-3 py-1.5 rounded-lg border-2 border-amber-500 text-amber-700 text-[10px] font-black transition-all active:scale-95 disabled:opacity-40 shrink-0"
+                      >
+                        {quitandoEspacios === 'item' ? '...' : 'SP ITEM'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmData({ title: 'SP PASIVO', message: 'Se quitarán todos los espacios del campo PASIVO en todos los puntos del proyecto.', actionText: 'CONFIRMAR', theme, onConfirm: () => { setConfirmData(null); quitarEspacios('pasivo'); } })}
+                        disabled={!!quitandoEspacios}
+                        className="px-3 py-1.5 rounded-lg border-2 border-amber-500 text-amber-700 text-[10px] font-black transition-all active:scale-95 disabled:opacity-40 shrink-0"
+                      >
+                        {quitandoEspacios === 'pasivo' ? '...' : 'SP PASIVO'}
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Lista de puntos */}
                 <div className="flex-1 overflow-y-auto space-y-2">
-                  {puntos
-                    .filter(p => proyectoActual.dias?.some(d => d.id === p.diaId))
+                  {aplicarSort(puntos.filter(p => proyectoActual.dias?.some(d => d.id === p.diaId)))
                     .filter(p => {
                       if (!filtroPunto) return true;
                       const busqueda = filtroPunto.toLowerCase();
@@ -948,7 +1090,7 @@ const VistaProyectos = ({
                         let count = 0;
                         Object.values(fotos).forEach(section => {
                           if (section && typeof section === 'object') {
-                            count += Object.values(section).filter(v => v && (typeof v === 'string' || v.url || v.thumb)).length;
+                            count += Object.values(section).filter(v => v && (typeof v === 'string' || v.url)).length;
                           }
                         });
                         return count;
@@ -968,7 +1110,7 @@ const VistaProyectos = ({
 
                             {/* PASIVO */}
                             <div className="flex items-center gap-1 min-w-0 flex-1">
-                              <span className={`text-[10px] font-normal ${theme.textSec} shrink-0`}>Pasivo:</span>
+                              <span className={`text-[10px] font-normal ${theme.textSec} shrink-0`}>PASIVO:</span>
                               <span className={`text-xs font-black ${theme.text} truncate`}>{punto.datos.pasivo || '-'}</span>
                             </div>
 
@@ -994,7 +1136,7 @@ const VistaProyectos = ({
                                 setVista('verDetalle');
                                 setModalLocalOpen(null);
                               }}
-                              className="p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:scale-95 transition-all shadow-md shrink-0"
+                              className="p-1.5 rounded-lg bg-slate-900 text-white active:scale-95 transition-all shrink-0"
                               title="Ver Detalle"
                             >
                               <Info size={14} />
@@ -1646,7 +1788,7 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                     } else {
                       Object.values(p.datos.fotos).forEach(section => {
                         if (section && typeof section === 'object') {
-                          fotos += Object.keys(section).length;
+                          fotos += Object.values(section).filter(v => v && (typeof v === 'string' || v.url)).length;
                         }
                       });
                     }
@@ -1758,6 +1900,20 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                   <Share2 size={16} />
                 </button>
 
+                {/* Botón cancelar export en progreso */}
+                {archivo.cargando && (
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem(exportPendingKey);
+                      setResultadosExportacion(prev => prev.filter(r => r.id !== archivo.id));
+                    }}
+                    className="p-2 rounded-lg border-2 border-red-300 text-red-400 hover:bg-red-50 active:scale-95 transition-all flex-shrink-0"
+                    title="Cancelar"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+
                 {/* Barra de progreso animada en el borde inferior */}
                 {archivo.cargando && (
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100">
@@ -1775,9 +1931,9 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
               <button
                 onClick={async () => {
                   const aEliminar = resultadosExportacion.filter(r => r.type === activeTab && !r.cargando && r.downloadUrl);
-                  // Borrar archivos de Firebase Storage
                   if (aEliminar.length > 0) {
                     try {
+                      // Borrar archivos de Firebase Storage
                       const { ref, deleteObject } = await import('firebase/storage');
                       const { storage } = await import('../firebaseConfig');
                       await Promise.all(aEliminar.map(async (r) => {
@@ -1786,13 +1942,22 @@ const ExportHubContent = ({ proyecto, puntos, exportandoTipo, handleExportar, ha
                           if (match) await deleteObject(ref(storage, decodeURIComponent(match[1])));
                         } catch (e) { /* si ya no existe, ignorar */ }
                       }));
-                    } catch (e) { console.error('Error borrando de Storage:', e); }
+                      // Borrar documentos de Firestore (exportaciones/)
+                      const { deleteDoc, doc: fbDoc } = await import('firebase/firestore');
+                      const exportIds = [...new Set(aEliminar.map(r => {
+                        const m = r.id?.match(/^srv_(.+?)_\d+$/);
+                        return m ? m[1] : null;
+                      }).filter(Boolean))];
+                      await Promise.all(exportIds.map(id =>
+                        deleteDoc(fbDoc(db, 'exportaciones', id)).catch(() => {})
+                      ));
+                    } catch (e) { console.error('Error eliminando exportación:', e); }
                   }
                   setResultadosExportacion(prev => prev.filter(r => r.type !== activeTab || r.cargando));
                 }}
                 className="w-full mt-4 py-3 text-red-500 font-bold text-xs border border-red-200 rounded-xl hover:bg-red-50 active:scale-95"
               >
-                ELIMINAR Y GENERAR NUEVO
+                ELIMINAR ARCHIVO DE LA NUBE
               </button>
             )}
           </div>

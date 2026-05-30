@@ -2,10 +2,15 @@ import React, { createContext, useState, useEffect, useContext, useRef } from 'r
 import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getAllUploadsPending, deleteUploadPending } from '../utils/photoDB';
+import { uploadImage } from '../utils/storage';
 
 const SyncContext = createContext();
 
 export const useSync = () => useContext(SyncContext);
+
+const taskIdCounter = { current: Date.now() };
+const nextTaskId = () => ++taskIdCounter.current;
 
 export const SyncProvider = ({ children }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -41,17 +46,53 @@ export const SyncProvider = ({ children }) => {
     });
   };
 
+  const marcarFallido = (id) => {
+    setCola(prev => prev.map(t => t.id === id ? { ...t, fallido: true } : t));
+    _clearError(id);
+  };
+
+  const guardarComoNuevo = (tarea) => {
+    const { coleccion, datos } = tarea.datos;
+    const nueva = { id: nextTaskId(), tipo: 'guardar_punto', datos: { modo: 'crear', coleccion, datos }, timestamp: new Date().toISOString() };
+    setCola(prev => [...prev.filter(t => t.id !== tarea.id), nueva]);
+  };
+
   // 1. Cargar cola al iniciar
   useEffect(() => {
+    let colaInicial = [];
     const colaGuardada = localStorage.getItem('kipo_sync_queue_v2');
     if (colaGuardada) {
         try {
-            setCola(JSON.parse(colaGuardada));
+            colaInicial = JSON.parse(colaGuardada);
+            setCola(colaInicial);
         } catch (e) {
             console.error("Error cargando cola:", e);
             setCola([]);
         }
     }
+
+    // Cargar fotos pendientes de IndexedDB (crash recovery)
+    (async () => {
+      try {
+        const pending = await getAllUploadsPending();
+        if (pending.length > 0) {
+          setCola(prev => {
+            const existingPaths = new Set(
+              prev.filter(t => t.tipo === 'subir_foto').map(t => t.datos.path)
+            );
+            const nuevas = pending
+              .filter(e => e.path && !existingPaths.has(e.path))
+              .map(e => ({
+                id: nextTaskId(),
+                tipo: 'subir_foto',
+                datos: { path: e.path, section: e.section, item: e.item, puntoId: e.puntoId || null, thumb: e.thumb || null },
+                timestamp: new Date(e.ts || Date.now()).toISOString()
+              }));
+            return nuevas.length > 0 ? [...prev, ...nuevas] : prev;
+          });
+        }
+      } catch {}
+    })();
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -70,7 +111,7 @@ export const SyncProvider = ({ children }) => {
   }, [cola, isOnline, procesando]);
 
   const agregarTarea = (tipo, datos) => {
-    const nuevaTarea = { id: Date.now(), tipo, datos, timestamp: new Date().toISOString() };
+    const nuevaTarea = { id: nextTaskId(), tipo, datos, timestamp: new Date().toISOString() };
     setCola(prev => [...prev, nuevaTarea]);
   };
 
@@ -109,7 +150,7 @@ export const SyncProvider = ({ children }) => {
   const procesarCola = async () => {
     if (procesando || cola.length === 0) return;
     // Buscar primera tarea que no haya fallado 3 veces
-    const tareaIndex = cola.findIndex(t => (erroresRef.current[t.id]?.intentos || 0) < 3);
+    const tareaIndex = cola.findIndex(t => !t.fallido && (erroresRef.current[t.id]?.intentos || 0) < 3);
     if (tareaIndex === -1) return; // todas bloqueadas, esperar reintento manual
     const tarea = cola[tareaIndex];
     setProcesando(true);
@@ -130,9 +171,40 @@ export const SyncProvider = ({ children }) => {
       } else if (tarea.tipo === 'mover_punto') {
         const { coleccion, idDoc, coords, datos } = tarea.datos;
         await updateDoc(doc(db, coleccion, idDoc), { coords, datos });
+      } else if (tarea.tipo === 'reasignar_punto') {
+        const { coleccion, idDoc, proyectoId, diaId } = tarea.datos;
+        const campos = { proyectoId };
+        if (diaId) campos.diaId = diaId;
+        await updateDoc(doc(db, coleccion, idDoc), campos);
       } else if (tarea.tipo === 'borrar_punto') {
         const { coleccion, idDoc } = tarea.datos;
         await deleteDoc(doc(db, coleccion, idDoc));
+      } else if (tarea.tipo === 'subir_foto') {
+        const { path, section, item, puntoId, thumb } = tarea.datos;
+        const pending = await getAllUploadsPending();
+        const entry = pending.find(e => e.path === path);
+        if (!entry?.blob) {
+          // Blob ya no existe en IndexedDB — tarea huérfana, limpiar
+          setCola(prev => prev.filter(t => t.id !== tarea.id));
+          _clearError(tarea.id);
+          return;
+        }
+        const url = await uploadImage(entry.blob, path);
+        const fotoData = { url, thumb: thumb || entry.thumb || null, timestamp: new Date().toISOString(), _path: path };
+        if (puntoId) {
+          await updateDoc(doc(db, 'puntos', String(puntoId)), {
+            [`datos.fotos.${section}.${item}`]: fotoData
+          });
+        }
+        // Actualizar draft local si aplica
+        try {
+          const draft = JSON.parse(localStorage.getItem('kipo_draft') || 'null');
+          if (draft?.fotos?.[section]?.[item]) {
+            draft.fotos[section][item] = fotoData;
+            localStorage.setItem('kipo_draft', JSON.stringify(draft));
+          }
+        } catch {}
+        await deleteUploadPending(path);
       }
 
       console.log(`✅ Tarea ${tarea.id} completada.`);
@@ -141,10 +213,15 @@ export const SyncProvider = ({ children }) => {
 
     } catch (error) {
       console.error("❌ Error sync:", error);
-      // Borrar no encontrado: limpiar igual
-      if (tarea.tipo === 'borrar_punto' && error.code === 'not-found') {
+      const esPermanente = error.code === 'not-found' ||
+        (error.message?.includes('No document to update'));
+      if (tarea.tipo === 'borrar_punto' && esPermanente) {
+        // Punto ya borrado en servidor: limpiar de cola
         setCola(prev => prev.filter(t => t.id !== tarea.id));
         _clearError(tarea.id);
+      } else if (esPermanente) {
+        // Edición/movimiento sobre punto inexistente: marcar FALLIDO sin bloquear
+        marcarFallido(tarea.id);
       } else {
         _setError(tarea.id, error.message || 'Error desconocido');
       }
@@ -156,13 +233,15 @@ export const SyncProvider = ({ children }) => {
   const getEstadoSync = () => {
     if (!isOnline) return 'offline';
     if (cola.length === 0) return 'synced';
-    const todasBloqueadas = cola.every(t => (erroresRef.current[t.id]?.intentos || 0) >= 3);
+    const activas = cola.filter(t => !t.fallido);
+    if (activas.length === 0) return 'error';
+    const todasBloqueadas = activas.every(t => (erroresRef.current[t.id]?.intentos || 0) >= 3);
     if (todasBloqueadas) return 'error';
     return 'syncing';
   };
 
   return (
-    <SyncContext.Provider value={{ isOnline, cola, agregarTarea, estadoSync: getEstadoSync(), erroresTareas, procesando, eliminarTarea, reintentarTarea }}>
+    <SyncContext.Provider value={{ isOnline, cola, agregarTarea, estadoSync: getEstadoSync(), erroresTareas, procesando, eliminarTarea, reintentarTarea, guardarComoNuevo }}>
       {children}
     </SyncContext.Provider>
   );

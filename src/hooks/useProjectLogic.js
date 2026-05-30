@@ -19,30 +19,11 @@ export const useProjectLogic = ({
 }) => {
 
 // --- FUNCIÓN AUXILIAR: GENERAR CÓDIGO ÚNICO ---
-const generarCodigoAcceso = async () => {
+const generarCodigoAcceso = () => {
     const prefijo = "FIB-";
-    let intentos = 0;
-    const maxIntentos = 10;
-
-    while (intentos < maxIntentos) {
-        // Generar 6 caracteres alfanuméricos aleatorios
-        const codigo = prefijo + Array.from({ length: 6 }, () => 
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[Math.floor(Math.random() * 36)]
-        ).join("");
-
-        // Verificar si ya existe en Firebase
-        const q = query(collection(db, "proyectos"), where("codigoAcceso", "==", codigo));
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-            return codigo; // Código único encontrado
-        }
-
-        intentos++;
-    }
-
-    // Fallback: usar timestamp si no se encuentra código único
-    return prefijo + Date.now().toString(36).toUpperCase().slice(-6);
+    return prefijo + Array.from({ length: 6 }, () =>
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[Math.floor(Math.random() * 36)]
+    ).join("");
 };
 
 // --- NUEVA FUNCIÓN: IR A UBICACIÓN DEL PROYECTO ---
@@ -71,7 +52,7 @@ const confirmarCrearProyecto = async () => {
     if(!tempData.nombre) return;
     
     // 1. Generar código único
-    const codigoAcceso = await generarCodigoAcceso();
+    const codigoAcceso = generarCodigoAcceso();
     
     // 2. Preparar datos
     const tipo = tempData.tipo || 'levantamiento';
@@ -126,7 +107,7 @@ const confirmarCrearDia = async () => {
 
     try {
         const proyectoRef = doc(db, "proyectos", String(proyectoActual.id));
-        await updateDoc(proyectoRef, { dias: proyActualizado.dias });
+        await updateDoc(proyectoRef, { dias: proyActualizado.dias, diaActivoId: nuevoDia.id });
         console.log("Nuevo día guardado en la nube");
     } catch (error) {
         console.error("Error al guardar el día:", error);
@@ -138,8 +119,16 @@ const seleccionarProyecto = (proy) => {
     // Guardar último proyecto abierto
     try { localStorage.setItem('ultimoProyectoId', proy.id); } catch(e) {}
     if (proy.dias && proy.dias.length > 0) {
-      const ultimoDia = proy.dias[proy.dias.length - 1];
-      setDiaActual(ultimoDia.id);
+      let diaDefault;
+      if (proy.esCompartido && proy.diaActivoId) {
+        diaDefault = proy.dias.find(d => d.id === proy.diaActivoId) || proy.dias[proy.dias.length - 1];
+      } else {
+        // Restaurar último día seleccionado para este proyecto
+        let savedDiaId = null;
+        try { savedDiaId = localStorage.getItem(`ultimoDia_${proy.id}`); } catch(e) {}
+        diaDefault = (savedDiaId && proy.dias.find(d => d.id === savedDiaId)) || proy.dias[proy.dias.length - 1];
+      }
+      setDiaActual(diaDefault.id);
 
       // Solo agregar días que NO estén explícitamente ocultos
       let ocultos = [];
@@ -167,13 +156,15 @@ const toggleVisibilidadDia = (diaId) => {
 const toggleVisibilidadProyecto = (e, proy) => {
     e.stopPropagation();
     const idsDiasProyecto = proy.dias.map(d => d.id);
-    const todosVisibles = idsDiasProyecto.every(id => diasVisibles.includes(id));
+    const algunoVisible = idsDiasProyecto.some(id => diasVisibles.includes(id));
     let ocultos = [];
     try { ocultos = JSON.parse(localStorage.getItem('diasOcultos') || '[]'); } catch(e2) {}
-    if (todosVisibles) {
+    if (algunoVisible) {
+      // Hay alguno visible → apagar todos
       setDiasVisibles(diasVisibles.filter(id => !idsDiasProyecto.includes(id)));
       idsDiasProyecto.forEach(id => { if (!ocultos.includes(id)) ocultos.push(id); });
     } else {
+      // Todos apagados → encender todos
       setDiasVisibles([...new Set([...diasVisibles, ...idsDiasProyecto])]);
       ocultos = ocultos.filter(id => !idsDiasProyecto.includes(id));
     }
@@ -206,6 +197,27 @@ const cambiarColorDia = async (proyId, diaId, color) => {
         }
     } catch (error) {
         console.error("Error al guardar color del día:", error);
+    }
+};
+
+const uniformizarColorDias = async (proyId, color) => {
+    // Actualizar todos los días del proyecto al mismo color en una sola operación
+    setProyectos(prev => prev.map(p => p.id === proyId
+        ? { ...p, dias: p.dias.map(d => ({ ...d, color })) }
+        : p
+    ));
+    if (proyectoActual?.id === proyId) {
+        setProyectoActual(prev => ({ ...prev, dias: prev.dias.map(d => ({ ...d, color })) }));
+    }
+    try {
+        const proyecto = proyectos.find(p => p.id === proyId);
+        if (proyecto) {
+            const diasActualizados = proyecto.dias.map(d => ({ ...d, color }));
+            const proyectoRef = doc(db, "proyectos", String(proyId));
+            await updateDoc(proyectoRef, { dias: diasActualizados });
+        }
+    } catch (error) {
+        console.error("Error al uniformizar colores:", error);
     }
 };
 
@@ -409,6 +421,7 @@ const eliminarSupervisor = async (proyectoId, supervisorUid) => {
         toggleVisibilidadDia,
         toggleVisibilidadProyecto,
         cambiarColorDia,
+        uniformizarColorDias,
         cambiarColorProyecto,
         solicitarBorrarProyecto,
         irUbicacionProyecto,

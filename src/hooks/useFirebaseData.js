@@ -8,6 +8,7 @@ export const useFirebaseData = (user) => {
   const [proyectosSupervisados, setProyectosSupervisados] = useState([]);
   const [puntos, setPuntos] = useState([]);
   const [puntosCompartidos, setPuntosCompartidos] = useState([]);
+  const [puntosDeProyectosProxios, setPuntosDeProyectosProxios] = useState([]);
   const [conexiones, setConexiones] = useState([]);
   const [config, setConfig] = useState(null);
 
@@ -78,6 +79,21 @@ if (!user) {
     };
   }, [user]);
 
+  // Efecto para cargar puntos creados por editores en proyectos propios
+  useEffect(() => {
+    if (!user || proyectos.length === 0) {
+      setPuntosDeProyectosProxios([]);
+      return;
+    }
+    const ids = proyectos.map(p => p.id).slice(0, 30);
+    const q = query(collection(db, "puntos"), where("proyectoId", "in", ids));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+      setPuntosDeProyectosProxios(docs);
+    }, (error) => console.error("Error en PuntosDeProyectosProxios:", error));
+    return () => unsub();
+  }, [user, proyectos]);
+
   // Efecto para cargar puntos de proyectos donde el usuario es editor
   useEffect(() => {
     if (!user || proyectosSupervisados.length === 0) {
@@ -107,6 +123,7 @@ if (!user) {
     proyectosSupervisados, setProyectosSupervisados,
     puntos, setPuntos,
     puntosCompartidos,
+    puntosDeProyectosProxios,
     conexiones, setConexiones,
     config, setConfig
   };

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, Sun, Moon, ZoomOut, ZoomIn, Map } from 'lucide-react';
+import React from 'react';
+import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, ZoomOut, ZoomIn, Map, Images } from 'lucide-react';
 
 export default function Header({
   theme,
@@ -9,30 +9,18 @@ export default function Header({
   onClickSync,
   setGpsTrigger,
   mostrarEtiquetas,
-  setMostrarEtiquetas,
+  menuEtiquetasAbierto,
+  toggleMenuEtiquetas,
   isDark,
   setIsDark,
   setIconSize,
   mapStyle,
   setMapStyle,
-  totalNotificaciones = 0
+  totalNotificaciones = 0,
+  fotoPuntosActivo = false,
+  onToggleFotoPuntos,
 }) {
-  const [menuEtiquetas, setMenuEtiquetas] = useState(false);
-  const refEtiquetas = useRef(null);
-
-  // Cerrar dropdown al tocar fuera
-  useEffect(() => {
-    if (!menuEtiquetas) return;
-    const handler = (e) => {
-      if (refEtiquetas.current && !refEtiquetas.current.contains(e.target)) {
-        setMenuEtiquetas(false);
-      }
-    };
-    document.addEventListener('pointerdown', handler);
-    return () => document.removeEventListener('pointerdown', handler);
-  }, [menuEtiquetas]);
   return (
-    // 👇 AQUÍ EMPIEZA TU CÓDIGO EXACTO
     <div className={`${theme.header} px-4 flex items-center justify-between border-b-2 ${theme.border} z-[50] relative shrink-0`} style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))', paddingBottom: '12px', minHeight: 'calc(64px + env(safe-area-inset-top))' }}>
       
       {/* LADO IZQUIERDO: SOLO MENÚ */}
@@ -89,48 +77,33 @@ export default function Header({
           </button>
 
 
-          {/* 2. ESTILO DE MAPA */}
-          <button 
-            onClick={() => setMapStyle(mapStyle === 'vector' ? 'satellite' : 'vector')} 
-            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${mapStyle === 'satellite' ? 'bg-blue-50 border-blue-500 text-blue-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
-            title={mapStyle === 'vector' ? 'Cambiar a Satelital' : 'Cambiar a Vectorial'}
+          {/* 2. ESTILO DE MAPA — alterna entre google y vector */}
+          <button
+            onClick={() => setMapStyle(s => s === 'vector' ? 'google' : 'vector')}
+            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${mapStyle === 'vector' ? 'bg-blue-50 border-blue-500 text-blue-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+            title="Estilo de mapa"
           >
             <Map size={20} />
           </button>
 
-          {/* 3. ETIQUETAS (con dropdown) */}
-          <div className="relative" ref={refEtiquetas}>
-            <button
-              onClick={() => setMenuEtiquetas(!menuEtiquetas)}
-              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${mostrarEtiquetas ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
-            >
-              <Tag size={20} />
-            </button>
-            {menuEtiquetas && (
-              <div className={`absolute top-full mt-1 left-1/2 -translate-x-1/2 flex gap-1 z-[100] ${theme.card} border-2 ${theme.border} rounded-xl p-1 shadow-lg`}>
-                <button
-                  onClick={() => { setMostrarEtiquetas(mostrarEtiquetas === 'item' ? false : 'item'); setMenuEtiquetas(false); }}
-                  className={`px-5 py-1.5 rounded-lg text-[10px] font-black tracking-wide transition-all border-2 whitespace-nowrap ${mostrarEtiquetas === 'item' ? 'bg-brand-500 text-white border-brand-600' : `${theme.text} ${theme.border} hover:bg-black/5`}`}
-                >
-                  ITEM
-                </button>
-                <button
-                  onClick={() => { setMostrarEtiquetas(mostrarEtiquetas === 'pasivo' ? false : 'pasivo'); setMenuEtiquetas(false); }}
-                  className={`px-5 py-1.5 rounded-lg text-[10px] font-black tracking-wide transition-all border-2 whitespace-nowrap ${mostrarEtiquetas === 'pasivo' ? 'bg-brand-500 text-white border-brand-600' : `${theme.text} ${theme.border} hover:bg-black/5`}`}
-                >
-                  PASIVO
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 4. TEMA LUNA/SOL */}
-          <button 
-            onClick={() => setIsDark(!isDark)} 
-            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${theme.bg} ${theme.text} ${theme.border}`}
+          {/* 3. ETIQUETAS */}
+          <button
+            onClick={toggleMenuEtiquetas}
+            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${menuEtiquetasAbierto || mostrarEtiquetas.item || mostrarEtiquetas.pasivo ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
           >
-            {isDark ? <Sun size={20} /> : <Moon size={20} />}
+            <Tag size={20} />
           </button>
+
+          {/* 4. FOTOS EN MAPA */}
+          {onToggleFotoPuntos && (
+            <button
+              onClick={onToggleFotoPuntos}
+              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${fotoPuntosActivo ? 'bg-purple-600 border-purple-700 text-white' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+              title="Fotos en mapa"
+            >
+              <Images size={20} />
+            </button>
+          )}
 
           {/* 5. ZOOM / LUPAS */}
           <div className={`flex items-center border-2 ${theme.border} rounded-xl overflow-hidden ${theme.bg}`}>

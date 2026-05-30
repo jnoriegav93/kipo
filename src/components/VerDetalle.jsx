@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { ArrowLeft, Edit3, Camera, X, Send, Share2 } from 'lucide-react';
 import { addDoc, collection, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { TABS_CONFIG, EXTRAS_ITEMS } from './PhotoManager';
+import { TABS_CONFIG, MAIN_TABS, EXTRAS_ITEMS } from './PhotoManager';
 import { estamparMetadatos, urlABase64 } from '../utils/helpers';
 
 // Componente fuera de VerDetalle para evitar remounts
@@ -11,11 +11,12 @@ function FotoMini({ url, label, onClickPhoto }) {
   // url puede ser string o { url, thumb, timestamp } según cómo se guardó
   const displayUrl = url && typeof url === 'object' ? (url.thumb || url.url) : url;
   const fullUrl = url && typeof url === 'object' ? (url.url || url.thumb) : url;
+  const thumbUrl = url && typeof url === 'object' ? (url.thumb || url.url) : url;
   const showImage = displayUrl && !error;
 
   return (
     <div
-      onClick={() => showImage && onClickPhoto({ url: fullUrl, label })}
+      onClick={() => showImage && onClickPhoto({ url: fullUrl, thumb: thumbUrl, label })}
       className={`relative aspect-square rounded-lg overflow-hidden bg-slate-200 border-2 border-slate-300 ${showImage ? 'cursor-pointer hover:opacity-90' : ''}`}
     >
       {showImage ? (
@@ -35,6 +36,44 @@ function FotoMini({ url, label, onClickPhoto }) {
   );
 }
 
+function FullscreenPhotoModal({ photo, onClose }) {
+  const [imgSrc, setImgSrc] = useState(photo.url);
+  const [loading, setLoading] = useState(true);
+
+  return (
+    <div className="fixed inset-0 z-[999] bg-black flex flex-col"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      onClick={onClose}>
+      <div className="flex justify-between items-center px-4 py-4 bg-black/80 backdrop-blur-md border-b border-white/10">
+        <h3 className="font-bold text-white text-base">{photo.label.replace('\n', ' ')}</h3>
+        <button onClick={onClose} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20">
+          <X size={24} />
+        </button>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-4 bg-black relative">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-10 h-10 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          </div>
+        )}
+        <img
+          src={imgSrc}
+          className="max-w-full max-h-full object-contain"
+          alt={photo.label}
+          onLoad={() => setLoading(false)}
+          onError={() => {
+            if (photo.thumb && imgSrc !== photo.thumb) {
+              setImgSrc(photo.thumb);
+            } else {
+              setLoading(false);
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function VerDetalle({
   datos,
   config,
@@ -50,37 +89,16 @@ export default function VerDetalle({
   proyectoActual,
 }) {
 
-  // Función para consolidar ferretería
+  // Función para consolidar ferretería (nuevo modelo: ferreteriaFinal directo)
   const consolidarFerreteria = () => {
-    const consolidado = {};
-
-    // 1. Sumar ferretería de armados
-    (datos.armadosSeleccionados || []).forEach(armado => {
-      armado.items.forEach(item => {
-        const ferr = config.catalogoFerreteria.find(f => f.id === item.idRef);
-        if (ferr) {
-          const key = ferr.nombre;
-          if (!consolidado[key]) {
-            consolidado[key] = { cantidad: 0, unidad: ferr.unidad, nombre: ferr.nombre };
-          }
-          consolidado[key].cantidad += item.cant;
-        }
-      });
-    });
-
-    // 2. Sumar/Restar ferretería extra (incluye positivos Y negativos)
-    Object.entries(datos.ferreteriaExtra || {}).forEach(([id, cantidad]) => {
-      const ferr = config.catalogoFerreteria.find(f => f.id === id);
-      if (ferr && cantidad !== 0) {  // ← Cambio: ahora incluye negativos
-        const key = ferr.nombre;
-        if (!consolidado[key]) {
-          consolidado[key] = { cantidad: 0, unidad: ferr.unidad, nombre: ferr.nombre };
-        }
-        consolidado[key].cantidad += cantidad;  // ← Suma positivos, resta negativos
-      }
-    });
-
-    return Object.values(consolidado);
+    const catalogo = config?.catalogoFerreteria || [];
+    return Object.entries(datos.ferreteriaFinal || {})
+      .filter(([_, cant]) => cant > 0)
+      .map(([id, cant]) => {
+        const ferr = catalogo.find(f => f.id === id);
+        return ferr ? { nombre: ferr.nombre, cantidad: cant, unidad: ferr.unidad } : null;
+      })
+      .filter(Boolean);
   };
 
   const totalConsolidado = consolidarFerreteria();
@@ -157,7 +175,16 @@ export default function VerDetalle({
         });
     } else {
       tab.items.forEach(item => {
-        if (item.items) {
+        if (item.type === 'subgallery') {
+          Object.keys(fotosTab)
+            .filter(k => k.startsWith(item.id + '_'))
+            .sort((a, b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]))
+            .forEach((key, i) => {
+              const fotoRaw = fotosTab[key];
+              const url = typeof fotoRaw === 'string' ? fotoRaw : fotoRaw?.url;
+              if (url) items.push({ url, label: `ACCESO ${i + 1}` });
+            });
+        } else if (item.items) {
           item.items.forEach(sub => {
             const fotoRaw = fotosTab[sub.id];
             const url = typeof fotoRaw === 'string' ? fotoRaw : fotoRaw?.url;
@@ -335,11 +362,6 @@ export default function VerDetalle({
         <div className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 mb-3`}>
           <div className="flex justify-between items-center mb-2">
             <h3 className={`text-xs font-black ${theme.text} uppercase opacity-70`}>Características del Poste</h3>
-            {!readOnly && (
-              <button onClick={onEditar} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
-                <Edit3 size={12} /> EDITAR
-              </button>
-            )}
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -350,58 +372,11 @@ export default function VerDetalle({
             <div><span className={`font-bold ${theme.text} opacity-60`}>Tipo Red:</span> <span className={`font-black ${theme.text}`}>{datos.tipo || '-'}</span></div>
 
             <div><span className={`font-bold ${theme.text} opacity-60`}>Cables:</span> <span className={`font-black ${theme.text}`}>{datos.cables || '-'}</span></div>
-            <div><span className={`font-bold ${theme.text} opacity-60`}>Armado:</span> <span className={`font-black ${theme.text}`}>{datos.armadosSeleccionados?.map(a => a.nombre).join(', ') || '-'}</span></div>
+            <div><span className={`font-bold ${theme.text} opacity-60`}>Armado:</span> <span className={`font-black ${theme.text}`}>{config?.armados?.find(a => a.id === datos.armadoSeleccionadoId)?.nombre || '-'}</span></div>
 
             <div className="col-span-2"><span className={`font-bold ${theme.text} opacity-60`}>Extras:</span> <span className={`font-black ${theme.text}`}>{datos.extrasSeleccionados?.join(', ') || '-'}</span></div>
           </div>
         </div>
-
-        {/* FERRETERÍA DE ARMADOS */}
-        {datos.armadosSeleccionados && datos.armadosSeleccionados.length > 0 && (
-          <details className={`${theme.card} border-2 ${theme.border} rounded-xl overflow-hidden mb-3`}>
-            <summary className="px-3 py-2 cursor-pointer font-black text-xs uppercase opacity-70 hover:bg-slate-50 select-none">
-              Ferretería {datos.armadosSeleccionados.map(a => a.nombre).join(', ')}
-            </summary>
-            <div className="px-3 pb-2 pt-1 bg-slate-50/50 space-y-0 divide-y divide-slate-200">
-              {datos.armadosSeleccionados.flatMap(armado =>
-                armado.items.map((item, idx) => {
-                  const ferr = config.catalogoFerreteria.find(f => f.id === item.idRef);
-                  return (
-                    <div key={`${armado.id}-${idx}`} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
-                      <span className="font-black text-sm text-blue-600 w-8 text-right">{item.cant}</span>
-                      <span className="font-bold text-[10px] opacity-60 uppercase w-10">{ferr?.unidad}</span>
-                      <div className="h-3 w-px bg-slate-300"></div>
-                      <span className="font-bold text-xs flex-1">{ferr?.nombre || 'Desconocido'}</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </details>
-        )}
-
-        {/* FERRETERÍA EXTRA */}
-        {datos.ferreteriaExtra && Object.keys(datos.ferreteriaExtra).length > 0 && (
-          <details className={`${theme.card} border-2 ${theme.border} rounded-xl overflow-hidden mb-3`}>
-            <summary className="px-3 py-2 cursor-pointer font-black text-xs uppercase opacity-70 hover:bg-slate-50 select-none">
-              Ferretería Extra
-            </summary>
-            <div className="px-3 pb-2 pt-1 bg-slate-50/50 space-y-0 divide-y divide-slate-200">
-              {Object.entries(datos.ferreteriaExtra).map(([id, cantidad]) => {
-                const ferr = config.catalogoFerreteria.find(f => f.id === id);
-                if (!ferr || cantidad === 0) return null;
-                return (
-                  <div key={id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
-                    <span className="font-black text-sm text-blue-600 w-8 text-right">{cantidad}</span>
-                    <span className="font-bold text-[10px] opacity-60 uppercase w-10">{ferr.unidad}</span>
-                    <div className="h-3 w-px bg-slate-300"></div>
-                    <span className="font-bold text-xs flex-1">{ferr.nombre}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </details>
-        )}
 
         {/* CONSOLIDADO FERRETERÍAS */}
         {totalConsolidado.length > 0 && (
@@ -420,11 +395,22 @@ export default function VerDetalle({
           </div>
         )}
 
+        {/* BOTÓN EDITAR PUNTO COMPLETO */}
+        {!readOnly && (
+          <button
+            onClick={onEditar}
+            className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest mb-3 active:scale-95 transition-transform shadow-md"
+          >
+            <Edit3 size={16} /> EDITAR PUNTO
+          </button>
+        )}
+
         {/* FOTOS - DINÁMICAS */}
         {/* HELPER PARA ORDENAR SECCIONES y RENDERIZADO */}
         {(() => {
           const SECTION_ORDER = [
             'poste',
+            'instalacion',
             'fatPrecoNueva',
             'fatPrecoExistente',
             'napMec',
@@ -432,6 +418,9 @@ export default function VerDetalle({
             'mufaFdt',
             'xbox',
             'hbox',
+            'site1',
+            'site2',
+            'nodo',
             'adicionales'
           ];
 
@@ -453,18 +442,18 @@ export default function VerDetalle({
               if (tabConfig.dynamic) {
                 return Object.keys(fotos).filter(k => fotos[k]).length > 0;
               }
-              // Principales
-              let principales = 0;
+              let count = 0;
               tabConfig.items.forEach(item => {
-                if (item.items) {
-                  item.items.forEach(sub => { if (fotos[sub.id]) principales++; });
+                if (item.type === 'subgallery') {
+                  count += Object.keys(fotos).filter(k => k.startsWith(item.id + '_') && fotos[k]).length;
+                } else if (item.items) {
+                  item.items.forEach(sub => { if (fotos[sub.id]) count++; });
                 } else {
-                  if (fotos[item.id]) principales++;
+                  if (fotos[item.id]) count++;
                 }
               });
-              // Extras
               const extras = EXTRAS_ITEMS.filter(label => fotos[label]).length;
-              return (principales + extras) > 0;
+              return (count + extras) > 0;
             };
 
             const aHas = hasFotos(a.id, fotosA);
@@ -545,7 +534,11 @@ export default function VerDetalle({
                 let totalPrincipales = 0;
                 let filledPrincipales = 0;
                 tab.items.forEach(item => {
-                  if (item.items) {
+                  if (item.type === 'subgallery') {
+                    const sg = Object.keys(fotosTab).filter(k => k.startsWith(item.id + '_') && fotosTab[k]).length;
+                    filledPrincipales += sg;
+                    // No suma a total (es dinámico)
+                  } else if (item.items) {
                     totalPrincipales += item.items.length;
                     item.items.forEach(sub => { if (fotosTab[sub.id]) filledPrincipales++; });
                   } else {
@@ -562,7 +555,13 @@ export default function VerDetalle({
                 const groups = [];
                 let currentNormalGroup = [];
                 tab.items.forEach(item => {
-                  if (item.items) {
+                  if (item.type === 'subgallery') {
+                    if (currentNormalGroup.length > 0) {
+                      groups.push({ type: 'normal', items: [...currentNormalGroup] });
+                      currentNormalGroup = [];
+                    }
+                    groups.push({ type: 'subgallery', data: item });
+                  } else if (item.items) {
                     if (currentNormalGroup.length > 0) {
                       groups.push({ type: 'normal', items: [...currentNormalGroup] });
                       currentNormalGroup = [];
@@ -600,7 +599,36 @@ export default function VerDetalle({
 
                       <div className="space-y-3 mb-3">
                         {groups.map((group, gIdx) => {
-                          if (group.type === 'normal') {
+                          if (group.type === 'subgallery') {
+                            const sgItem = group.data;
+                            const sgFotos = Object.keys(fotosTab)
+                              .filter(k => k.startsWith(sgItem.id + '_') && fotosTab[k])
+                              .sort((a, b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]));
+                            const sgCount = sgFotos.length;
+                            return (
+                              <div key={gIdx} className="bg-blue-50 border-2 border-blue-200 rounded-lg overflow-hidden">
+                                <div className="bg-blue-600 px-3 py-2 flex justify-between items-center">
+                                  <span className="text-white text-[10px] font-black uppercase tracking-widest">FOTOS DE ACCESO</span>
+                                  <span className="text-blue-200 text-[10px] font-bold">{sgCount} foto{sgCount !== 1 ? 's' : ''}</span>
+                                </div>
+                                {sgCount > 0 && (
+                                  <div className="p-2 flex flex-wrap justify-center gap-2">
+                                    {sgFotos.map((key, i) => (
+                                      <div key={key} className="w-[31%] flex justify-center">
+                                        <div className="w-full">
+                                          <FotoMini
+                                            url={fotosTab[key]}
+                                            label={`ACCESO ${i + 1}`}
+                                            onClickPhoto={setFullscreenPhoto}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          } else if (group.type === 'normal') {
                             return (
                               <div key={gIdx} className="flex flex-wrap justify-center gap-2">
                                 {group.items.map(item => {
@@ -674,7 +702,7 @@ export default function VerDetalle({
           <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-3 mb-3">
             <h3 className="text-xs font-black text-amber-700 uppercase mb-2">Observación del Supervisor</h3>
             <p className={`text-[10px] text-amber-600 font-bold mb-2`}>
-              Se enviará a la bitácora con referencia: COD FAT: {datos?.codFat || '-'} | NRO PT: {datos?.numero || '-'}
+              Se enviará a la bitácora con referencia: ITEM: {datos?.numero || '-'} | PASIVO: {datos?.codFat || '-'}
             </p>
             <div className="flex gap-2">
               <input
@@ -906,19 +934,7 @@ export default function VerDetalle({
       {/* MODAL FULLSCREEN FOTO */}
       {
         fullscreenPhoto && (
-          <div className="fixed inset-0 z-[999] bg-black flex flex-col" onClick={() => setFullscreenPhoto(null)}>
-            <div className="flex justify-between items-center px-4 pb-4 bg-black/80 backdrop-blur-md border-b border-white/10" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
-              <div>
-                <h3 className="font-bold text-white text-base">{fullscreenPhoto.label.replace('\n', ' ')}</h3>
-              </div>
-              <button onClick={() => setFullscreenPhoto(null)} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="flex-1 flex items-center justify-center p-4 bg-black">
-              <img src={fullscreenPhoto.url} className="max-w-full max-h-full object-contain" alt={fullscreenPhoto.label} />
-            </div>
-          </div>
+          <FullscreenPhotoModal photo={fullscreenPhoto} onClose={() => setFullscreenPhoto(null)} />
         )
       }
     </div >

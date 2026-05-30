@@ -1,10 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export const useMapState = () => {
   
   const [iconSize, setIconSize] = useState(1);
-  const [mapStyle, setMapStyle] = useState('satellite');
-  const [mostrarEtiquetas, setMostrarEtiquetas] = useState(false);
+  const [mapStyle, setMapStyle] = useState('google');
+  const [mostrarEtiquetas, setMostrarEtiquetas] = useState({ item: false, pasivo: false });
+  const [menuEtiquetasAbierto, setMenuEtiquetasAbierto] = useState(false);
+  const savedEtiquetasRef = useRef({ item: false, pasivo: false });
+
+  const toggleMenuEtiquetas = () => {
+    if (menuEtiquetasAbierto) {
+      // Cerrar: guardar selección actual y ocultar etiquetas del mapa
+      savedEtiquetasRef.current = { ...mostrarEtiquetas };
+      setMostrarEtiquetas({ item: false, pasivo: false });
+      setMenuEtiquetasAbierto(false);
+    } else {
+      // Abrir: restaurar selección guardada
+      setMostrarEtiquetas({ ...savedEtiquetasRef.current });
+      setMenuEtiquetasAbierto(true);
+    }
+  };
    const [yaSaltoAlInicio, setYaSaltoAlInicio] = useState(false);
   const [mapViewState, setMapViewState] = useState(null);
   const [gpsTrigger, setGpsTrigger] = useState(0);
@@ -46,6 +61,9 @@ export const useMapState = () => {
     setMapStyle,
     mostrarEtiquetas,
     setMostrarEtiquetas,
+    menuEtiquetasAbierto,
+    setMenuEtiquetasAbierto,
+    toggleMenuEtiquetas,
     gpsTrigger,
     setGpsTrigger,
     yaSaltoAlInicio,

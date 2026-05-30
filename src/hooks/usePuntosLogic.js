@@ -17,7 +17,8 @@ export const usePuntosLogic = ({
   setVista,
   setConfirmData, setAlertData,
   agregarTarea, theme,
-  vistaAnterior, setVistaAnterior
+  vistaAnterior, setVistaAnterior,
+  config
 }) => {
 
 
@@ -46,7 +47,9 @@ export const usePuntosLogic = ({
         });
 
         if (proyectoActual?.id) {
-          enviarMensajeSistema(proyectoActual.id, `Se eliminó:\n${identificador}`, user.uid);
+          const nombre = config?.nombrePersonal || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
+          const empresa = config?.empresaPersonal || '';
+          enviarMensajeSistema(proyectoActual.id, `Se eliminó:\n${identificador}`, user.uid, nombre, empresa);
         }
 
         setPuntoSeleccionado(null);
@@ -87,6 +90,7 @@ export const usePuntosLogic = ({
     const urls = [...fotosSubidasRef.current];
     fotosSubidasRef.current = [];
     urls.forEach(url => deleteImage(url).catch(() => {}));
+    try { localStorage.removeItem('kipo_draft'); } catch {}
     setVista(vistaAnterior);
   };
 
@@ -115,9 +119,9 @@ export const usePuntosLogic = ({
     const fecha = now.toISOString();
     const hora = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
     if (memoriaUltimoPunto) {
-      setDatosFormulario({ ...memoriaUltimoPunto, codigo: '', suministro: '', numero: '', fotos: [], observaciones: '', fecha, hora });
+      setDatosFormulario({ ...memoriaUltimoPunto, codigo: '', suministro: '', numero: '', fotos: {}, observaciones: '', fecha, hora });
     } else {
-      setDatosFormulario({ codigo: '', suministro: '', altura: null, fuerza: null, material: null, tipo: null, extrasSeleccionados: [], armadoSeleccionado: null, cables: null, ferreteriaExtraSeleccionada: [], fotos: [], observaciones: '', fecha, hora });
+      setDatosFormulario({ codigo: '', suministro: '', altura: null, fuerza: null, material: null, tipo: null, extrasSeleccionados: [], armadoSeleccionado: null, cables: null, ferreteriaExtraSeleccionada: [], fotos: {}, observaciones: '', fecha, hora });
     }
     setVista('formulario');
   };
@@ -260,8 +264,32 @@ export const usePuntosLogic = ({
       agregarTarea('guardar_punto', paquete);
       console.log("Enviando a BBDD (Estructura Fija):", paquete);
 
+      // Limpiar borrador de fotos
+      try { localStorage.removeItem('kipo_draft'); } catch {}
+
+      // Liberar paths guardados del registro de huérfanos
+      try {
+        const paths = [];
+        Object.values(fotosProcesadas).forEach(sec => {
+          if (sec && typeof sec === 'object') {
+            Object.values(sec).forEach(f => {
+              if (f?._path) paths.push(f._path);
+              if (f?._pathHD) paths.push(f._pathHD);
+            });
+          }
+        });
+        if (paths.length > 0) {
+          const pending = JSON.parse(localStorage.getItem('kipo_pending_paths') || '[]');
+          localStorage.setItem('kipo_pending_paths', JSON.stringify(
+            pending.filter(e => !paths.includes(e.path))
+          ));
+        }
+      } catch {}
+
       // Mensaje automático en bitácora
       if (proyectoActual?.id) {
+        const nombre = config?.nombrePersonal || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
+        const empresa = config?.empresaPersonal || '';
         const id = formatId(datosFormulario);
         if (modoEdicion && puntoSeleccionado) {
           const puntoAnterior = puntos.find(p => p.id === puntoSeleccionado);
@@ -273,9 +301,9 @@ export const usePuntosLogic = ({
           }
           let msg = `Editado:\n${id}`;
           if (partes.length > 0) msg += `\n${partes.join('\n')}`;
-          enviarMensajeSistema(proyectoActual.id, msg, user.uid);
+          enviarMensajeSistema(proyectoActual.id, msg, user.uid, nombre, empresa);
         } else {
-          enviarMensajeSistema(proyectoActual.id, `Punto creado:\n${id}`, user.uid);
+          enviarMensajeSistema(proyectoActual.id, `Punto creado:\n${id}`, user.uid, nombre, empresa);
         }
       }
 
@@ -352,8 +380,10 @@ export const usePuntosLogic = ({
 
     // 5. Bitácora
     if (proyectoActual?.id) {
+      const nombre = config?.nombrePersonal || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
+      const empresa = config?.empresaPersonal || '';
       const id = formatId(puntoActual.datos);
-      enviarMensajeSistema(proyectoActual.id, `Punto movido:\n${id}`, user.uid);
+      enviarMensajeSistema(proyectoActual.id, `Punto movido:\n${id}`, user.uid, nombre, empresa);
     }
   };
 

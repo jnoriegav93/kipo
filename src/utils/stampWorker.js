@@ -94,7 +94,7 @@ async function estamparEnWorker(imageBitmap, datos, logoBase64, stampConfig, qua
     fitFont(ctx, proyTxt, c1MaxW, fs, true);
     ctx.fillText(proyTxt, hPad, r1Y);
 
-    const nro = String(datos.numero || '-').padStart(3, '0');
+    const nro = String(datos.numero || '-');
     const pasivo = datos.pasivo || datos.codFat || '-';
     let idTxt = '';
     if (mostrarNroPoste && mostrarCodFat) idTxt = `${nro}  |  ${pasivo}`;
@@ -205,7 +205,7 @@ function inyectarEXIF(jpegBuffer, datos) {
     dtGps = dtStr.slice(0, 10);
   }
 
-  const nroStr = String(datos?.numero || '').padStart(3, '0');
+  const nroStr = String(datos?.numero || '');
   const imageDesc = `Kipo - ${datos?.proyecto || ''} #${nroStr}`;
 
   // Decimal degrees → DMS rationals [deg/1, min/1, sec/1000]

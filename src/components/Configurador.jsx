@@ -7,23 +7,50 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
   const { modalOpen, setModalOpen, tempData, setTempData, setConfirmData, setAlertData } = modalState;
   
   // Helpers (Sin cambios)
-  const crearArmado = () => { 
-    if(!tempData.nombre) return; 
-    
+  const crearArmado = () => {
+    if(!tempData.nombre) return;
+
     // Validar que no exista nombre duplicado
     const nombreExiste = config.armados.some(a => a.nombre.toLowerCase() === tempData.nombre.toLowerCase());
     if (nombreExiste) {
-      setAlertData({ 
-        title: 'Nombre duplicado', 
+      setAlertData({
+        title: 'Nombre duplicado',
         message: `Ya existe un armado con el nombre "${tempData.nombre}". Por favor usa otro nombre.`,
-        theme: theme 
+        theme: theme
       });
       return;
     }
-    
-    const nuevo = { id: `a_${Date.now()}`, nombre: tempData.nombre, items: [], visible: true }; 
-    saveConfig({ ...config, armados: [...config.armados, nuevo] }); 
-    setModalOpen(null); 
+
+    // Ir a selección de ferreterías en lugar de guardar directamente
+    const defaultOrden = config.catalogoFerreteria.map(f => f.id);
+    setTempData({
+      nuevoArmadoId: `a_${Date.now()}`,
+      nuevoArmadoNombre: tempData.nombre,
+      itemsSeleccion: {},
+      listaOrden: defaultOrden,
+      snapshot: JSON.stringify({ itemsSeleccion: {}, listaOrden: defaultOrden }),
+    });
+    setModalOpen('SELECCIONAR_ITEMS_ARMADO');
+  };
+
+  const guardarArmadoConItems = () => {
+    const { nuevoArmadoId, nuevoArmadoNombre, itemsSeleccion = {}, modoEdicion, listaOrden } = tempData;
+    const orden = listaOrden || config.catalogoFerreteria.map(f => f.id);
+    const items = orden
+      .filter(id => {
+        const s = itemsSeleccion[id];
+        if (!s) return false;
+        return (s.cant || 0) > 0 || (s.tipo && s.tipo !== 'none');
+      })
+      .map(id => ({ idRef: id, cant: itemsSeleccion[id].cant || 0, tipo: itemsSeleccion[id].tipo || 'primaria' }));
+    if (modoEdicion) {
+      const nuevosArmados = config.armados.map(a => a.id === nuevoArmadoId ? { ...a, items } : a);
+      saveConfig({ ...config, armados: nuevosArmados });
+    } else {
+      const nuevo = { id: nuevoArmadoId, nombre: nuevoArmadoNombre, items, visible: true };
+      saveConfig({ ...config, armados: [...config.armados, nuevo] });
+    }
+    setModalOpen(null);
   };
   const crearFerreteria = () => { 
     if(!tempData.nombre || !tempData.unidad) return; 
@@ -39,7 +66,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       return;
     }
     
-    const nuevo = { id: `f_${Date.now()}`, nombre: tempData.nombre, unidad: tempData.unidad }; 
+    const nuevo = { id: `f_${Date.now()}`, nombre: tempData.nombre, unidad: tempData.unidad, visible: true };
     saveConfig({ ...config, catalogoFerreteria: [...config.catalogoFerreteria, nuevo] }); 
     setModalOpen(null); 
   };
@@ -218,56 +245,40 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
   const renderBotones = (tipo, addModal, tipoAdd) => {
     const enModoEdit = modoEditBotones === tipo;
-    
+
     return (
-      <div className="space-y-2">
-        {enModoEdit && (
-          <div className="flex justify-end">
-            <button 
-              onClick={() => setModoEditBotones(null)}
-              className="text-sm font-bold text-brand-600 hover:text-brand-700 px-3 py-1 rounded"
-            >
-              Listo
-            </button>
-          </div>
+      <div className="flex flex-wrap gap-2">
+        {config.botonesPoste[tipo]?.map((item, i) => (
+          <button
+            key={i}
+            onClick={() => {
+              if (enModoEdit) {
+                const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].filter(b => b.v !== item.v) };
+                saveConfig({ ...config, botonesPoste: nuevosBotones });
+              } else {
+                toggleVisibilidadBoton(tipo, item.v);
+              }
+            }}
+            className={`h-12 rounded-lg text-sm font-bold border-2 flex items-center overflow-hidden active:scale-95 transition-all shadow-sm select-none
+            ${item.visible || enModoEdit ? 'bg-slate-900 text-white border-black' : `${theme.card} ${theme.text} border-slate-300`}`}
+          >
+            <span className="pl-4 pr-3">{item.v}</span>
+            <span className={`self-stretch flex items-center px-3 ${
+              enModoEdit ? 'bg-red-500 text-white' : item.visible ? 'text-white' : `${theme.text} opacity-60`
+            }`}>
+              {enModoEdit ? <X size={15} strokeWidth={3}/> : item.visible ? <Eye size={15}/> : <EyeOff size={15}/>}
+            </span>
+          </button>
+        ))}
+
+        {!enModoEdit && (
+          <button
+            onClick={() => { setTempData({ tipoLista: tipoAdd }); setModalOpen(addModal); }}
+            className={`h-12 w-12 rounded-lg border-2 border-dashed ${theme.border} ${theme.card} flex items-center justify-center text-green-600 hover:opacity-80 active:scale-95 transition-colors`}
+          >
+            <Plus size={24} strokeWidth={4} />
+          </button>
         )}
-        
-        <div className="flex flex-wrap gap-2">
-          {config.botonesPoste[tipo]?.map((item, i) => (
-            <div key={i} className="relative">
-              <LongPressButton 
-                onClick={() => !enModoEdit && toggleVisibilidadBoton(tipo, item.v)}
-                onLongPress={() => setModoEditBotones(tipo)}
-                className={`h-12 px-4 rounded-lg text-sm font-bold border-2 flex items-center gap-2 active:scale-95 transition-all shadow-sm select-none
-                ${item.visible ? 'bg-slate-900 text-white border-black' : `${theme.card} ${theme.text} border-slate-300`}
-                ${enModoEdit ? 'animate-wiggle' : ''}`}
-              >
-                {item.v} {!enModoEdit && (item.visible ? <Eye size={16}/> : <EyeOff size={16}/>)}
-              </LongPressButton>
-              
-              {enModoEdit && (
-                <button
-                  onClick={() => {
-                    const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].filter(b => b.v !== item.v) };
-                    saveConfig({ ...config, botonesPoste: nuevosBotones });
-                  }}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-90 z-10"
-                >
-                  <X size={14} strokeWidth={3}/>
-                </button>
-              )}
-            </div>
-          ))}
-          
-          {!enModoEdit && (
-            <button 
-              onClick={() => { setTempData({ tipoLista: tipoAdd }); setModalOpen(addModal); }}
-              className={`h-12 w-12 rounded-lg border-2 border-dashed ${theme.border} ${theme.card} flex items-center justify-center text-green-600 hover:opacity-80 active:scale-95 transition-colors`}
-            >
-              <Plus size={24} strokeWidth={4} />
-            </button>
-          )}
-        </div>
       </div>
     );
   };
@@ -284,7 +295,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       </div>
       
       <div className={`flex ${theme.header} border-b-2 ${theme.border} shrink-0`}> 
-          {['armados', 'ferreteria', 'botones'].map(t => ( 
+          {['armados', 'ferreteria', 'datos'].map(t => (
               <button 
                 key={t} 
                 onClick={() => { 
@@ -326,18 +337,22 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
                                     <div className="flex items-center gap-2 shrink-0">
                                         
-                                        <button 
-                                            onClick={() => { 
-                                                if (isEditing) {
-                                                    setEditId(null);
-                                                } else {
-                                                    setEditId(arm.id);
-                                                    setExpandedId(arm.id); 
-                                                }
+                                        <button
+                                            onClick={() => {
+                                              const itemsSeleccion = {};
+                                              arm.items.forEach(item => {
+                                                itemsSeleccion[item.idRef] = { cant: item.cant, tipo: item.tipo || 'primaria' };
+                                              });
+                                              // Orden: items guardados primero (en su orden), luego el resto del catálogo
+                                              const savedIds = arm.items.map(i => i.idRef);
+                                              const restIds = config.catalogoFerreteria.filter(f => !savedIds.includes(f.id)).map(f => f.id);
+                                              const listaOrden = [...savedIds, ...restIds];
+                                              setTempData({ nuevoArmadoId: arm.id, nuevoArmadoNombre: arm.nombre, itemsSeleccion, listaOrden, snapshot: JSON.stringify({ itemsSeleccion, listaOrden }), modoEdicion: true });
+                                              setModalOpen('SELECCIONAR_ITEMS_ARMADO');
                                             }}
-                                            className={`w-9 h-9 flex items-center justify-center rounded-lg border-2 transition-colors ${isEditing ? 'bg-green-600 border-green-700 text-white shadow-md' : `${theme.border} ${theme.text} opacity-60 hover:opacity-100`}`}
+                                            className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-black text-slate-800 transition-colors opacity-60 hover:opacity-100"
                                         >
-                                            {isEditing ? <Save size={18} strokeWidth={2.5}/> : <Edit3 size={18} strokeWidth={2.5}/>}
+                                            <Edit3 size={18} strokeWidth={2.5}/>
                                         </button>
 
                                         <DeleteButton 
@@ -371,41 +386,29 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
                                 {isExpanded && (
                                     <div className={`px-4 py-3 bg-black/5 border-t ${theme.border}`}>
-                                        
-                                        <div className="flex flex-col mb-3">
-                                            {arm.items.length === 0 ? (
-                                                <div className="text-center py-2 opacity-40 text-xs italic">Sin materiales asignados</div>
-                                            ) : (
-                                                arm.items.map((item, idx) => {
-                                                    const matInfo = config.catalogoFerreteria.find(f => f.id === item.idRef);
-                                                    return (
-                                                        <div key={idx} className={`flex justify-between items-center py-2 border-b ${theme.border} last:border-0`}>
-                                                            <span className={`font-bold text-xs ${theme.text} opacity-90 truncate flex-1`}>
-                                                                {matInfo?.nombre || '???'}
+                                        {arm.items.length === 0 ? (
+                                            <div className="text-center py-2 opacity-40 text-xs italic">Sin materiales asignados</div>
+                                        ) : (
+                                            [...arm.items.filter(i => (i.tipo || 'primaria') === 'primaria'), ...arm.items.filter(i => i.tipo === 'secundaria')]
+                                            .map((item, idx) => {
+                                                const matInfo = config.catalogoFerreteria.find(f => f.id === item.idRef);
+                                                const esPrimaria = (item.tipo || 'primaria') === 'primaria';
+                                                return (
+                                                    <div key={idx} className={`flex justify-between items-center py-2 border-b ${theme.border} last:border-0`}>
+                                                        <span className={`font-bold text-xs ${theme.text} opacity-90 truncate flex-1`}>
+                                                            {matInfo?.nombre || '???'}
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-black ${theme.text} opacity-70`}>
+                                                                {item.cant} {matInfo?.unidad}
                                                             </span>
-                                                            <div className="flex items-center gap-3">
-                                                                <span className={`text-xs font-black ${theme.text} opacity-70`}>
-                                                                    {item.cant} {matInfo?.unidad}
-                                                                </span>
-                                                                {isEditing && (
-                                                                    <button onClick={() => borrarMaterialDeArmado(arm.id, idx)} className="text-red-500 hover:text-red-700 p-1">
-                                                                        <X size={16}/>
-                                                                    </button>
-                                                                )}
-                                                            </div>
+                                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${esPrimaria ? 'border-green-500 text-green-600' : 'border-orange-500 text-orange-600'}`}>
+                                                                {esPrimaria ? 'P' : 'S'}
+                                                            </span>
                                                         </div>
-                                                    )
-                                                })
-                                            )}
-                                        </div>
-                                        
-                                        {isEditing && (
-                                            <button 
-                                                onClick={() => { setTempData({ armadoId: arm.id }); setModalOpen('AGREGAR_MAT'); }}
-                                                className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-slate-800 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
-                                            >
-                                                <Plus size={16} strokeWidth={3} /> AGREGAR FERRETERÍA
-                                            </button>
+                                                    </div>
+                                                );
+                                            })
                                         )}
                                     </div>
                                 )}
@@ -430,9 +433,9 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                       </div>
                       
                       <div className="flex items-center gap-2 shrink-0">
-                        <DeleteButton 
-                           onClick={() => borrarFerreteria(f.id)} 
-                           className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-red-200 bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-600 transition-colors"
+                        <DeleteButton
+                           onClick={() => borrarFerreteria(f.id)}
+                           className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-black bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-600 transition-colors"
                         >
                            <Trash2 size={16} strokeWidth={2.5}/>
                         </DeleteButton>
@@ -455,35 +458,45 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
             </div> 
         )}
         
-{tab === 'botones' && ( 
-          <div className="space-y-2 pb-24">
-            
-            <div className="relative flex py-2 items-center mt-2 mb-2">
-                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
-                <span className={`flex-shrink-0 mx-4 ${theme.text} opacity-50 text-[10px] font-black tracking-[0.2em] uppercase`}>Datos de Postes</span>
-                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
-            </div>
-            
-            <FilaPestanas idA="vis_altura" tituloA="Altura" renderA={() => renderBotones('alturas', 'AGREGAR_BOTON', 'alturas')} idB="vis_material" tituloB="Material" renderB={() => renderBotones('materiales', 'AGREGAR_BOTON', 'materiales')}/>
-            <FilaPestanas idA="vis_fuerza" tituloA="Fuerza" renderA={() => renderBotones('fuerzas', 'AGREGAR_BOTON', 'fuerzas')} idB="vis_tipo" tituloB="Tipo de Red" renderB={() => renderBotones('tipos', 'AGREGAR_BOTON', 'tipos')}/>
-            <FilaPestanas 
-                idA="vis_extras" 
-                tituloA="Datos Extras" 
-                renderA={() => renderBotones('extras', 'AGREGAR_BOTON', 'extras')} 
-                idB="vis_cables" 
-                tituloB="Cantidad de Cables" 
-                renderB={() => renderBotones('cables', 'AGREGAR_BOTON', 'cables')}
-            />
-          </div> 
+{tab === 'datos' && (
+          <div className="space-y-6 pb-24">
+            {[
+              { titulo: 'Altura',            tipo: 'alturas',   tipoAdd: 'alturas'   },
+              { titulo: 'Material',          tipo: 'materiales',tipoAdd: 'materiales'},
+              { titulo: 'Fuerza',            tipo: 'fuerzas',   tipoAdd: 'fuerzas'   },
+              { titulo: 'Tipo de Red',       tipo: 'tipos',     tipoAdd: 'tipos'     },
+              { titulo: 'Datos Extras',      tipo: 'extras',    tipoAdd: 'extras'    },
+              { titulo: 'Cantidad de Cables',tipo: 'cables',    tipoAdd: 'cables'    },
+            ].map(({ titulo, tipo, tipoAdd }) => {
+              const enModoEdit = modoEditBotones === tipo;
+              return (
+                <div key={tipo} className={`${theme.card} border-2 ${theme.border} rounded-xl overflow-hidden`}>
+                  <div className={`px-4 py-2 flex items-center justify-between border-b-2 ${theme.border} ${theme.header}`}>
+                    <span className={`text-[11px] font-black tracking-[0.15em] uppercase ${theme.text}`}>{titulo}</span>
+                    <button
+                      onClick={() => setModoEditBotones(enModoEdit ? null : tipo)}
+                      className={`text-[11px] font-black px-3 py-1 rounded-lg border-2 transition-all active:scale-95 ${enModoEdit ? 'bg-slate-900 text-white border-black' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+                    >
+                      {enModoEdit ? 'LISTO' : 'EDITAR'}
+                    </button>
+                  </div>
+                  <div className="p-3">
+                    {renderBotones(tipo, 'AGREGAR_BOTON', tipoAdd)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
 
       </div>
 
-      <Modal isOpen={modalOpen === 'CREAR_ARMADO'} onClose={() => setModalOpen(null)} title="Nuevo Armado" theme={theme}> 
-        <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} /> 
-        <div className="h-4"></div> 
-        <button onClick={crearArmado} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">CREAR</button> 
+      <Modal isOpen={modalOpen === 'CREAR_ARMADO'} onClose={() => setModalOpen(null)} title="Nuevo Armado" theme={theme}>
+        <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} />
+        <div className="h-4"></div>
+        <button onClick={crearArmado} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">CREAR</button>
       </Modal>
+
 
       <Modal isOpen={modalOpen === 'CREAR_FERR'} onClose={() => setModalOpen(null)} title="Nueva Ferretería" theme={theme}> 
         <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} /> 
@@ -535,6 +548,122 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
         <div className="h-4"></div> 
         <button onClick={agregarBoton} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">AGREGAR</button> 
       </Modal>
+
+      {/* PANTALLA COMPLETA: Selección de ferreterías para armado */}
+      {modalOpen === 'SELECCIONAR_ITEMS_ARMADO' && (() => {
+        const itemsSeleccion = tempData.itemsSeleccion || {};
+        const listaOrden = tempData.listaOrden || config.catalogoFerreteria.map(f => f.id);
+        const listaDisplay = listaOrden.map(id => config.catalogoFerreteria.find(f => f.id === id)).filter(Boolean);
+
+        const updateCant = (ferrId, delta) => {
+          const current = itemsSeleccion[ferrId] || { cant: 0, tipo: 'primaria' };
+          const newCant = Math.max(0, current.cant + delta);
+          setTempData({ ...tempData, itemsSeleccion: { ...itemsSeleccion, [ferrId]: { ...current, cant: newCant } } });
+        };
+        const toggleTipo = (ferrId) => {
+          const current = itemsSeleccion[ferrId] || { cant: 0, tipo: 'none' };
+          const tieneCant = (current.cant || 0) > 0;
+          let nextTipo;
+          if (current.tipo === 'none' || !current.tipo) nextTipo = 'primaria';
+          else if (current.tipo === 'primaria') nextTipo = 'secundaria';
+          else nextTipo = tieneCant ? 'primaria' : 'none'; // con cantidad no puede ir a none
+          setTempData({ ...tempData, itemsSeleccion: { ...itemsSeleccion, [ferrId]: { ...current, tipo: nextTipo } } });
+        };
+        const aplicarOrden = () => {
+          const primarias   = config.catalogoFerreteria.filter(f => itemsSeleccion[f.id]?.tipo === 'primaria');
+          const secundarias = config.catalogoFerreteria.filter(f => itemsSeleccion[f.id]?.tipo === 'secundaria');
+          const sinTipo     = config.catalogoFerreteria.filter(f => { const t = itemsSeleccion[f.id]?.tipo; return !t || t === 'none'; });
+          setTempData({ ...tempData, listaOrden: [...primarias, ...secundarias, ...sinTipo].map(f => f.id) });
+        };
+        const handleVolver = () => {
+          const currentSnap = JSON.stringify({ itemsSeleccion, listaOrden });
+          if (currentSnap !== tempData.snapshot) {
+            setConfirmData({
+              title: 'Cambios sin guardar',
+              message: '¿Deseas guardar los cambios realizados en el armado?',
+              actionText: 'SÍ, GUARDAR',
+              theme,
+              onClose: () => { setConfirmData(null); setModalOpen(null); },
+              onConfirm: () => { setConfirmData(null); guardarArmadoConItems(); },
+            });
+          } else {
+            setModalOpen(null);
+          }
+        };
+
+        return (
+          <div className={`absolute inset-0 z-50 flex flex-col ${theme.bg}`}>
+            {/* Header */}
+            <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
+              <button onClick={handleVolver}>
+                <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
+              </button>
+              <span className={`font-black ${theme.text} text-base uppercase truncate mx-2`}>{tempData.nuevoArmadoNombre}</span>
+              <button
+                onClick={aplicarOrden}
+                className="text-[11px] font-black px-3 py-1.5 rounded-lg border-2 border-black bg-slate-900 text-white transition-all shrink-0 active:scale-95"
+              >
+                ORDENAR
+              </button>
+            </div>
+
+            {/* Lista de ferreterías */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-px">
+              {listaDisplay.length === 0 ? (
+                <div className="flex items-center justify-center h-full opacity-40 text-xs">No hay ferreterías creadas</div>
+              ) : listaDisplay.map(f => {
+                const sel = itemsSeleccion[f.id] || { cant: 0, tipo: 'none' };
+                const tieneCant = (sel.cant || 0) > 0;
+                const tipo = sel.tipo || 'none';
+                const esPrimaria = tipo === 'primaria';
+                const esSecundaria = tipo === 'secundaria';
+                const tieneSelTipo = esPrimaria || esSecundaria;
+                // Color de fondo de fila
+                const filaBg = tieneCant
+                  ? (esPrimaria ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200')
+                  : tieneSelTipo
+                    ? (esPrimaria ? 'bg-green-50/40 border border-green-100' : 'bg-orange-50/40 border border-orange-100')
+                    : `${theme.card} border border-transparent`;
+                // Estilo botón P/S
+                const btnCls = tieneSelTipo
+                  ? (esPrimaria ? 'border-green-500 text-green-600' : 'border-orange-500 text-orange-600')
+                  : 'border-slate-900 text-slate-400';
+                return (
+                  <div key={f.id} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors ${filaBg}`}>
+                    <span className={`flex-1 font-bold text-sm ${theme.text} truncate`}>{f.nombre}</span>
+                    <span className="text-[9px] font-black opacity-40 uppercase shrink-0">{f.unidad}</span>
+                    {/* Toggle P/S — siempre clickeable */}
+                    <button
+                      onClick={() => toggleTipo(f.id)}
+                      className={`w-8 h-8 rounded-lg text-[11px] font-black border-2 bg-transparent transition-all shrink-0 ${btnCls}`}
+                    >
+                      {esSecundaria ? 'S' : 'P'}
+                    </button>
+                    {/* Contador */}
+                    <div className={`flex items-center border-2 ${theme.border} rounded-lg overflow-hidden shrink-0`}>
+                      <button onClick={() => updateCant(f.id, -1)} className={`w-8 h-8 flex items-center justify-center ${theme.bg} ${theme.text} font-black text-lg active:bg-black/10 select-none`}>−</button>
+                      <span className={`w-8 text-center text-sm font-black text-black self-stretch flex items-center justify-center ${
+                        !tieneCant ? 'bg-black/[0.06]' : esPrimaria ? 'bg-green-200' : 'bg-orange-200'
+                      }`}>{sel.cant}</span>
+                      <button onClick={() => updateCant(f.id, 1)} className={`w-8 h-8 flex items-center justify-center ${theme.bg} ${theme.text} font-black text-lg active:bg-black/10 select-none`}>+</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Botón guardar */}
+            <div className={`shrink-0 border-t-2 ${theme.border} p-3`} style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}>
+              <button
+                onClick={guardarArmadoConItems}
+                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-lg"
+              >
+                GUARDAR ARMADO
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

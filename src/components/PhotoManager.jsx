@@ -1,8 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, Trash2, X, RefreshCw, ArrowLeft, Maximize2, Share2, Plus } from 'lucide-react';
+import { Camera, Trash2, X, RefreshCw, ArrowLeft, Maximize2, Share2, Plus, Image as ImageIcon, FolderOpen, Check, ChevronDown } from 'lucide-react';
 import { uploadImage } from '../utils/storage';
+import { saveUploadPending, deleteUploadPending } from '../utils/photoDB';
 import { estamparMetadatos, urlABase64 } from '../utils/helpers';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // CONFIGURACIÓN - 3 PESTAÑAS DE FOTOS
@@ -36,11 +37,18 @@ export const TABS_CONFIG = {
     id: 'mufaTroncal',
     title: 'MUFA TRONCAL',
     items: [
+      { id: 'frontal', label: 'FRONTAL', help: 'Vista frontal de la mufa en la parte superior del poste' },
+      { id: 'panoramica', label: 'PANORAMICA', help: 'Vista panorámica del poste' },
+      { id: 'vistaFrontalBandejas', label: 'VISTA FRONTAL\nBANDEJAS', help: 'Debe apreciarse la fijación, orden y curvatura de las fibras' },
+      { id: 'vistaPosteriorBandejas', label: 'VISTA PERFIL\nBANDEJAS', help: 'Debe apreciarse la fusión de las fibras' },
+      { id: 'bandejasAseguradas', label: 'BANDEJAS ASEG.\nFRONTAL', help: 'Debe apreciarse las bandejas de FO aseguradas con cinta Velcro' },
+      { id: 'bandejasAseguradaPerfil', label: 'BANDEJAS ASEG.\nPERFIL', help: 'Debe apreciarse las bandejas aseguradas con Velcro' },
+      { id: 'cierreCarcasa', label: 'CIERRE DE\nCARCASA', help: 'Foto de la mufa cerrada en el piso' },
       { id: 'cajaPiso', label: 'CAJA EN PISO', help: 'Debe apreciarse la caja en una superficie segura con la carcasa abierta' },
       { id: 'fusiones', label: 'FUSIONES', help: 'Debe apreciarse la FUSIÓN de FO, fijación, orden y curvatura de las fibras' },
-      { id: 'bandejasAseguradas', label: 'BANDEJAS\nASEGURADAS', help: 'Debe apreciarse las bandejas de FO aseguradas con cinta Velcro' },
       { id: 'cablesAsegurados', label: 'CABLES OPTICOS\nASEGURADOS', help: 'Verifique que los cables estén asegurados de manera confiable.' },
-      { id: 'cierreCarcasa', label: 'CIERRE DE LA\nCARCASA', help: 'Debe apreciarse el cierre de la carcasa en poste.' },
+      { id: 'etiquetasGenerales', label: 'ETIQUETAS\nGENERALES', help: 'Debe verse la descripción de todas las etiquetas' },
+      { id: 'herreria', label: 'HERRAJES', help: 'Foto tomada desde abajo a toda la mufa y sus herrajes' },
       { id: 'etiquetaIngreso', label: 'ETIQUETA FIBRA\nINGRESO' },
       // SUBSECCION
       {
@@ -63,7 +71,7 @@ export const TABS_CONFIG = {
       { id: 'fusiones', label: 'FUSIONES', help: 'Debe apreciarse la FUSIÓN de FO, fijación, orden y curvatura de las fibras' },
       { id: 'bandejasAseguradas', label: 'BANDEJAS\nASEGURADAS', help: 'Debe apreciarse las bandejas de FO aseguradas con cinta Velcro' },
       { id: 'cablesAsegurados', label: 'CABLES OPTICOS\nASEGURADOS', help: 'Verifique que los cables estén asegurados de manera confiable.' },
-      { id: 'cierreCarcasa', label: 'CIERRE DE LA\nCARCASA', help: 'Debe apreciarse el cierre de la carcasa en poste.' },
+      { id: 'cierreCarcasa', label: 'FRONTAL', help: 'Debe apreciarse el cierre de la carcasa en poste.' },
       { id: 'etiquetaIngreso', label: 'ETIQUETA FIBRA\nINGRESO' },
       // SUBSECCION
       {
@@ -86,7 +94,8 @@ export const TABS_CONFIG = {
       { id: 'frontalPotencia', label: 'FRONTAL CON\nPOTENCIA' },
       { id: 'perfil', label: 'PERFIL' },
       { id: 'etiqueta', label: 'ETIQUETA' },
-      { id: 'codigoSerie', label: 'CODIGO SERIE', centered: true }
+      { id: 'panoramica', label: 'PANORAMICA' },
+      { id: 'codigoSerie', label: 'CODIGO SERIE' }
     ]
   },
   // 5. FAT PRECO EXISTENTE
@@ -106,7 +115,7 @@ export const TABS_CONFIG = {
     id: 'xbox',
     title: 'XBOX',
     items: [
-      { id: 'cierreCarcasa', label: 'CIERRE DE LA\nCARCASA', help: 'La junta de la carcasa es plana' },
+      { id: 'cierreCarcasa', label: 'FRONTAL\n(ROTULADO)', help: 'La junta de la carcasa es plana' },
       { id: 'frontalBandeja', label: 'FRONTAL\nBANDEJA', help: 'Debe apreciarse las fusiones, fijación, orden y curvatura de las fibras' },
       { id: 'posteriorBandeja', label: 'POSTERIOR\nBANDEJA', help: 'Debe apreciarse la fijación, orden y curvatura de las fibras' },
       { id: 'bandejasAseguradas', label: 'BANDEJAS\nASEGURADAS', help: 'Debe apreciarse las bandejas aseguradas con cinta Velcro' },
@@ -132,7 +141,7 @@ export const TABS_CONFIG = {
     id: 'hbox',
     title: 'HBOX',
     items: [
-      { id: 'cierreCarcasa', label: 'CIERRE DE LA\nCARCASA', help: 'La junta de la carcasa es plana' },
+      { id: 'cierreCarcasa', label: 'FRONTAL\n(ROTULADO)', help: 'La junta de la carcasa es plana' },
       { id: 'panoramica', label: 'PANORAMICA', help: 'Debe observarse la ubicación y fijación del HBOX al centro de la cruceta' },
       { id: 'codigoSerie', label: 'CODIGO SERIE' },
       { id: 'etiquetaIngreso', label: 'ETIQUETA FO\nINGRESO', help: 'Entrada de la FO alimentadora' },
@@ -169,8 +178,77 @@ export const TABS_CONFIG = {
     title: 'ADICIONALES',
     items: [],
     dynamic: true
+  },
+  // 10. INSTALACIÓN
+  instalacion: {
+    id: 'instalacion',
+    title: 'INSTALACIÓN',
+    items: [
+      { id: 'centradoPoste',      label: 'CENTRADO\nDE POSTE',    help: 'Izado recto del poste con grua' },
+      { id: 'cimentacionPiedras', label: 'CIMENTACION\nPIEDRAS',  help: 'Piedras de 8" en la base del poste' },
+      { id: 'cimentacionCemento', label: 'CIMENTACION\nCEMENTO',  help: 'Personal cubriendo con cemento la base del poste' },
+      { id: 'basamento',          label: 'BASAMENTO',             help: 'Cobertura de la base con cemento o asfalto según superficie' },
+      { id: 'frontal',            label: 'FRONTAL',               help: 'Vista frontal panorámica del poste instalado' },
+      { id: 'perfil',             label: 'PERFIL',                help: 'Vista de perfil del poste instalado' },
+      { id: 'rotulado',           label: 'ROTULADO',              help: 'Foto al rotulado del poste' }
+    ]
+  },
+  // 11. SITE 1
+  site1: {
+    id: 'site1',
+    title: 'SITE 1',
+    items: [
+      { id: 'acceso', label: 'FOTOS DE\nACCESO', type: 'subgallery', minSlots: 5 },
+      { id: 'finalRuta',         label: 'FINAL DE\nRUTA',           help: 'Tubería ingreso al gabinete' },
+      { id: 'gabinete',          label: 'GABINETE',                 help: 'Vista frontal gabinete cerrado' },
+      { id: 'panoramica',        label: 'PANORAMICA',               help: 'Vista de todos los equipos internos del gabinete' },
+      { id: 'interiorPanduit',   label: 'INTERIOR\nPANDUIT',        help: 'Fibra acondicionada en caja panduit' },
+      { id: 'instalacionPanduit',label: 'INSTALACION\nPANDUIT',     help: 'Vista panorámica mostrando ubicación del panduit' },
+      { id: 'rotuladoPanduit',   label: 'ROTULADO\nPANDUIT',        help: 'Rotulado de la caja panduit' },
+      { id: 'jumper01',          label: 'JUMPER 01\nA EQUIPO rCSR', help: 'Primer extremo del jumper' },
+      { id: 'jumper02',          label: 'JUMPER 02\nA EQUIPO rCSR', help: 'Segundo extremo del jumper' }
+    ]
+  },
+  // 12. SITE 2
+  site2: {
+    id: 'site2',
+    title: 'SITE 2',
+    items: [
+      { id: 'acceso', label: 'FOTOS DE\nACCESO', type: 'subgallery', minSlots: 5 },
+      { id: 'finalRuta',         label: 'FINAL DE\nRUTA',           help: 'Tubería ingreso al gabinete' },
+      { id: 'gabinete',          label: 'GABINETE',                 help: 'Vista frontal gabinete cerrado' },
+      { id: 'panoramica',        label: 'PANORAMICA',               help: 'Vista de todos los equipos internos del gabinete' },
+      { id: 'interiorPanduit',   label: 'INTERIOR\nPANDUIT',        help: 'Fibra acondicionada en caja panduit' },
+      { id: 'instalacionPanduit',label: 'INSTALACION\nPANDUIT',     help: 'Vista panorámica mostrando ubicación del panduit' },
+      { id: 'rotuladoPanduit',   label: 'ROTULADO\nPANDUIT',        help: 'Rotulado de la caja panduit' },
+      { id: 'jumper01',          label: 'JUMPER 01\nA EQUIPO rCSR', help: 'Primer extremo del jumper' },
+      { id: 'jumper02',          label: 'JUMPER 02\nA EQUIPO rCSR', help: 'Segundo extremo del jumper' }
+    ]
+  },
+  // 13. NODO
+  nodo: {
+    id: 'nodo',
+    title: 'NODO',
+    items: [
+      { id: 'ingreso',           label: 'INGRESO' },
+      { id: 'panoramicaGabinete',label: 'PANORAMICA\nGABINETE' },
+      { id: 'switch',            label: 'SWITCH' },
+      { id: 'router',            label: 'ROUTER' },
+      { id: 'olt',               label: 'OLT' },
+      { id: 'odf01',             label: 'ODF 01' },
+      { id: 'odf02',             label: 'ODF 02' }
+    ]
   }
 };
+
+export const MAIN_TABS = [
+  { id: 'postes',    label: 'POSTES',    subs: ['poste', 'instalacion'] },
+  { id: 'mufas',     label: 'MUFAS',     subs: ['mufaTroncal', 'mufaFdt'] },
+  { id: 'fatNap',    label: 'FAT/NAP',   subs: ['fatPrecoExistente', 'fatPrecoNueva', 'napMec'] },
+  { id: 'box',       label: 'BOX',       subs: ['xbox', 'hbox'] },
+  { id: 'sites',     label: 'SITES',     subs: ['site1', 'site2', 'nodo'] },
+  { id: 'adicionales', label: 'ADICIONALES', subs: [] },
+];
 
 export const EXTRAS_ITEMS = ['Extra 1', 'Extra 2', 'Extra 3'];
 
@@ -240,9 +318,76 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
   const fileInputRef = useRef(null);
   const activeCaptureRef = useRef(null);
   const lastFileRef = useRef({ name: '', size: 0, time: 0 });
+  const generalCameraRef = useRef(null);
+  const [asociarModal, setAsociarModal] = useState(null); // null | { tabId, selectedLeft: null|number, selectedRight: null|string, fotosProyecto: [], cargando: bool }
 
-  // Pestaña activa - inicializar con initialTab
-  const [activeTab, setActiveTab] = useState(initialTab);
+  // Cargar fotos del proyecto cuando se abre el modal asociar
+  const abrirAsociarModal = async (tabId) => {
+    setAsociarModal({ tabId, selectedLeft: null, selectedRight: null, fotosProyecto: [], cargando: true });
+    try {
+      const col = collection(db, 'proyectos', proyectoActual?.id, 'fotosProyecto');
+      const snap = await getDocs(query(col, orderBy('creadoEn', 'asc')));
+      const fotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAsociarModal(prev => prev ? { ...prev, fotosProyecto: fotos, cargando: false } : prev);
+    } catch {
+      setAsociarModal(prev => prev ? { ...prev, cargando: false } : prev);
+    }
+  };
+
+  // Pestaña activa — restaurar última usada, o la que pide el padre
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = localStorage.getItem('kipo_last_tab');
+    if (saved && TABS_CONFIG[saved]) return saved;
+    return initialTab;
+  });
+
+  // Main tab (fila superior): derivar desde activeTab
+  const mainTabForSub = (subId) => {
+    if (subId === 'adicionales') return 'adicionales';
+    return MAIN_TABS.find(m => m.subs.includes(subId))?.id || MAIN_TABS[0].id;
+  };
+  const [activeMainTab, setActiveMainTab] = useState(() => mainTabForSub(
+    (() => { const s = localStorage.getItem('kipo_last_tab'); return s && TABS_CONFIG[s] ? s : initialTab; })()
+  ));
+
+  const [subGalleryOpen, setSubGalleryOpen] = useState(null); // 'site1' | 'site2' | null
+
+  const cambiarMain = (mainId) => {
+    setActiveMainTab(mainId);
+    if (mainId === 'adicionales') {
+      cambiarTab('adicionales');
+    } else {
+      const main = MAIN_TABS.find(m => m.id === mainId);
+      if (main?.subs.length) cambiarTab(main.subs[0]);
+    }
+  };
+
+  const cambiarTab = (tabId) => {
+    setActiveTab(tabId);
+    try { localStorage.setItem('kipo_last_tab', tabId); } catch {}
+  };
+
+  // Bloquear botón Atrás del dispositivo mientras la cámara está abierta
+  useEffect(() => {
+    history.pushState({ kipo: 'fotos' }, '');
+    const handlePop = () => history.pushState({ kipo: 'fotos' }, '');
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+
+  // Persistir fotos en localStorage para recuperar tras kill de app (solo puntos nuevos)
+  useEffect(() => {
+    if (puntoId) return;
+    try {
+      localStorage.setItem('kipo_draft', JSON.stringify({
+        fotos: datos?.fotos || {},
+        proyectoId: proyectoActual?.id,
+        lat: puntoTemporal?.lat || coords?.lat || null,
+        lng: puntoTemporal?.lng || coords?.lng || null,
+        ts: Date.now()
+      }));
+    } catch {}
+  }, [datos?.fotos]);
 
   // Obtener coordenadas (del punto guardado o del punto temporal)
   const coords = datos?.coords || (puntoTemporal ? { lat: puntoTemporal.lat, lng: puntoTemporal.lng } : { lat: 0, lng: 0 });
@@ -285,17 +430,22 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
 
   // Worker de estampado alta calidad (hilo separado, no bloquea UI)
   useEffect(() => {
-    const worker = new Worker(new URL('../utils/stampWorker.js', import.meta.url));
-    worker.onmessage = ({ data }) => {
-      const handler = workerPendingRef.current[data.id];
-      if (handler) {
-        delete workerPendingRef.current[data.id];
-        if (data.ok) handler.resolve(data.buffer);
-        else handler.reject(new Error(data.error));
-      }
-    };
-    workerRef.current = worker;
-    return () => worker.terminate();
+    try {
+      const worker = new Worker(new URL('../utils/stampWorker.js', import.meta.url));
+      worker.onmessage = ({ data }) => {
+        const handler = workerPendingRef.current[data.id];
+        if (handler) {
+          delete workerPendingRef.current[data.id];
+          if (data.ok) handler.resolve(data.buffer);
+          else handler.reject(new Error(data.error));
+        }
+      };
+      worker.onerror = (err) => { console.error('Worker error:', err); };
+      workerRef.current = worker;
+      return () => worker.terminate();
+    } catch (e) {
+      console.error('No se pudo inicializar el worker de estampado:', e);
+    }
   }, []);
 
   // Pre-fetch logo del proyecto al cargar / cambiar proyecto
@@ -343,9 +493,8 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
 
   const triggerCamera = (e, section, item) => {
     if (e && e.stopPropagation) e.stopPropagation();
-    if (fileInputRef.current) fileInputRef.current.value = '';
     activeCaptureRef.current = { section, item };
-    fileInputRef.current.click();
+    if (fileInputRef.current) { fileInputRef.current.value = ''; fileInputRef.current.click(); }
   };
 
   const handleFileChange = (e) => {
@@ -362,21 +511,33 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     const { section, item } = activeCaptureRef.current;
     activeCaptureRef.current = null;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-
-      img.onerror = () => {
-        const ext = (file.name || '').toLowerCase().split('.').pop();
-        const isHeic = ext === 'heic' || ext === 'heif' || (file.type || '').includes('heic') || (file.type || '').includes('heif');
-        if (isHeic) {
-          alert('Formato HEIC (iPhone) no compatible con el navegador.\n\nEn tu iPhone: Configuración → Cámara → Formatos → Mayor Compatibilidad para capturar en JPEG.');
-        } else {
-          alert('No se pudo cargar la imagen. Intenta con otro formato (JPEG o PNG).');
+    // Mostrar preview inmediato con object URL (sin esperar decoding)
+    const previewUrl = URL.createObjectURL(file);
+    setDatos(prev => {
+      const prevFotos = prev.fotos || {};
+      return {
+        ...prev,
+        fotos: {
+          ...prevFotos,
+          [section]: { ...(prevFotos[section] || {}), [item]: { thumb: previewUrl, uploading: true } }
         }
       };
+    });
 
-      img.onload = async () => {
+    const img = new Image();
+
+    img.onerror = () => {
+      URL.revokeObjectURL(previewUrl);
+      const ext = (file.name || '').toLowerCase().split('.').pop();
+      const isHeic = ext === 'heic' || ext === 'heif' || (file.type || '').includes('heic') || (file.type || '').includes('heif');
+      if (isHeic) {
+        alert('Formato HEIC (iPhone) no compatible con el navegador.\n\nEn tu iPhone: Configuración → Cámara → Formatos → Mayor Compatibilidad para capturar en JPEG.');
+      } else {
+        alert('No se pudo cargar la imagen. Intenta con otro formato (JPEG o PNG).');
+      }
+    };
+
+    img.onload = async () => {
         const altaCalidad = proyectoActual?.modoFotos === 'altaCalidad';
 
         // --- Thumbnail pequeño (max 256px, JPEG 0.6) → se guarda en Firestore ---
@@ -389,7 +550,8 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         canvasThumb.getContext('2d').drawImage(img, 0, 0, wt, ht);
         const thumbUrl = canvasThumb.toDataURL('image/jpeg', 0.6);
 
-        // Mostrar thumb inmediatamente con estado "subiendo"
+        // Reemplazar la preview con el thumb base64 comprimido y liberar la URL temporal
+        URL.revokeObjectURL(previewUrl);
         setDatos(prev => {
           const prevFotos = prev.fotos || {};
           return {
@@ -402,6 +564,18 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         });
 
         const uploadPath = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}.jpg`;
+
+        // Registrar path como pendiente para limpieza de huérfanos
+        const trackUpload = (path) => {
+          try {
+            const list = JSON.parse(localStorage.getItem('kipo_pending_paths') || '[]');
+            if (!list.find(e => e.path === path)) {
+              list.push({ path, ts: Date.now() });
+              localStorage.setItem('kipo_pending_paths', JSON.stringify(list));
+            }
+          } catch {}
+        };
+
         const limpiarFoto = () => {
           setDatos(prev => {
             const prevFotos = { ...(prev.fotos || {}) };
@@ -410,21 +584,28 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           });
         };
         const guardarFoto = async (blobToUpload) => {
+          trackUpload(uploadPath);
+          await saveUploadPending({ path: uploadPath, blob: blobToUpload, section, item, proyectoId: proyectoActual?.id, puntoId: puntoId || null, thumb: thumbUrl });
           const downloadUrl = await uploadImage(blobToUpload, uploadPath);
+          await deleteUploadPending(uploadPath);
           onFotoSubida?.(downloadUrl);
+          const fotoData = { url: downloadUrl, thumb: thumbUrl, timestamp: new Date().toISOString(), _path: uploadPath };
           setDatos(prev => {
             const prevFotos = prev.fotos || {};
             return {
               ...prev,
               fotos: {
                 ...prevFotos,
-                [section]: {
-                  ...(prevFotos[section] || {}),
-                  [item]: { url: downloadUrl, thumb: thumbUrl, timestamp: new Date().toISOString() }
-                }
+                [section]: { ...(prevFotos[section] || {}), [item]: fotoData }
               }
             };
           });
+          // Persistir inmediatamente a Firestore si es edición de punto existente
+          if (puntoId) {
+            updateDoc(doc(db, 'puntos', puntoId), {
+              [`datos.fotos.${section}.${item}`]: fotoData
+            }).catch(() => {});
+          }
         };
 
         if (altaCalidad) {
@@ -432,6 +613,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           (async () => {
             try {
               // 1. Subir original al 100% → urlHD (para encarpetado/ZIP)
+              trackUpload(uploadPath);
               const urlHD = await uploadImage(file, uploadPath);
               onFotoSubida?.(urlHD);
 
@@ -447,22 +629,26 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                 canvasFull.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.75)
               );
               const uploadPathC = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}_c.jpg`;
+              trackUpload(uploadPathC);
               const urlC = await uploadImage(compressedBlob, uploadPathC);
               onFotoSubida?.(urlC);
 
+              const fotoDataHD = { url: urlC, urlHD, thumb: thumbUrl, timestamp: new Date().toISOString(), _path: uploadPathC, _pathHD: uploadPath };
               setDatos(prev => {
                 const prevFotos = prev.fotos || {};
                 return {
                   ...prev,
                   fotos: {
                     ...prevFotos,
-                    [section]: {
-                      ...(prevFotos[section] || {}),
-                      [item]: { url: urlC, urlHD, thumb: thumbUrl, timestamp: new Date().toISOString() }
-                    }
+                    [section]: { ...(prevFotos[section] || {}), [item]: fotoDataHD }
                   }
                 };
               });
+              if (puntoId) {
+                updateDoc(doc(db, 'puntos', puntoId), {
+                  [`datos.fotos.${section}.${item}`]: fotoDataHD
+                }).catch(() => {});
+              }
             } catch (err) {
               console.error('Error subiendo foto alta calidad:', err);
               limpiarFoto();
@@ -485,6 +671,46 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         }
       };
 
+    img.src = previewUrl;
+  };
+
+  // Cámara general — agrega fotos a fotosGenerales para usar con ASOCIAR FOTO
+  const handleGeneralCamera = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const MAX_T = 512;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = async () => {
+        const scale = Math.min(MAX_T / img.width, MAX_T / img.height, 1);
+        const w = Math.floor(img.width * scale), h = Math.floor(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const thumbBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        const tempId = `gp_${Date.now()}`;
+        setDatos(prev => ({
+          ...prev,
+          fotosGenerales: [...(prev.fotosGenerales || []), { _tempId: tempId, thumb: thumbBase64, uploading: true, timestamp: new Date().toISOString() }]
+        }));
+        try {
+          const path = `proyectos/${proyectoActual?.id || 'temp'}/fotos/${Date.now()}.jpg`;
+          const blob = await fetch(thumbBase64).then(r => r.blob());
+          const { uploadImage } = await import('../utils/storage');
+          const url = await uploadImage(blob, path);
+          setDatos(prev => ({
+            ...prev,
+            fotosGenerales: (prev.fotosGenerales || []).map(f => f._tempId === tempId ? { ...f, url, uploading: false } : f)
+          }));
+        } catch {
+          setDatos(prev => ({
+            ...prev,
+            fotosGenerales: (prev.fotosGenerales || []).filter(f => f._tempId !== tempId)
+          }));
+        }
+      };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
@@ -732,27 +958,31 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     // Pestaña dinámica (adicionales): contar fotos existentes
     if (cfg.dynamic) {
       const taken = Object.keys(sectionPhotos).filter(k => sectionPhotos[k]).length;
-      return { text: `(${taken})`, color: taken > 0 ? 'text-green-600' : 'text-slate-400' };
+      return { text: `(${taken})`, color: taken > 0 ? 'text-green-600' : 'text-slate-400', count: taken };
     }
 
     // Aplanar items para contar
     let allItems = [];
+    let subgalleryCount = 0;
     cfg.items.forEach(item => {
-      if (item.items) {
+      if (item.type === 'subgallery') {
+        subgalleryCount += Object.keys(sectionPhotos).filter(k => k.startsWith(item.id + '_') && sectionPhotos[k]).length;
+      } else if (item.items) {
         item.items.forEach(sub => allItems.push(sub.id));
       } else {
         allItems.push(item.id);
       }
     });
 
-    const taken = allItems.filter(id => sectionPhotos[id]).length;
+    const taken = allItems.filter(id => sectionPhotos[id]).length + subgalleryCount;
     const total = allItems.length;
-    const isComplete = taken === total;
+    const isComplete = taken === total && total > 0;
     const isEmpty = taken === 0;
 
     return {
-      text: `(${taken}/${total})`,
-      color: isEmpty ? 'text-red-600' : (isComplete ? 'text-green-600' : 'text-orange-600')
+      text: total > 0 ? `(${taken}/${total})` : '',
+      color: isEmpty ? 'text-red-600' : (isComplete ? 'text-green-600' : 'text-orange-600'),
+      count: taken
     };
   };
 
@@ -761,11 +991,9 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
 
       {/* HEADER */}
       <div className="bg-slate-900 px-4 flex items-center justify-between shadow-md shrink-0 pt-safe-header" style={{ paddingBottom: '12px' }}>
-        <button onClick={onClose} className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors active:scale-95">
-          <div className="bg-white/10 p-1.5 rounded-full">
-            <ArrowLeft className="w-5 h-5" strokeWidth={3} />
-          </div>
-          <span className="block font-black text-xs uppercase tracking-widest">Volver</span>
+        <button onClick={onClose} className="flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest border-2 border-slate-300 active:scale-95 transition-all shadow-md">
+          <ArrowLeft className="w-4 h-4" strokeWidth={3} />
+          CONFIRMAR
         </button>
         <div className="flex flex-col items-end">
           <span className="text-white font-black uppercase tracking-wider text-sm">CÁMARA</span>
@@ -776,15 +1004,40 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       <div className="flex-1 overflow-y-auto">
         <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
-        {/* PESTAÑAS - 3 FILAS DE 3 */}
+        {/* PESTAÑAS - 3 FILAS JERÁRQUICAS */}
         <div className="bg-white border-b-2 border-slate-900 flex flex-col">
-          {[
-            ['poste', 'mufaTroncal', 'mufaFdt'],
-            ['fatPrecoExistente', 'fatPrecoNueva', 'napMec'],
-            ['xbox', 'hbox', 'adicionales']
-          ].map((row, rowIdx) => (
-            <div key={rowIdx} className={`flex ${rowIdx < 2 ? 'border-b border-slate-200' : ''}`}>
-              {row.map((tabId) => {
+          {/* Filas 1 y 2: categorías principales (3 por fila) */}
+          {[[0,1,2],[3,4,5]].map((indices, rowIdx) => (
+            <div key={rowIdx} className={`flex ${rowIdx === 0 ? 'border-b border-slate-200' : 'border-b border-slate-900'}`}>
+              {indices.map((i) => {
+                const main = MAIN_TABS[i];
+                if (!main) return <div key={i} className="flex-1" />;
+                const isActive = activeMainTab === main.id;
+                const subIds = main.subs.length ? main.subs : [main.id];
+                const totalFotos = subIds.reduce((sum, sid) => sum + (getCounter(sid).count || 0), 0);
+                return (
+                  <button
+                    key={main.id}
+                    onClick={() => cambiarMain(main.id)}
+                    className={`flex-1 min-h-[38px] py-1 px-1 border-r last:border-r-0 border-slate-200 transition-all flex items-center justify-center ${isActive ? 'bg-slate-900' : 'bg-white hover:bg-slate-50'}`}
+                  >
+                    <div className="p-1 flex flex-col items-center gap-0.5">
+                      <div className={`text-[10px] font-black uppercase leading-tight ${isActive ? 'text-white' : 'text-slate-600'}`}>
+                        {main.label}
+                      </div>
+                      {totalFotos > 0 && (
+                        <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-orange-400' : 'bg-green-500'}`} />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+          {/* Fila 3: sub-pestañas de la categoría activa */}
+          {activeMainTab !== 'adicionales' && (
+            <div className="flex">
+              {(MAIN_TABS.find(m => m.id === activeMainTab)?.subs || []).map((tabId) => {
                 const tab = TABS_CONFIG[tabId];
                 if (!tab) return null;
                 const counter = getCounter(tab.id);
@@ -792,10 +1045,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                 return (
                   <button
                     key={tabId}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 py-1 px-1 border-r last:border-r-0 border-slate-200 transition-all ${isActive ? 'bg-slate-900' : 'bg-white hover:bg-slate-50'}`}
+                    onClick={() => cambiarTab(tab.id)}
+                    className={`flex-1 min-h-[38px] py-1 px-1 border-r last:border-r-0 border-slate-200 transition-all flex items-center justify-center ${isActive ? 'bg-orange-500' : 'bg-slate-50 hover:bg-slate-100'}`}
                   >
-                    <div className="p-1">
+                    <div className="p-1 flex flex-col items-center">
                       <div className={`text-[8px] font-black uppercase leading-tight ${isActive ? 'text-white' : 'text-slate-600'}`}>
                         {tab.title}
                       </div>
@@ -807,17 +1060,25 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                 );
               })}
             </div>
-          ))}
+          )}
         </div>
 
         {/* CONTENIDO (Grid de fotos) */}
         <div className="p-3 flex-1 overflow-y-auto">
           {/* Separador */}
           <div className="flex items-center gap-2 mb-3">
-            <span className="font-black text-slate-900 text-sm uppercase tracking-widest border-b-2 border-slate-900 pb-1">
-              FOTOS: {TABS_CONFIG[activeTab]?.title}
+            <span className="font-black text-slate-900 text-sm uppercase tracking-widest border-b-2 border-slate-900 pb-1 shrink-0">
+              {TABS_CONFIG[activeTab]?.title}
             </span>
             <div className="flex-1 h-px bg-slate-300"></div>
+            {activeTab !== 'adicionales' && (
+              <button
+                onClick={() => abrirAsociarModal(activeTab)}
+                className="flex items-center gap-1 bg-slate-900 text-white rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-transform shrink-0 shadow-md hover:bg-slate-700"
+              >
+                <FolderOpen size={12} /> ASOCIAR FOTO
+              </button>
+            )}
           </div>
 
           {proyectoActual?.modoFotos !== 'altaCalidad' && (
@@ -866,8 +1127,14 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                   const groups = [];
                   let currentNormalGroup = [];
 
-                  TABS_CONFIG[activeTab].items.forEach(item => {
-                    if (item.items) {
+                  (TABS_CONFIG[activeTab]?.items || []).forEach(item => {
+                    if (item.type === 'subgallery') {
+                      if (currentNormalGroup.length > 0) {
+                        groups.push({ type: 'grid', items: [...currentNormalGroup] });
+                        currentNormalGroup = [];
+                      }
+                      groups.push({ type: 'subgallery', data: item });
+                    } else if (item.items) {
                       if (currentNormalGroup.length > 0) {
                         groups.push({ type: 'grid', items: [...currentNormalGroup] });
                         currentNormalGroup = [];
@@ -880,7 +1147,65 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                   if (currentNormalGroup.length > 0) groups.push({ type: 'grid', items: currentNormalGroup });
 
                   return groups.map((group, gIdx) => {
-                    if (group.type === 'grid') {
+                    if (group.type === 'subgallery') {
+                      const sgItem = group.data;
+                      const sgSection = fotosActuales[activeTab] || {};
+                      const sgKeys = Object.keys(sgSection)
+                        .filter(k => k.startsWith(sgItem.id + '_'));
+                      const sgIndices = sgKeys.map(k => parseInt(k.split('_')[1]));
+                      const maxIdx = sgIndices.length > 0 ? Math.max(...sgIndices) : -1;
+                      const slotsToShow = Math.max(sgItem.minSlots || 5, maxIdx + 1);
+                      const sgCount = sgKeys.filter(k => sgSection[k]).length;
+                      const isOpen = subGalleryOpen === activeTab + '_' + sgItem.id;
+                      return (
+                        <div key={sgItem.id}>
+                          {/* Tile especial */}
+                          <div
+                            onClick={() => setSubGalleryOpen(isOpen ? null : activeTab + '_' + sgItem.id)}
+                            className="w-full rounded-xl overflow-hidden cursor-pointer bg-blue-600 border-2 border-blue-800 active:scale-95 transition-all select-none px-4 py-3 flex items-center justify-between"
+                          >
+                            <div>
+                              <div className="text-white font-black text-xs uppercase tracking-widest">FOTOS DE ACCESO</div>
+                              <div className="text-blue-200 text-[10px] font-bold mt-0.5">{sgCount} foto{sgCount !== 1 ? 's' : ''}</div>
+                            </div>
+                            <ChevronDown size={18} className={`text-white transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                          </div>
+                          {/* Sub-galería expandida */}
+                          {isOpen && (
+                            <div className="mt-2 bg-blue-50 border-2 border-blue-200 rounded-xl p-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                {Array.from({ length: slotsToShow }).map((_, idx) => {
+                                  const key = `${sgItem.id}_${idx}`;
+                                  const fotoRaw = sgSection[key];
+                                  const image = getFotoThumb(fotoRaw);
+                                  const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true;
+                                  const isRegen = regenerandoThumbs.has(`${activeTab}/${key}`);
+                                  const fotoUrl = getFotoUrl(fotoRaw);
+                                  return (
+                                    <PhotoSquare
+                                      key={key}
+                                      label={`ACCESO ${idx + 1}`}
+                                      image={image}
+                                      uploading={isUploading}
+                                      isRegenerando={isRegen}
+                                      onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(activeTab, key, fotoUrl) : undefined}
+                                      onClick={(e) => fotoRaw && !isUploading ? setViewingPhoto({ section: activeTab, item: key, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, activeTab, key) : undefined)}
+                                    />
+                                  );
+                                })}
+                                {/* Botón + para agregar más */}
+                                <div
+                                  onClick={(e) => triggerCamera(e, activeTab, `${sgItem.id}_${slotsToShow}`)}
+                                  className="aspect-square rounded-xl overflow-hidden cursor-pointer bg-white border-2 border-dashed border-blue-400 hover:bg-blue-50 active:scale-95 transition-transform flex items-center justify-center"
+                                >
+                                  <Plus className="w-10 h-10 text-blue-400" strokeWidth={2} />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else if (group.type === 'grid') {
                       return (
                         <div key={`g-${gIdx}`} className="grid grid-cols-2 gap-2">
                           {group.items.map(item => {
@@ -979,10 +1304,157 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         </div>
       </div>
 
-      {/* VISUALIZADOR */}
+      {/* MODAL: ASOCIAR FOTO (fotosGenerales → slot de tab) */}
+      {asociarModal && (
+        <div className="fixed inset-0 z-[1100] bg-white flex flex-col"
+          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-white border-b-2 border-slate-900 shrink-0">
+            <h3 className="text-slate-900 text-sm uppercase tracking-widest leading-tight">
+              <span className="font-normal text-slate-400">ITEM </span><span className="font-black">{datos?.numero || '-'}</span>
+              <span className="font-normal text-slate-400"> · PASIVO </span><span className="font-black">{datos?.pasivo || '-'}</span>
+            </h3>
+            <button onClick={() => setAsociarModal(null)} className="p-2 rounded-xl border-2 border-slate-900 text-slate-900"><X size={20} /></button>
+          </div>
+          <p className="text-slate-500 text-[10px] text-center py-2 px-4 border-b-2 border-slate-900 shrink-0">
+            Selecciona una foto de proyecto (izq.) y el slot destino (der.), luego pulsa ACEPTAR.
+          </p>
+          {/* Split view */}
+          <div className="flex flex-1 overflow-hidden gap-px bg-slate-900">
+            {/* LEFT: fotos de la Cámara Proyecto */}
+            <div className="flex-1 overflow-y-auto bg-white p-2">
+              <p className="text-slate-900 text-[9px] font-black uppercase tracking-widest mb-2 text-center border-b-2 border-slate-900 pb-1">CÁMARA PROYECTO</p>
+              {asociarModal.cargando ? (
+                <div className="flex justify-center py-8"><RefreshCw size={20} className="text-slate-400 animate-spin" /></div>
+              ) : asociarModal.fotosProyecto.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs">Sin fotos de proyecto</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2">
+                  {asociarModal.fotosProyecto.map((foto) => {
+                    const thumb = foto.thumb || foto.url;
+                    if (!thumb) return null;
+                    const isSelected = asociarModal.selectedLeft === foto.id;
+                    return (
+                      <div key={foto.id}
+                        onClick={() => setAsociarModal(prev => ({ ...prev, selectedLeft: isSelected ? null : foto.id }))}
+                        className={`relative aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all active:scale-95 ${isSelected ? 'border-orange-500' : 'border-slate-900'}`}
+                      >
+                        <img src={thumb} className="w-full h-full object-cover" alt={foto.nombre} />
+                        {/* Nombre centrado con fondo vidrio — ancho completo */}
+                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none px-0">
+                          <div className="w-full py-1.5 px-3" style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}>
+                            <p className="text-white text-xs font-black text-center uppercase leading-tight">{foto.nombre}</p>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-orange-500/40 flex items-center justify-center">
+                            <Check size={32} className="text-white drop-shadow-lg" strokeWidth={3} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* RIGHT: slots del tab activo */}
+            <div className="flex-1 overflow-y-auto bg-slate-50 p-2">
+              <p className="text-slate-900 text-[9px] font-black uppercase tracking-widest mb-2 text-center border-b-2 border-slate-900 pb-1">SLOTS DESTINO</p>
+              <div className="grid grid-cols-1 gap-2">
+                {(() => {
+                  const tab = TABS_CONFIG[asociarModal.tabId];
+                  const slots = [];
+                  (tab?.items || []).forEach(item => {
+                    if (item.items) {
+                      item.items.forEach(sub => slots.push({ id: sub.id, label: sub.label }));
+                    } else {
+                      slots.push({ id: item.id, label: item.label });
+                    }
+                  });
+                  return slots.map(slot => {
+                    const fotoRaw = fotosActuales[asociarModal.tabId]?.[slot.id];
+                    const thumb = getFotoThumb(fotoRaw);
+                    const isSelected = asociarModal.selectedRight === slot.id;
+                    return (
+                      <div key={slot.id}
+                        onClick={() => setAsociarModal(prev => ({ ...prev, selectedRight: isSelected ? null : slot.id }))}
+                        className={`relative aspect-square rounded-xl overflow-hidden cursor-pointer transition-all active:scale-95 ${isSelected ? 'border-4 border-orange-500' : thumb ? 'border-2 border-slate-900' : 'border-2 border-dashed border-slate-900'}`}
+                      >
+                        {thumb ? (
+                          <img src={thumb} className="w-full h-full object-cover" alt={slot.label} />
+                        ) : (
+                          <div className="w-full h-full bg-white" />
+                        )}
+                        {/* Nombre: con fondo vidrio si hay foto, texto negro sin fondo si no hay */}
+                        {thumb ? (
+                          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none px-0">
+                            <div className="w-full py-1.5 px-3" style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}>
+                              <p className="text-white text-xs font-black text-center uppercase leading-tight">{slot.label.replace('\n', ' ')}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <p className="text-slate-900 text-xs font-black text-center uppercase leading-tight px-2">{slot.label.replace('\n', ' ')}</p>
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-orange-500/40 flex items-center justify-center">
+                            <Check size={32} className="text-white drop-shadow-lg" strokeWidth={3} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          </div>
+          {/* Footer: ACEPTAR */}
+          <div className="shrink-0 p-4 bg-white border-t-2 border-slate-900">
+            <button
+              disabled={asociarModal.selectedLeft === null || asociarModal.selectedRight === null}
+              onClick={async () => {
+                const { tabId, selectedLeft, selectedRight, fotosProyecto } = asociarModal;
+                if (!selectedLeft || selectedRight === null) return;
+                const foto = fotosProyecto.find(f => f.id === selectedLeft);
+                if (!foto) return;
+                setDatos(prev => {
+                  const prevFotos = prev.fotos || {};
+                  return {
+                    ...prev,
+                    fotos: {
+                      ...prevFotos,
+                      [tabId]: {
+                        ...(prevFotos[tabId] || {}),
+                        [selectedRight]: { url: foto.url, thumb: foto.thumb || foto.url, timestamp: new Date().toISOString() }
+                      }
+                    }
+                  };
+                });
+                // Eliminar foto de Cámara Proyecto en Firestore y del estado
+                try {
+                  await deleteDoc(doc(db, 'proyectos', proyectoActual?.id, 'fotosProyecto', selectedLeft));
+                } catch (err) {
+                  console.error('Error eliminando foto de proyecto:', err);
+                }
+                setAsociarModal(prev => prev ? {
+                  ...prev,
+                  fotosProyecto: prev.fotosProyecto.filter(f => f.id !== selectedLeft),
+                  selectedLeft: null,
+                  selectedRight: null,
+                } : null);
+              }}
+              className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-sm uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-transform"
+            >
+              ACEPTAR — MOVER FOTO AL SLOT
+            </button>
+          </div>
+        </div>
+      )}
+
       {viewingPhoto && (
-        <div className="fixed inset-0 z-[1000] bg-black flex flex-col">
-          <div className="flex justify-between items-center px-4 pb-4 bg-black/80 backdrop-blur-md border-b border-white/10" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
+        <div className="fixed inset-0 z-[1000] bg-black flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="flex justify-between items-center px-4 py-4 bg-black/80 backdrop-blur-md border-b border-white/10">
             <div>
               {/* Intentar buscar el label bonito, si no usar el ID */}
               <h3 className="font-bold text-white text-lg">
@@ -1011,7 +1483,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           <div className="flex-1 flex items-center justify-center p-4 bg-black">
             <img src={viewingPhoto.url} className="max-w-full max-h-full object-contain shadow-2xl" alt="Detalle" />
           </div>
-          <div className="p-6 bg-black border-t border-white/10 flex gap-4 justify-center pb-10">
+          <div className="p-6 bg-black border-t border-white/10 flex gap-4 justify-center" style={{ paddingBottom: 'calc(24px + env(safe-area-inset-bottom))' }}>
             <button
               onClick={(e) => triggerCamera(e, viewingPhoto.section, viewingPhoto.item)}
               className="flex-1 bg-white text-black py-4 px-6 rounded-xl font-black flex justify-center items-center gap-2 active:scale-95 transition-transform"

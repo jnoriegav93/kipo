@@ -1,6 +1,30 @@
 import React, { useEffect } from 'react';
-import { doc, setDoc, addDoc, updateDoc as fbUpdateDoc, collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
-import { db } from './firebaseConfig';
+import { logError } from './utils/errorLogger';
+
+class PhotoManagerErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null, intentos: 0 }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) {
+    logError({ mensaje: error.message, stack: (error.stack || '') + '\n\nComponentStack:\n' + info.componentStack, contexto: 'PhotoManagerErrorBoundary', uid: this.props.userUid || null, email: this.props.userEmail || null });
+  }
+  reintentar() { this.setState(prev => ({ error: null, intentos: prev.intentos + 1 })); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
+          <p style={{ fontWeight: 'bold', fontSize: 16, textAlign: 'center' }}>Error al abrir la cámara</p>
+          <p style={{ fontSize: 13, color: '#666', textAlign: 'center' }}>Ocurrió un error inesperado.</p>
+          <button onClick={() => this.reintentar()} style={{ background: '#FF6600', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 24px', fontWeight: 'bold', fontSize: 14 }}>Reintentar</button>
+          <button onClick={this.props.onClose} style={{ background: '#1e293b', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 24px', fontWeight: 'bold', fontSize: 14 }}>Cerrar</button>
+        </div>
+      );
+    }
+    return <React.Fragment key={this.state.intentos}>{this.props.children}</React.Fragment>;
+  }
+}
+import { doc, setDoc, addDoc, updateDoc as fbUpdateDoc, deleteDoc, getDoc, collection, query, where, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { db, auth } from './firebaseConfig';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 // Componentes principales
 import Login from './Login';
@@ -10,7 +34,7 @@ import QueueModal from './components/QueueModal';
 import Sidebar from './components/Sidebar';
 import Configurador from './components/Configurador';
 import Formulario from './components/Formulario';
-import PhotoManager from './components/PhotoManager';
+import PhotoManager, { TABS_CONFIG } from './components/PhotoManager';
 import { ConfirmModal, AlertModal, ExportModal } from './components/UI';
 import VerDetalle from './components/VerDetalle';
 import ModalAgregarCodigo from './components/ModalAgregarCodigo';
@@ -20,10 +44,13 @@ import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bi
 import VistaMapa from './views/VistaMapa';
 import VistaProyectos from './views/VistaProyectos';
 import VistaSupervision from './views/VistaSupervision';
+import VistaPermisos from './views/VistaPermisos';
 import VistaDatosUsuario from './views/VistaDatosUsuario';
+import VistaAdmin from './views/VistaAdmin';
+import VistaDiagnostico from './views/VistaDiagnostico';
 
 // Hooks personalizados
-import { useAuth } from './hooks/useAuth';
+import { useAuth, ADMIN_UID } from './hooks/useAuth';
 import { useTheme } from './hooks/useTheme';
 import { useMapState } from './hooks/useMapState';
 import { useUIState } from './hooks/useUIState';
@@ -45,9 +72,34 @@ import { DATA_INICIAL } from './data/constantes';
 function App() {
   // Autenticación y sincronización
   const { user, deviceBlocked, cerrarSesion } = useAuth();
-  const { estadoSync, cola, agregarTarea, erroresTareas, procesando: syncProcesando, eliminarTarea, reintentarTarea, isOnline } = useSync();
+  const { estadoSync, cola, agregarTarea, erroresTareas, procesando: syncProcesando, eliminarTarea, reintentarTarea, guardarComoNuevo, isOnline } = useSync();
   const [queueModalAbierto, setQueueModalAbierto] = React.useState(false);
   const { logoApp, setLogoApp, handleCargarLogo } = useLogo(user);
+
+  // Sesión admin — limpiar cuando el admin vuelve a su cuenta
+  const adminReturnEmail = React.useMemo(() => {
+    try { return localStorage.getItem('kipoAdminSession') || null; } catch { return null; }
+  }, [user?.uid]);
+
+  React.useEffect(() => {
+    if (user?.uid === ADMIN_UID) localStorage.removeItem('kipoAdminSession');
+  }, [user?.uid]);
+
+  const volverAAdmin = React.useCallback(async (passwordDirecto) => {
+    if (!adminReturnEmail) return;
+    try {
+      let password = passwordDirecto;
+      if (!password) {
+        const snap = await getDoc(doc(db, 'usuarios', adminReturnEmail));
+        password = snap.exists() ? snap.data().password : null;
+      }
+      if (!password) return;
+      localStorage.removeItem('kipoAdminSession');
+      await signInWithEmailAndPassword(auth, adminReturnEmail, password);
+    } catch (e) {
+      console.error('Error volviendo al admin:', e);
+    }
+  }, [adminReturnEmail]);
 
   // Tema
   const { isDark, setIsDark, theme } = useTheme();
@@ -58,6 +110,7 @@ function App() {
     iconSize, setIconSize,
     mapStyle, setMapStyle,
     mostrarEtiquetas, setMostrarEtiquetas,
+    menuEtiquetasAbierto, setMenuEtiquetasAbierto, toggleMenuEtiquetas,
     gpsTrigger, setGpsTrigger,
     yaSaltoAlInicio, setYaSaltoAlInicio
   } = useMapState();
@@ -99,6 +152,13 @@ function App() {
   // Estado para pestaña de fotos
   const [photoTab, setPhotoTab] = React.useState('poste');
 
+  // ID temporal local para nuevo punto al abrir PhotoManager desde Formulario
+  const [tempPuntoId, setTempPuntoId] = React.useState(null);
+
+  // Capa de fotos en mapa
+  const [fotoPuntosActivo, setFotoPuntosActivo] = React.useState(false);
+  const [fotosConCoordenadas, setFotosConCoordenadas] = React.useState([]);
+
   // Estado para recordar desde dónde se abrió la edición
   const [vistaAnterior, setVistaAnterior] = React.useState('mapa');
 
@@ -116,14 +176,19 @@ function App() {
 
   // Notificaciones centralizadas de chat
   const [notifProyectos, setNotifProyectos] = React.useState({});
-  const [notifSupervisados, setNotifSupervisados] = React.useState({});
+  const [notifEditor, setNotifEditor] = React.useState({});      // proyectos donde soy editor
+  const [notifSupervisados, setNotifSupervisados] = React.useState({}); // proyectos solo lectura
   const totalNotifProyectos = Object.values(notifProyectos).reduce((s, n) => s + n, 0);
+  const totalNotifEditor = Object.values(notifEditor).reduce((s, n) => s + n, 0);
   const totalNotifSupervisados = Object.values(notifSupervisados).reduce((s, n) => s + n, 0);
-  const totalNotificaciones = totalNotifProyectos + totalNotifSupervisados;
+  // Proyectos button: propios + editor (ambos aparecen en VistaProyectos)
+  const totalNotifVistaProyectos = totalNotifProyectos + totalNotifEditor;
+  const totalNotificaciones = totalNotifVistaProyectos + totalNotifSupervisados;
 
   const marcarChatLeido = React.useCallback((proyectoId) => {
     localStorage.setItem(`lastChatRead_${proyectoId}`, new Date().toISOString());
     setNotifProyectos(prev => ({ ...prev, [proyectoId]: 0 }));
+    setNotifEditor(prev => ({ ...prev, [proyectoId]: 0 }));
     setNotifSupervisados(prev => ({ ...prev, [proyectoId]: 0 }));
   }, []);
 
@@ -152,6 +217,28 @@ function App() {
       .catch(() => setDatosFormulario(prev => ({ ...prev, direccion: '-' })));
   }, [vista, puntoTemporal?.lat, puntoTemporal?.lng]);
 
+  // Generar ID local para nuevo punto al abrir PhotoManager desde Formulario (evita freeze por draft localStorage)
+  useEffect(() => {
+    if (modalOpen === 'MODO_FOTOS' && !puntoSeleccionado) {
+      setTempPuntoId(doc(collection(db, 'puntos')).id);
+    } else if (modalOpen !== 'MODO_FOTOS') {
+      setTempPuntoId(null);
+    }
+  }, [modalOpen, puntoSeleccionado]);
+
+  // Captura global de errores JS no manejados
+  useEffect(() => {
+    const onError = (e) => {
+      logError({ mensaje: e.message, stack: e.error?.stack, contexto: 'window.onerror', uid: user?.uid || null, email: user?.email || null });
+    };
+    const onRejection = (e) => {
+      logError({ mensaje: String(e.reason), stack: e.reason?.stack, contexto: 'unhandledrejection', uid: user?.uid || null, email: user?.email || null });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => { window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onRejection); };
+  }, [user?.uid]);
+
   // Historial de vistas para navegación "Volver"
   const vistaHistorial = React.useRef(['mapa']);
   const setVistaConHistorial = React.useCallback((nuevaVista) => {
@@ -171,16 +258,17 @@ function App() {
     proyectosSupervisados, setProyectosSupervisados,
     puntos, setPuntos,
     puntosCompartidos,
+    puntosDeProyectosProxios,
     conexiones, setConexiones,
     config: configNube, setConfig
   } = useFirebaseData(user);
 
-  // Todos los puntos visibles: propios + de proyectos donde soy editor (deduplicados)
+  // Todos los puntos visibles: propios + de proyectos donde soy editor + de proyectos que poseo (deduplicados)
   const todosLosPuntos = React.useMemo(() => {
     const map = new Map();
-    [...puntos, ...puntosCompartidos].forEach(p => map.set(p.id, p));
+    [...puntos, ...puntosDeProyectosProxios, ...puntosCompartidos].forEach(p => map.set(p.id, p));
     return Array.from(map.values());
-  }, [puntos, puntosCompartidos]);
+  }, [puntos, puntosDeProyectosProxios, puntosCompartidos]);
 
   // Separar proyectos compartidos: solo supervisión vs con permiso de edición
   const proyectosEditor = React.useMemo(() =>
@@ -191,13 +279,38 @@ function App() {
     proyectosSupervisados.filter(p => p.permisoActual === 'lectura' || p.permisoActual === 'solo_lectura' || p.permisoActual === 'ambos'),
     [proyectosSupervisados]
   );
+  const todosLosProyectos = React.useMemo(() => [...proyectos, ...proyectosEditor], [proyectos, proyectosEditor]);
 
-  const config = configNube || DATA_INICIAL;
+  const config = configNube ? {
+    ...DATA_INICIAL,
+    ...configNube,
+    catalogoFerreteria: configNube.catalogoFerreteria ?? DATA_INICIAL.catalogoFerreteria,
+    armados: configNube.armados ?? DATA_INICIAL.armados,
+    botonesPoste: configNube.botonesPoste
+      ? { ...DATA_INICIAL.botonesPoste, ...configNube.botonesPoste }
+      : DATA_INICIAL.botonesPoste,
+  } : DATA_INICIAL;
 
   // Estado local de proyectos y días
   const [proyectoActual, setProyectoActual] = React.useState(null);
   const [diaActual, setDiaActual] = React.useState(null);
   const [diasVisibles, setDiasVisibles] = React.useState([]);
+
+  // Cambia el día activo y lo persiste en Firestore para que los editores lo vean
+  const cambiarDiaActivo = React.useCallback((diaId) => {
+    setDiaActual(diaId);
+    if (proyectoActual && !proyectoActual.esCompartido && diaId) {
+      fbUpdateDoc(doc(db, "proyectos", String(proyectoActual.id)), { diaActivoId: diaId })
+        .catch(e => console.error("Error guardando diaActivoId:", e));
+    }
+  }, [proyectoActual]);
+
+  // Guardar el día seleccionado por proyecto en localStorage
+  useEffect(() => {
+    if (diaActual && proyectoActual && !proyectoActual.esCompartido) {
+      try { localStorage.setItem(`ultimoDia_${proyectoActual.id}`, diaActual); } catch(e) {}
+    }
+  }, [diaActual, proyectoActual?.id]);
 
   // Lógica de proyectos
   const {
@@ -207,6 +320,7 @@ function App() {
     toggleVisibilidadDia,
     toggleVisibilidadProyecto,
     cambiarColorDia,
+    uniformizarColorDias,
     cambiarColorProyecto,
     solicitarBorrarProyecto,
     irUbicacionProyecto,
@@ -220,7 +334,7 @@ function App() {
     proyectoActual, setProyectoActual,
     setDiaActual,
     diasVisibles, setDiasVisibles,
-    puntos,
+    puntos: todosLosPuntos,
     tempData,
     setPuntos, setConexiones,
     setModalOpen, setConfirmData, setAlertData,
@@ -231,6 +345,25 @@ function App() {
   // Lógica de puntos
   const [modoMover, setModoMover] = React.useState(false);
   const [pendingCoords, setPendingCoords] = React.useState(null);
+
+  // Modo reasignación de puntos a otro proyecto
+  const [modoMoverPuntos, setModoMoverPuntos] = React.useState(false);
+  const [puntosSeleccionadosMover, setPuntosSeleccionadosMover] = React.useState([]);
+
+  const ejecutarMoverPuntos = React.useCallback((proyectoDestino) => {
+    const diaDestino = proyectoDestino.dias?.[0]?.id || null;
+    const idsSet = new Set(puntosSeleccionadosMover);
+    const conexionesAMover = conexiones.filter(c => {
+      const ids = c.puntos?.length >= 2 ? c.puntos : [c.from, c.to].filter(Boolean);
+      return ids.length >= 2 && ids.every(id => idsSet.has(id));
+    });
+    setPuntos(prev => prev.map(p => idsSet.has(p.id) ? { ...p, proyectoId: proyectoDestino.id, diaId: diaDestino } : p));
+    setConexiones(prev => prev.map(c => conexionesAMover.some(cm => cm.id === c.id) ? { ...c, proyectoId: proyectoDestino.id, diaId: diaDestino } : c));
+    puntosSeleccionadosMover.forEach(id => agregarTarea('reasignar_punto', { coleccion: 'puntos', idDoc: String(id), proyectoId: proyectoDestino.id, diaId: diaDestino }));
+    conexionesAMover.forEach(c => agregarTarea('reasignar_punto', { coleccion: 'conexiones', idDoc: String(c.id), proyectoId: proyectoDestino.id, diaId: diaDestino }));
+    setModoMoverPuntos(false);
+    setPuntosSeleccionadosMover([]);
+  }, [puntosSeleccionadosMover, conexiones, setPuntos, setConexiones, agregarTarea]);
 
   // Resetear modoMover y pendingCoords al deseleccionar punto
   React.useEffect(() => {
@@ -264,7 +397,8 @@ function App() {
     setVista,
     setConfirmData, setAlertData,
     agregarTarea, theme,
-    vistaAnterior, setVistaAnterior
+    vistaAnterior, setVistaAnterior,
+    config
   });
 
   // Listeners centralizados de notificaciones - proyectos propios
@@ -291,11 +425,17 @@ function App() {
     return () => unsubscribes.forEach(u => u());
   }, [user?.uid, proyectoIds]);
 
-  // Listeners centralizados de notificaciones - proyectos supervisados
+  // Listeners centralizados de notificaciones - proyectos compartidos
+  // Editor (edicion/ambos) → VistaProyectos | Solo lectura → VistaSupervision
   const supervisadoIds = React.useMemo(() => proyectosSupervisados.map(p => p.id).join(','), [proyectosSupervisados]);
   useEffect(() => {
-    if (!user || proyectosSupervisados.length === 0) { setNotifSupervisados({}); return; }
+    if (!user || proyectosSupervisados.length === 0) {
+      setNotifEditor({});
+      setNotifSupervisados({});
+      return;
+    }
     const unsubscribes = proyectosSupervisados.map(proy => {
+      const esEditor = proy.permisoActual === 'edicion' || proy.permisoActual === 'ambos';
       const q = query(collection(db, "bitacora"), where("proyectoId", "==", proy.id), orderBy("timestamp", "desc"));
       return onSnapshot(q, (snapshot) => {
         let lastRead = localStorage.getItem(`lastChatRead_${proy.id}`);
@@ -308,7 +448,11 @@ function App() {
           const data = d.data();
           return data.timestamp > lastRead && data.autorUid !== user.uid;
         }).length;
-        setNotifSupervisados(prev => ({ ...prev, [proy.id]: noLeidos }));
+        if (esEditor) {
+          setNotifEditor(prev => ({ ...prev, [proy.id]: noLeidos }));
+        } else {
+          setNotifSupervisados(prev => ({ ...prev, [proy.id]: noLeidos }));
+        }
       });
     });
     return () => unsubscribes.forEach(u => u());
@@ -345,28 +489,185 @@ function App() {
     });
   }, [user?.uid, configNube?.nombrePersonal, configNube?.empresaPersonal]);
 
+  // Inicializar diasVisibles para TODOS los proyectos al arrancar
+  // Usa diasOcultos del localStorage para saber cuáles estaban apagados
+  const diasVisiblesInitRef = React.useRef(false);
+  useEffect(() => {
+    if (todosLosProyectos.length === 0) return;
+    let ocultos = [];
+    try { ocultos = JSON.parse(localStorage.getItem('diasOcultos') || '[]'); } catch(e) {}
+
+    if (!diasVisiblesInitRef.current) {
+      // Primera carga: inicializar todos los días no-ocultos
+      const visibles = todosLosProyectos.flatMap(p => (p.dias || []).map(d => d.id)).filter(id => !ocultos.includes(id));
+      setDiasVisibles(visibles);
+      diasVisiblesInitRef.current = true;
+    } else {
+      // Carga posterior (e.g. proyectos compartidos llegaron después): agregar días nuevos no conocidos
+      setDiasVisibles(prev => {
+        const prevSet = new Set(prev);
+        const ocultosSet = new Set(ocultos);
+        const nuevos = [];
+        todosLosProyectos.forEach(p => {
+          (p.dias || []).forEach(d => {
+            if (!prevSet.has(d.id) && !ocultosSet.has(d.id)) nuevos.push(d.id);
+          });
+        });
+        if (nuevos.length === 0) return prev;
+        return [...new Set([...prev, ...nuevos])];
+      });
+    }
+  }, [todosLosProyectos]);
+
+  // Bloquear botón Atrás mientras el formulario de punto está abierto
+  useEffect(() => {
+    if (vista !== 'formulario') return;
+    history.pushState({ kipo: 'formulario' }, '');
+    const handlePop = () => history.pushState({ kipo: 'formulario' }, '');
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, [vista]);
+
+  // Al iniciar sesión: migrar borrador de fotos a fotosProyecto y limpiar huérfanos
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      // 1. Migrar borrador de fotos (de punto no guardado) a fotosProyecto
+      try {
+        const draft = JSON.parse(localStorage.getItem('kipo_draft') || 'null');
+        if (draft?.proyectoId && draft?.fotos) {
+          const getLabel = (sectionId, itemId) => {
+            const sec = TABS_CONFIG[sectionId];
+            if (!sec) return itemId;
+            for (const it of sec.items) {
+              if (it.id === itemId) return `${sec.title} - ${it.label.replace(/\n/g, ' ')}`;
+              if (it.items) {
+                const sub = it.items.find(s => s.id === itemId);
+                if (sub) return `${sec.title} - ${sub.label.replace(/\n/g, ' ')}`;
+              }
+            }
+            return `${sec.title} - ${itemId}`;
+          };
+          const col = collection(db, 'proyectos', draft.proyectoId, 'fotosProyecto');
+          const promises = [];
+          Object.entries(draft.fotos).forEach(([sectionId, sectionFotos]) => {
+            if (!sectionFotos || typeof sectionFotos !== 'object') return;
+            Object.entries(sectionFotos).forEach(([itemId, foto]) => {
+              if (!foto?.url) return;
+              promises.push(addDoc(col, {
+                nombre: getLabel(sectionId, itemId),
+                url: foto.url,
+                ...(foto.urlHD ? { urlHD: foto.urlHD } : {}),
+                thumb: foto.thumb || foto.url,
+                storagePath: foto._path || '',
+                creadoEn: serverTimestamp(),
+                uid: user.uid,
+                sectionId,
+                itemId,
+                lat: draft.lat || null,
+                lng: draft.lng || null,
+              }));
+            });
+          });
+          if (promises.length > 0) await Promise.allSettled(promises);
+          localStorage.removeItem('kipo_draft');
+        }
+      } catch {}
+
+      // 2. Limpiar fotos huérfanas antiguas de Storage
+      try {
+        const pending = JSON.parse(localStorage.getItem('kipo_pending_paths') || '[]');
+        if (!pending.length) return;
+        const cutoff = Date.now() - 60 * 60 * 1000;
+        const toDelete = pending.filter(e => e.ts < cutoff);
+        if (!toDelete.length) return;
+        const { ref: storageRef, deleteObject } = await import('firebase/storage');
+        const { storage } = await import('./firebaseConfig');
+        await Promise.allSettled(toDelete.map(e => deleteObject(storageRef(storage, e.path))));
+        localStorage.setItem('kipo_pending_paths', JSON.stringify(
+          pending.filter(e => e.ts >= cutoff)
+        ));
+      } catch {}
+    })();
+  }, [user?.uid]);
+
+  // Suscripción a fotosProyecto con coordenadas (capa de fotos en mapa)
+  useEffect(() => {
+    if (!proyectoActual?.id) { setFotosConCoordenadas([]); return; }
+    const col = collection(db, 'proyectos', proyectoActual.id, 'fotosProyecto');
+    const unsub = onSnapshot(col, snap => {
+      setFotosConCoordenadas(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(f => f.sectionId && f.lat != null && f.lng != null)
+      );
+    });
+    return unsub;
+  }, [proyectoActual?.id]);
+
+  // Asociar foto de proyecto a un punto específico
+  const asociarFoto = React.useCallback(async (fotoDoc, puntoId, forzar = false) => {
+    const punto = puntos.find(p => p.id === puntoId);
+    if (!punto) return 'error';
+    const existente = punto.datos?.fotos?.[fotoDoc.sectionId]?.[fotoDoc.itemId];
+    if (existente?.url && !forzar) return 'existe';
+    const fotoData = {
+      url: fotoDoc.url,
+      thumb: fotoDoc.thumb || fotoDoc.url,
+      timestamp: new Date().toISOString(),
+      _path: fotoDoc.storagePath || '',
+    };
+    if (fotoDoc.urlHD) fotoData.urlHD = fotoDoc.urlHD;
+    const newFotos = {
+      ...(punto.datos?.fotos || {}),
+      [fotoDoc.sectionId]: {
+        ...((punto.datos?.fotos || {})[fotoDoc.sectionId] || {}),
+        [fotoDoc.itemId]: fotoData,
+      },
+    };
+    await fbUpdateDoc(doc(db, 'puntos', puntoId), { 'datos.fotos': newFotos });
+    await deleteDoc(doc(db, 'proyectos', proyectoActual.id, 'fotosProyecto', fotoDoc.id));
+    setPuntos(prev => prev.map(p =>
+      p.id === puntoId ? { ...p, datos: { ...p.datos, fotos: newFotos } } : p
+    ));
+    return 'ok';
+  }, [puntos, proyectoActual?.id, setPuntos]);
+
   // Auto-seleccionar último proyecto abierto
   useEffect(() => {
-    if (proyectos.length > 0 && !proyectoActual) {
-      let proyecto = null;
-      try {
-        const savedId = localStorage.getItem('ultimoProyectoId');
-        if (savedId) proyecto = proyectos.find(p => p.id === savedId);
-      } catch (e) { }
-      if (!proyecto) proyecto = proyectos[proyectos.length - 1];
-      seleccionarProyecto(proyecto);
+    if (todosLosProyectos.length === 0 || proyectoActual) return;
+    let savedId = null;
+    try { savedId = localStorage.getItem('ultimoProyectoId'); } catch (e) {}
+    if (savedId) {
+      const proyecto = todosLosProyectos.find(p => p.id === savedId);
+      if (proyecto) { seleccionarProyecto(proyecto); return; }
+      // savedId existe pero aún no cargó (puede ser de proyectos compartidos) — esperar
+      return;
     }
-  }, [proyectos, proyectoActual, seleccionarProyecto]);
+    // Sin savedId: seleccionar el último
+    seleccionarProyecto(todosLosProyectos[todosLosProyectos.length - 1]);
+  }, [todosLosProyectos, proyectoActual, seleccionarProyecto]);
 
-  // Sincronizar proyectoActual con datos frescos de Firestore
+  // Sincronizar proyectoActual con datos frescos de Firestore (propios y compartidos)
   useEffect(() => {
-    if (proyectoActual && proyectos.length > 0) {
-      const actualizado = proyectos.find(p => p.id === proyectoActual.id);
+    if (proyectoActual && todosLosProyectos.length > 0) {
+      const actualizado = todosLosProyectos.find(p => p.id === proyectoActual.id);
       if (actualizado && actualizado !== proyectoActual) {
         setProyectoActual(actualizado);
       }
     }
-  }, [proyectos]);
+  }, [proyectos, proyectosEditor]);
+
+  // Para editores/supervisores: cuando el propietario cambia el día activo, auto-seleccionarlo
+  useEffect(() => {
+    if (!proyectoActual?.esCompartido || !proyectoActual.diaActivoId) return;
+    const diaExiste = proyectoActual.dias?.find(d => d.id === proyectoActual.diaActivoId);
+    if (!diaExiste) return;
+    if (diaActual !== proyectoActual.diaActivoId) {
+      setDiaActual(proyectoActual.diaActivoId);
+      setDiasVisibles(prev => [...new Set([...prev, proyectoActual.diaActivoId])]);
+    }
+  }, [proyectoActual?.diaActivoId]);
 
   // Guardar automáticamente cuando se cierra el modal de fotos en modo edición desde VerDetalle
   const prevModalOpen = React.useRef(modalOpen);
@@ -397,6 +698,18 @@ function App() {
         ));
 
         // Encolar tarea de guardado en Firebase
+        // Construir fotos seguras: para fotos aún subiendo, usar la versión de Firestore
+        // para evitar sobreescribir una foto correctamente subida con datos incompletos
+        const fotosBase = puntoActualizado.datos?.fotos || {};
+        const fotosSeguras = { ...fotosBase };
+        for (const [sec, items] of Object.entries(datosFormulario.fotos || {})) {
+          if (!fotosSeguras[sec]) fotosSeguras[sec] = {};
+          for (const [key, val] of Object.entries(items || {})) {
+            if (val?.uploading || (typeof val?.thumb === 'string' && val.thumb.startsWith('blob:'))) continue;
+            fotosSeguras[sec][key] = val;
+          }
+        }
+
         agregarTarea('guardar_punto', {
           modo: 'editar',
           coleccion: 'puntos',
@@ -405,7 +718,7 @@ function App() {
             ...puntoActualizado,
             datos: {
               ...puntoActualizado.datos,
-              fotos: datosFormulario.fotos,
+              fotos: fotosSeguras,
               direccion: direccionActualizada
             },
             timestamp: new Date().toISOString()
@@ -414,11 +727,13 @@ function App() {
 
         // Mensaje automático en bitácora
         if (proyectoActual?.id && user?.uid) {
+          const nombre = config?.nombrePersonal || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
+          const empresa = config?.empresaPersonal || '';
           const id = formatId(puntoActualizado.datos);
           const cambiosFotos = detectarCambiosFotos(puntoActualizado.datos?.fotos, datosFormulario.fotos);
           let msg = `Editado:\n${id}`;
           if (cambiosFotos.length > 0) msg += `\n${cambiosFotos.join('\n')}`;
-          enviarMensajeSistema(proyectoActual.id, msg, user.uid);
+          enviarMensajeSistema(proyectoActual.id, msg, user.uid, nombre, empresa);
         }
       }
     }
@@ -429,7 +744,7 @@ function App() {
   const guardarConfiguracion = async (nuevaConfig) => {
     setConfig(nuevaConfig);
     try {
-      await setDoc(doc(db, "configuraciones", user.uid), nuevaConfig);
+      await setDoc(doc(db, "configuraciones", user.uid), { ...nuevaConfig, email: user.email });
       console.log("Configuración sincronizada");
 
       // Sincronizar ownerNombre/ownerEmpresa en todos los proyectos propios
@@ -456,8 +771,7 @@ function App() {
     }
   };
 
-  // Filtros de visibilidad — usar todosLosPuntos para incluir puntos de proyectos donde soy editor
-  const todosLosProyectos = React.useMemo(() => [...proyectos, ...proyectosEditor], [proyectos, proyectosEditor]);
+  // Filtros de visibilidad
   const puntosVisiblesMapa = filtrosVisibilidad.getPuntosVisibles(todosLosPuntos, diasVisibles, todosLosProyectos);
   const totalPuntosProyecto = proyectoActual ? todosLosPuntos.filter(p => p.proyectoId === proyectoActual.id).length : 0;
   const conexionesVisiblesBase = filtrosVisibilidad.getConexionesVisibles(conexiones, diasVisibles, proyectos);
@@ -478,12 +792,17 @@ function App() {
         setGpsTrigger={setGpsTrigger}
         mostrarEtiquetas={mostrarEtiquetas}
         setMostrarEtiquetas={setMostrarEtiquetas}
+        menuEtiquetasAbierto={menuEtiquetasAbierto}
+        setMenuEtiquetasAbierto={setMenuEtiquetasAbierto}
+        toggleMenuEtiquetas={toggleMenuEtiquetas}
         isDark={isDark}
         setIsDark={setIsDark}
         setIconSize={setIconSize}
         mapStyle={mapStyle}
         setMapStyle={setMapStyle}
         totalNotificaciones={totalNotificaciones}
+        fotoPuntosActivo={fotoPuntosActivo}
+        onToggleFotoPuntos={() => setFotoPuntosActivo(v => !v)}
       />
 
       <QueueModal
@@ -495,6 +814,7 @@ function App() {
         isOnline={isOnline}
         eliminarTarea={eliminarTarea}
         reintentarTarea={reintentarTarea}
+        guardarComoNuevo={guardarComoNuevo}
         theme={theme}
       />
 
@@ -507,11 +827,16 @@ function App() {
         setVista={setVistaConHistorial}
         cerrarSesion={cerrarSesion}
         config={config}
-        totalProyectos={todosLosProyectos.length}
+        totalProyectos={proyectos.length}
+        totalProyectosEditor={proyectosEditor.length}
         totalSupervision={proyectosSupervision.length}
-        totalNotifProyectos={totalNotifProyectos}
+        totalPermisos={proyectosSupervisados.length + solicitudesEnviadas.filter(s => !proyectosSupervisados.some(p => p.id === s.id)).length}
+        totalNotifProyectos={totalNotifVistaProyectos}
         totalNotifSupervisados={totalNotifSupervisados}
         isDark={isDark}
+        setIsDark={setIsDark}
+        adminReturnEmail={adminReturnEmail}
+        onVolverAAdmin={volverAAdmin}
       />
 
       {vista === 'mapa' && (
@@ -523,7 +848,7 @@ function App() {
           handleMapaClick={mapaSupervision
             ? () => { setPuntoSeleccionado(null); setConexionSeleccionada(null); }
             : (e) => {
-              if (modoMover) return;
+              if (modoMover || modoMoverPuntos) return;
               setConexionSeleccionada(null);
               mapInteractions.handleMapaClick({
                 e, menuAbierto, modoFibra, puntoSeleccionado, vista, diaActual,
@@ -548,6 +873,8 @@ function App() {
           }
           puntoTemporal={mapaSupervision ? null : puntoTemporal}
           mostrarEtiquetas={mostrarEtiquetas}
+          menuEtiquetasAbierto={menuEtiquetasAbierto}
+          setMostrarEtiquetas={setMostrarEtiquetas}
           gpsTrigger={gpsTrigger}
           yaSaltoAlInicio={yaSaltoAlInicio}
           setYaSaltoAlInicio={setYaSaltoAlInicio}
@@ -611,6 +938,7 @@ function App() {
           totalFibras={proyectoActual ? conexionesVisiblesBase.filter(c => c.proyectoId === proyectoActual.id).length : 0}
           nombreProyecto={mapaSupervision ? mapaSupervision.proyecto?.nombre : proyectoActual?.nombre}
           totalPuntosProyecto={mapaSupervision ? mapaSupervision.puntos.length : totalPuntosProyecto}
+          proyectoEsCompartido={!!proyectoActual?.esCompartido}
           onGuardarFibra={async () => {
             if (puntosRecorrido.length < 2 || !diaActual || !proyectoActual) return;
 
@@ -658,6 +986,29 @@ function App() {
             setVista('supervision');
           }}
           overlayGPSActivo={!!mostrarOverlayGPS}
+          fotosConCoordenadas={fotosConCoordenadas}
+          fotoPuntosActivo={fotoPuntosActivo}
+          onAsociarFoto={asociarFoto}
+          puntos={puntos}
+          abrirCamaraDirecta={() => {
+            const punto = todosLosPuntos.find(p => p.id === puntoSeleccionado);
+            if (!punto) return;
+            fotosSubidasRef.current = [];
+            setDatosFormulario({
+              ...JSON.parse(JSON.stringify(punto.datos)),
+              coords: punto.coords,
+              direccion: punto.datos.direccion || punto.direccion
+            });
+            const lastTab = (() => { try { const s = localStorage.getItem('kipo_last_tab'); return s || 'napMec'; } catch { return 'napMec'; } })();
+            setPhotoTab(lastTab);
+            setModalOpen('MODO_FOTOS');
+          }}
+          modoMoverPuntos={modoMoverPuntos}
+          puntosSeleccionadosMover={puntosSeleccionadosMover}
+          setPuntosSeleccionadosMover={setPuntosSeleccionadosMover}
+          onEjecutarMoverPuntos={ejecutarMoverPuntos}
+          onCancelarMoverPuntos={() => { setModoMoverPuntos(false); setPuntosSeleccionadosMover([]); }}
+          proyectosDestino={proyectos.filter(p => p.id !== proyectoActual?.id)}
         />
       )}
       {vista === 'proyectos' && (
@@ -677,9 +1028,10 @@ function App() {
           modalOpen={modalOpen}
           seleccionarProyecto={seleccionarProyecto}
           diaActual={diaActual}
-          setDiaActual={setDiaActual}
+          setDiaActual={cambiarDiaActivo}
           toggleVisibilidadDia={toggleVisibilidadDia}
           cambiarColorDia={cambiarColorDia}
+          uniformizarColorDias={uniformizarColorDias}
           toggleVisibilidadProyecto={toggleVisibilidadProyecto}
           cambiarColorProyecto={cambiarColorProyecto}
           solicitarBorrarProyecto={solicitarBorrarProyecto}
@@ -710,9 +1062,59 @@ function App() {
           setModalPendiente={setModalPendiente}
           setMostrarOverlayGPS={setMostrarOverlayGPS}
           onVolver={volverVistaAnterior}
-          notificacionesProyectos={notifProyectos}
+          notificacionesProyectos={{ ...notifProyectos, ...notifEditor }}
           marcarChatLeido={marcarChatLeido}
           conexiones={conexiones}
+          onIniciarMoverPuntos={() => {
+            setPuntoSeleccionado(null);
+            setPuntosSeleccionadosMover([]);
+            setModoMoverPuntos(true);
+            setVista('mapa');
+          }}
+        />
+      )}
+
+      {vista === 'admin' && (
+        <VistaAdmin
+          theme={theme}
+          isDark={isDark}
+          onVolver={volverVistaAnterior}
+          onLoginComo={() => {
+            setProyectoActual(null);
+            setVista('mapa');
+          }}
+        />
+      )}
+
+      {vista === 'permisos' && (
+        <VistaPermisos
+          theme={theme}
+          proyectosSupervisados={proyectosSupervisados}
+          solicitudesPendientes={solicitudesEnviadas.filter(s => !proyectosSupervisados.some(p => p.id === s.id))}
+          setModalCodigoAbierto={setModalCodigoAbierto}
+          onVolver={volverVistaAnterior}
+          onEliminar={(proy) => {
+            setConfirmData({
+              title: '¿Dejar de participar?',
+              message: `Dejarás de tener acceso al proyecto "${proy.nombre}".`,
+              actionText: 'CONFIRMAR',
+              theme,
+              onConfirm: async () => {
+                try {
+                  const { doc: docRef, updateDoc, arrayRemove } = await import("firebase/firestore");
+                  const { db: fireDb } = await import('./firebaseConfig');
+                  const proyRef = docRef(fireDb, "proyectos", proy.id);
+                  await updateDoc(proyRef, { compartidoCon: arrayRemove(user.uid) });
+                  setSolicitudesEnviadas(prev => prev.filter(s => s.id !== proy.id));
+                  setConfirmData(null);
+                  setAlertData({ title: "Listo", message: "Ya no tenés acceso a este proyecto." });
+                } catch (error) {
+                  console.error("Error:", error);
+                  setAlertData({ title: "Error", message: "No se pudo completar la acción." });
+                }
+              }
+            });
+          }}
         />
       )}
 
@@ -764,6 +1166,14 @@ function App() {
               }
             });
           }}
+        />
+      )}
+
+      {vista === 'diagnostico' && (
+        <VistaDiagnostico
+          theme={theme}
+          isDark={isDark}
+          onVolver={volverVistaAnterior}
         />
       )}
 
@@ -880,17 +1290,19 @@ function App() {
           backgroundColor: 'white',
           overflow: 'auto'
         }}>
-          <PhotoManager
-            onClose={() => setModalOpen(null)}
-            datos={datosFormulario}
-            setDatos={setDatosFormulario}
-            proyectoActual={proyectoActual}
-            puntoTemporal={puntoTemporal}
-            initialTab={photoTab}
-            puntoId={puntoSeleccionado}
-            logoApp={logoApp}
-            onFotoSubida={(url) => fotosSubidasRef.current.push(url)}
-          />
+          <PhotoManagerErrorBoundary onClose={() => setModalOpen(null)} userUid={user?.uid} userEmail={user?.email}>
+            <PhotoManager
+              onClose={() => setModalOpen(null)}
+              datos={datosFormulario}
+              setDatos={setDatosFormulario}
+              proyectoActual={proyectoActual}
+              puntoTemporal={puntoTemporal}
+              initialTab={photoTab}
+              puntoId={puntoSeleccionado || tempPuntoId}
+              logoApp={logoApp}
+              onFotoSubida={(url) => fotosSubidasRef.current.push(url)}
+            />
+          </PhotoManagerErrorBoundary>
         </div>
       )}
 

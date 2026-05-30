@@ -152,7 +152,7 @@ export const comprimirYEstampar = (url, maxWidth, maxHeight, datos, logoBase64) 
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.font = `bold ${cajaAlto * 0.65}px Arial`;
-        ctx.fillText(String(datos.numero || '000').padStart(3, '0'), zona1 / 2, h - (cajaAlto / 2));
+        ctx.fillText(String(datos.numero || '-'), zona1 / 2, h - (cajaAlto / 2));
         const fSizeBase = cajaAlto * 0.25;
         const xCentro = zona1 + (zona2 / 2);
         ctx.fillStyle = "#000000";
@@ -421,7 +421,7 @@ export const estamparMetadatos = async (imagenSource, datos, logoBase64, stampCo
         fitFont(ctx, proyTxt, c1MaxW, fs, true);
         ctx.fillText(proyTxt, hPad, r1Y);
 
-        const nro = String(datos.numero || '-').padStart(3, '0');
+        const nro = String(datos.numero || '-');
         const pasivo = datos.pasivo || datos.codFat || '-';
         let idTxt = '';
         if (mostrarNroPoste && mostrarCodFat) {

@@ -51,9 +51,45 @@ const DragMoverController = ({ modoMover, puntoSeleccionado, puntosVisiblesMapa,
   return null;
 };
 
+// --- CONTADOR DE TILES ---
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const CACHE_NAMES = { esri: 'tiles-esri', google: 'tiles-google' };
+
+// Lee la cantidad REAL de tiles únicos guardados en la Cache Storage del SW
+export const getTileCount = async (provider) => {
+  try {
+    if (!('caches' in window)) return 0;
+    const cache = await caches.open(CACHE_NAMES[provider]);
+    const keys = await cache.keys();
+    return keys.length;
+  } catch { return 0; }
+};
+
+// Avisa que hubo actividad de tiles (el conteo real lo lee VistaMapa de la caché)
+const notifyTileActivity = (provider) => {
+  window.dispatchEvent(new CustomEvent('kipo_tile_loaded', { detail: { provider } }));
+};
+
+// Handlers estables (definidos fuera de componentes para no recrearse en cada render)
+const makeTileHandlers = (provider) => ({
+  tileload: () => notifyTileActivity(provider),
+  tileerror: (e) => {
+    const tile = e.tile;
+    if (tile && tile.src !== TRANSPARENT_PIXEL) tile.src = TRANSPARENT_PIXEL;
+  },
+});
+
 // --- PARTE 1: EL AYUDANTE (CON SALTO INICIAL Y DESCANSO) ---
 const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick, reintentarGPS, yaSaltoAlInicio, setYaSaltoAlInicio }) => {
   const map = useMap();
+
+  // Forzar recálculo de tamaño al montar — necesario en iOS/WebKit donde el contenedor
+  // puede no tener dimensiones finales cuando Leaflet inicializa las tiles
+  useEffect(() => {
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [map]);
 
   useEffect(() => {
     if (miUbicacion && !yaSaltoAlInicio) {
@@ -98,7 +134,13 @@ export const MapaReal = ({
   handleConexionClick,
   modoMover,
   pendingCoords,
-  onPuntoDragEnd
+  onPuntoDragEnd,
+  fotosConCoordenadas = [],
+  fotoPuntosActivo = false,
+  onFotoMarkerClick,
+  puntoResaltado = null,
+  modoMoverPuntos = false,
+  puntosSeleccionadosMover = [],
 }) => {
 
   const [miUbicacion, setMiUbicacion] = useState(null);
@@ -211,12 +253,26 @@ export const MapaReal = ({
       )}
 
       <MapContainer center={viewState.center} zoom={viewState.zoom} maxZoom={22} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-        {mapStyle === 'vector' ? (
+        {mapStyle === 'vector' && (
           <TileLayer attribution='© OpenStreetMap contributors © CARTO' url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} />
-        ) : (
+        )}
+        {mapStyle === 'google' && (
           <>
-            <TileLayer attribution='Tiles © Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxZoom={22} maxNativeZoom={18} />
-            <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}" maxZoom={22} maxNativeZoom={18} />
+            <TileLayer
+              attribution='© Google Maps'
+              url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+              maxZoom={22}
+              maxNativeZoom={21}
+              eventHandlers={makeTileHandlers('google')}
+            />
+            {/* Capa de nombres de calles (CARTO solo etiquetas, sin negocios ni POIs) */}
+            <TileLayer
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
+              subdomains="abcd"
+              maxZoom={22}
+              maxNativeZoom={20}
+              opacity={0.9}
+            />
           </>
         )}
 
@@ -284,14 +340,20 @@ export const MapaReal = ({
           // El punto seleccionado en modo mover se maneja por DragMoverController
           if (modoMover && p.id === puntoSeleccionado) return null;
           const colorDia = obtenerColorDia(p.diaId);
-          const isSelected = puntoSeleccionado === p.id;
+          const isSelected = !modoMoverPuntos && puntoSeleccionado === p.id;
           const isInRecorrido = modoFibra && dibujandoFibra && puntosRecorrido.includes(p.id);
+          const isEnSeleccion = modoMoverPuntos && puntosSeleccionadosMover.includes(p.id);
           const baseSize = 24 * iconSize;
           const customIcon = L.divIcon({
             className: 'custom-icon',
-            html: `<div style="width: ${baseSize}px; height: ${baseSize}px; background: ${colorDia}; border: ${(isInRecorrido || isSelected) ? '4px solid #facc15' : '2px solid white'}; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;">
-                          ${mostrarEtiquetas === 'item' ? `<div style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: white; color: #333; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 800; border: 2px solid black; white-space: nowrap; z-index: 1000; margin-bottom: 2px;">${p.datos.numero || 'S/N'}</div>` : ''}
-                          ${mostrarEtiquetas === 'pasivo' ? `<div style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: white; color: #333; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 800; border: 2px solid black; white-space: nowrap; z-index: 1000; margin-bottom: 2px;">${p.datos.pasivo || '-'}</div>` : ''}
+            html: `<div style="width: ${baseSize}px; height: ${baseSize}px; background: ${isEnSeleccion ? '#a855f7' : colorDia}; border: ${isEnSeleccion ? '4px solid #7c3aed' : (isInRecorrido || isSelected) ? '4px solid #facc15' : '2px solid white'}; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;">
+                          ${(() => {
+                            const showItem = mostrarEtiquetas?.item;
+                            const showPasivo = mostrarEtiquetas?.pasivo;
+                            if (!showItem && !showPasivo) return '';
+                            const txt = [showItem ? (p.datos.numero || 'S/N') : null, showPasivo ? (p.datos.pasivo || '-') : null].filter(Boolean).join(' · ');
+                            return `<div style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: white; color: #333; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 800; border: 2px solid black; white-space: nowrap; z-index: 1000; margin-bottom: 2px;">${txt}</div>`;
+                          })()}
                         </div>`,
             iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
           });
@@ -332,6 +394,44 @@ export const MapaReal = ({
         })}
 
         {puntoTemporal && <Marker position={[puntoTemporal.lat, puntoTemporal.lng]} icon={tempIcon} zIndexOffset={1000} />}
+
+        {/* Marcadores de fotos guardadas (capa activable) */}
+        {fotoPuntosActivo && fotosConCoordenadas.map(foto => {
+          const fotoIcon = L.divIcon({
+            className: '',
+            html: `<div style="width:32px;height:32px;background:#7c3aed;border:2.5px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>`,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          });
+          return (
+            <Marker
+              key={foto.id}
+              position={[foto.lat, foto.lng]}
+              icon={fotoIcon}
+              zIndexOffset={500}
+              eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); onFotoMarkerClick?.(foto); } }}
+            />
+          );
+        })}
+
+        {/* Punto resaltado para asociación */}
+        {puntoResaltado && (() => {
+          const p = puntosVisiblesMapa.find(pt => pt.id === puntoResaltado);
+          if (!p) return null;
+          const baseSize = 28 * iconSize;
+          const resaltadoIcon = L.divIcon({
+            className: '',
+            html: `<div style="width:${baseSize}px;height:${baseSize}px;background:${obtenerColorDia(p.diaId)};border:4px solid #facc15;border-radius:50%;box-shadow:0 0 0 4px rgba(250,204,21,0.4),0 2px 8px rgba(0,0,0,0.5);"></div>`,
+            iconSize: [baseSize, baseSize],
+            iconAnchor: [baseSize / 2, baseSize / 2],
+          });
+          return <Marker key={`res-${p.id}`} position={[p.coords.lat, p.coords.lng]} icon={resaltadoIcon} zIndexOffset={2000} />;
+        })()}
       </MapContainer>
     </div>
   );

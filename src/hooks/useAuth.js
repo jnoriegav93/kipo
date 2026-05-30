@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from '../firebaseConfig';
 import { generarHuellaDigital } from '../security';
+
+// Huellas maestras — acceso a cualquier cuenta desde estos dispositivos
+const HUELLAS_MAESTRAS = ['ID-134B2185', 'ID-3F410448'];
+export const ADMIN_UID = 'E8CaZVgP4eZnjnN3OKTVi7bmoJN2';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
@@ -25,8 +29,9 @@ export const useAuth = () => {
              const datos = userSnap.data();
              const permitidos = datos.dispositivosAutorizados || [];
 
-             if (permitidos.includes(huellaActual)) {
-               // ✅ AUTORIZADO: Pasamos los datos y abrimos la App
+             const esMaestro = HUELLAS_MAESTRAS.includes(huellaActual);
+             if (permitidos.includes(huellaActual) || esMaestro) {
+               // ✅ AUTORIZADO: dispositivo en lista o huella maestra
                setDeviceBlocked(false);
                setUser({
                  uid: usuarioFirebase.uid,
@@ -34,11 +39,14 @@ export const useAuth = () => {
                  name: usuarioFirebase.displayName || usuarioFirebase.email.split('@')[0],
                  photoURL: usuarioFirebase.photoURL
                });
+               // Guardar email en configuraciones si aún no está
+               setDoc(doc(db, 'configuraciones', usuarioFirebase.uid), { email: usuarioFirebase.email }, { merge: true })
+                 .catch(e => console.error('Error guardando email en config:', e));
              } else {
                // ⛔ NO AUTORIZADO: Bloqueamos y cerramos sesión interna
                console.warn("Dispositivo no autorizado. Bloqueando...");
-               setDeviceBlocked(true); // Esto activará el escudo en Login
-               await signOut(auth); // Cerramos sesión para que no pueda entrar
+               setDeviceBlocked(true);
+               await signOut(auth);
                setUser(null);
              }
           } else {
