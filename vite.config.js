@@ -25,7 +25,7 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       workbox: {
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB — el bundle principal ya pesa ~2.4 MB; con 3 MB dejaría de precachearse al crecer y la app moriría offline
         runtimeCaching: [
           // Tiles satelitales ESRI — caché 30 días
           {
@@ -63,8 +63,8 @@ export default defineConfig({
         name: 'Kipo',
         short_name: 'Kipo',
         description: 'Gestión de Proyectos de Fibra Óptica',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        theme_color: '#10101D',
+        background_color: '#10101D',
         display: 'standalone', // Esto quita la barra del navegador
         orientation: 'portrait', // Bloquea la app en vertical (opcional)
         icons: [

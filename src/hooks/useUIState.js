@@ -11,6 +11,7 @@ export const useUIState = () => {
     const [capacidadFibra, setCapacidadFibra] = useState(12);
     const [fibrasVisibles, setFibrasVisibles] = useState(true);
     const [puntosRecorrido, setPuntosRecorrido] = useState([]);
+    const [nombreFibra, setNombreFibra] = useState(''); // nombre del ramal en curso
     const [puntoSeleccionado, setPuntoSeleccionado] = useState(null);
     const [conexionSeleccionada, setConexionSeleccionada] = useState(null);
     const [conexionesOcultas, setConexionesOcultas] = useState([]);
@@ -38,6 +39,7 @@ return {
     capacidadFibra, setCapacidadFibra,
     fibrasVisibles, setFibrasVisibles,
     puntosRecorrido, setPuntosRecorrido,
+    nombreFibra, setNombreFibra,
     puntoSeleccionado, setPuntoSeleccionado,
     conexionSeleccionada, setConexionSeleccionada,
     conexionesOcultas, setConexionesOcultas,

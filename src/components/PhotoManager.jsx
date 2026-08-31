@@ -1,9 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, Trash2, X, RefreshCw, ArrowLeft, Maximize2, Share2, Plus, Image as ImageIcon, FolderOpen, Check, ChevronDown } from 'lucide-react';
+import { Camera, Trash2, X, RefreshCw, ArrowLeft, Maximize2, Share2, Plus, Image as ImageIcon, FolderOpen, Check, ChevronDown, Cloud, Smartphone, ShieldCheck, AlertTriangle, UploadCloud, Loader2, ClipboardList } from 'lucide-react';
+import { fetchFotoBlob } from '../utils/fotoUrl';
+import { esTipoRed } from '../utils/perfiles';
 import { uploadImage } from '../utils/storage';
-import { saveUploadPending, deleteUploadPending } from '../utils/photoDB';
-import { estamparMetadatos, urlABase64 } from '../utils/helpers';
-import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs, deleteDoc } from 'firebase/firestore';
+import { saveUploadPending, deleteUploadPending, getUploadPending, getAllUploadsPending, marcarSubida } from '../utils/photoDB';
+import { registrarCandidata, quitarCandidata } from '../utils/fotoHuerfanas';
+import { estamparMetadatos, urlABase64, puedeCompartirArchivos, puedeCompartirTexto } from '../utils/helpers';
+import { inyectarEXIFenBlob } from '../utils/exif';
+import { doc, setDoc, updateDoc, getDoc, collection, query, orderBy, getDocs, deleteDoc, deleteField } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // CONFIGURACIÓN - 3 PESTAÑAS DE FOTOS
@@ -11,7 +15,7 @@ export const TABS_CONFIG = {
   // 1. NAP MEC (Principal)
   napMec: {
     id: 'napMec',
-    title: 'NAP MECANICA',
+    title: 'NAP',
     items: [
       { id: 'frontalRotulado', label: 'FRONTAL\n(ROTULADO)' },
       { id: 'frontalPotencia', label: 'FRONTAL CON\nPOTENCIA' },
@@ -35,7 +39,7 @@ export const TABS_CONFIG = {
   // 2. MUFA TRONCAL
   mufaTroncal: {
     id: 'mufaTroncal',
-    title: 'MUFA TRONCAL',
+    title: 'MUFA',
     items: [
       { id: 'frontal', label: 'FRONTAL', help: 'Vista frontal de la mufa en la parte superior del poste' },
       { id: 'panoramica', label: 'PANORAMICA', help: 'Vista panorámica del poste' },
@@ -62,33 +66,10 @@ export const TABS_CONFIG = {
       }
     ]
   },
-  // 3. MUFA FDT (Igual a Troncal)
-  mufaFdt: {
-    id: 'mufaFdt',
-    title: 'MUFA FDT',
-    items: [
-      { id: 'cajaPiso', label: 'CAJA EN PISO', help: 'Debe apreciarse la caja en una superficie segura con la carcasa abierta' },
-      { id: 'fusiones', label: 'FUSIONES', help: 'Debe apreciarse la FUSIÓN de FO, fijación, orden y curvatura de las fibras' },
-      { id: 'bandejasAseguradas', label: 'BANDEJAS\nASEGURADAS', help: 'Debe apreciarse las bandejas de FO aseguradas con cinta Velcro' },
-      { id: 'cablesAsegurados', label: 'CABLES OPTICOS\nASEGURADOS', help: 'Verifique que los cables estén asegurados de manera confiable.' },
-      { id: 'cierreCarcasa', label: 'FRONTAL', help: 'Debe apreciarse el cierre de la carcasa en poste.' },
-      { id: 'etiquetaIngreso', label: 'ETIQUETA FIBRA\nINGRESO' },
-      // SUBSECCION
-      {
-        id: 'sub_etiquetaSalida',
-        title: 'ETIQUETAS DE FO DE SALIDA',
-        items: [
-          { id: 'salida1', label: 'SALIDA 1' },
-          { id: 'salida2', label: 'SALIDA 2' },
-          { id: 'salida3', label: 'SALIDA 3' }
-        ]
-      }
-    ]
-  },
   // 4. FAT PRECO NUEVA
   fatPrecoNueva: {
     id: 'fatPrecoNueva', // ANTES napFatNueva
-    title: 'FAT PRECO NUEVA',
+    title: 'FAT',
     items: [
       { id: 'frontalRotulado', label: 'FRONTAL\n(ROTULADO)' },
       { id: 'frontalPotencia', label: 'FRONTAL CON\nPOTENCIA' },
@@ -96,18 +77,6 @@ export const TABS_CONFIG = {
       { id: 'etiqueta', label: 'ETIQUETA' },
       { id: 'panoramica', label: 'PANORAMICA' },
       { id: 'codigoSerie', label: 'CODIGO SERIE' }
-    ]
-  },
-  // 5. FAT PRECO EXISTENTE
-  fatPrecoExistente: {
-    id: 'fatPrecoExistente', // ANTES napFatExistente
-    title: 'FAT PRECO EXISTENTE',
-    items: [
-      { id: 'frontalRotulado', label: 'FRONTAL\n(ROTULADO)' },
-      { id: 'frontalPotencia', label: 'FRONTAL CON\nPOTENCIA' },
-      { id: 'perfil', label: 'PERFIL' },
-      { id: 'etiqueta', label: 'ETIQUETA' },
-      { id: 'codigoSerie', label: 'CODIGO SERIE', centered: true }
     ]
   },
   // 6. XBOX
@@ -139,7 +108,7 @@ export const TABS_CONFIG = {
   // 7. HBOX
   hbox: {
     id: 'hbox',
-    title: 'HBOX',
+    title: 'HUB BOX',
     items: [
       { id: 'cierreCarcasa', label: 'FRONTAL\n(ROTULADO)', help: 'La junta de la carcasa es plana' },
       { id: 'panoramica', label: 'PANORAMICA', help: 'Debe observarse la ubicación y fijación del HBOX al centro de la cruceta' },
@@ -155,6 +124,17 @@ export const TABS_CONFIG = {
           { id: 'salida3', label: 'SALIDA 3' }
         ]
       }
+    ]
+  },
+  // 7b. CAMARA (nueva)
+  camara: {
+    id: 'camara',
+    title: 'CAMARA',
+    items: [
+      { id: 'vistaPanoramica', label: 'VISTA\nPANORAMICA', help: 'Vista a la ubicación de la cámara tapada' },
+      { id: 'codigoCamara', label: 'CODIGO DE\nCAMARA' },
+      { id: 'entradaCamara', label: 'ENTRADA A\nCAMARA', help: 'Ducto interno de ingreso a cámara + etiqueta' },
+      { id: 'salidaCamara', label: 'SALIDA DE\nCAMARA', help: 'Ducto de salida de la cámara + etiqueta' }
     ]
   },
   // 8. POSTE
@@ -179,10 +159,20 @@ export const TABS_CONFIG = {
     items: [],
     dynamic: true
   },
+  // 9b. MEDIO TRAMO (sub-pestaña de ADICIONALES)
+  medioTramo: {
+    id: 'medioTramo',
+    title: 'MEDIO TRAMO',
+    items: [
+      { id: 'vistaAbajo',    label: 'VISTA DESDE\nABAJO' },
+      { id: 'vistaCostado',  label: 'VISTA DE\nCOSTADO' },
+      { id: 'zoomFerreteria', label: 'ZOOM A LA\nFERRETERIA' }
+    ]
+  },
   // 10. INSTALACIÓN
   instalacion: {
     id: 'instalacion',
-    title: 'INSTALACIÓN',
+    title: 'INSTALACIÓN DE POSTES',
     items: [
       { id: 'centradoPoste',      label: 'CENTRADO\nDE POSTE',    help: 'Izado recto del poste con grua' },
       { id: 'cimentacionPiedras', label: 'CIMENTACION\nPIEDRAS',  help: 'Piedras de 8" en la base del poste' },
@@ -190,7 +180,8 @@ export const TABS_CONFIG = {
       { id: 'basamento',          label: 'BASAMENTO',             help: 'Cobertura de la base con cemento o asfalto según superficie' },
       { id: 'frontal',            label: 'FRONTAL',               help: 'Vista frontal panorámica del poste instalado' },
       { id: 'perfil',             label: 'PERFIL',                help: 'Vista de perfil del poste instalado' },
-      { id: 'rotulado',           label: 'ROTULADO',              help: 'Foto al rotulado del poste' }
+      { id: 'rotulado',           label: 'ROTULADO',              help: 'Foto al rotulado del poste' },
+      { id: 'profundidad',        label: 'PROFUNDIDAD',           help: 'Medida de la profundidad del hoyo mostrando con la wincha' }
     ]
   },
   // 11. SITE 1
@@ -225,6 +216,22 @@ export const TABS_CONFIG = {
       { id: 'jumper02',          label: 'JUMPER 02\nA EQUIPO rCSR', help: 'Segundo extremo del jumper' }
     ]
   },
+  // 12b. SITE 3
+  site3: {
+    id: 'site3',
+    title: 'SITE 3',
+    items: [
+      { id: 'acceso', label: 'FOTOS DE\nACCESO', type: 'subgallery', minSlots: 5 },
+      { id: 'finalRuta',         label: 'FINAL DE\nRUTA',           help: 'Tubería ingreso al gabinete' },
+      { id: 'gabinete',          label: 'GABINETE',                 help: 'Vista frontal gabinete cerrado' },
+      { id: 'panoramica',        label: 'PANORAMICA',               help: 'Vista de todos los equipos internos del gabinete' },
+      { id: 'interiorPanduit',   label: 'INTERIOR\nPANDUIT',        help: 'Fibra acondicionada en caja panduit' },
+      { id: 'instalacionPanduit',label: 'INSTALACION\nPANDUIT',     help: 'Vista panorámica mostrando ubicación del panduit' },
+      { id: 'rotuladoPanduit',   label: 'ROTULADO\nPANDUIT',        help: 'Rotulado de la caja panduit' },
+      { id: 'jumper01',          label: 'JUMPER 01\nA EQUIPO rCSR', help: 'Primer extremo del jumper' },
+      { id: 'jumper02',          label: 'JUMPER 02\nA EQUIPO rCSR', help: 'Segundo extremo del jumper' }
+    ]
+  },
   // 13. NODO
   nodo: {
     id: 'nodo',
@@ -243,11 +250,11 @@ export const TABS_CONFIG = {
 
 export const MAIN_TABS = [
   { id: 'postes',    label: 'POSTES',    subs: ['poste', 'instalacion'] },
-  { id: 'mufas',     label: 'MUFAS',     subs: ['mufaTroncal', 'mufaFdt'] },
-  { id: 'fatNap',    label: 'FAT/NAP',   subs: ['fatPrecoExistente', 'fatPrecoNueva', 'napMec'] },
+  { id: 'mufas',     label: 'MUFAS',     subs: ['mufaTroncal'] },
+  { id: 'fatNap',    label: 'FAT/NAP',   subs: ['fatPrecoNueva', 'napMec'] },
   { id: 'box',       label: 'BOX',       subs: ['xbox', 'hbox'] },
-  { id: 'sites',     label: 'SITES',     subs: ['site1', 'site2', 'nodo'] },
-  { id: 'adicionales', label: 'ADICIONALES', subs: [] },
+  { id: 'sites',     label: 'SITES',     subs: ['site1', 'site2', 'site3', 'nodo'] },
+  { id: 'adicionales', label: 'ADICIONALES', subs: ['adicionales', 'medioTramo'] },
 ];
 
 export const EXTRAS_ITEMS = ['Extra 1', 'Extra 2', 'Extra 3'];
@@ -263,12 +270,72 @@ const getFotoUrl = (foto) => {
   if (typeof foto === 'string') return foto;
   return foto.url || foto.thumb || null;
 };
+// ¿Es una foto que quedó SOLO en miniatura? (tiene contenido pero no una URL full
+// http, y NO está pendiente de subir). Estas se marcan solas en rojo "Volver a tomar".
+export const esFotoMiniatura = (foto) => {
+  if (!foto) return false;
+  if (typeof foto === 'string') return foto.startsWith('data:'); // string data: = solo miniatura
+  if (typeof foto !== 'object') return false;
+  const url = foto.url;
+  const tieneUrlFull = typeof url === 'string' && url.startsWith('http');
+  if (tieneUrlFull) return false;             // tiene la foto real
+  if (foto.uploading === true) return false;  // pendiente de subir (amber "sin subir"), no rota
+  return !!foto.thumb;                         // solo queda la miniatura
+};
+
+// Lee ancho y alto del encabezado de un JPEG SIN decodificar la imagen: recorre los
+// marcadores hasta el SOF, que es donde el formato guarda las dimensiones. Sirve para
+// saber cuanto hay que reducir ANTES de descomprimir. Devuelve null si no es un JPEG
+// legible (por ejemplo un HEIC de iPhone), y entonces se usa el camino de siempre.
+const dimensionesJPEG = async (blob) => {
+  try {
+    const vista = new DataView(await blob.slice(0, 131072).arrayBuffer());
+    if (vista.getUint16(0) !== 0xFFD8) return null; // no empieza con SOI -> no es JPEG
+    let off = 2;
+    while (off + 9 < vista.byteLength) {
+      if (vista.getUint8(off) !== 0xFF) return null; // marcador mal formado
+      let marcador = vista.getUint8(off + 1);
+      // Bytes de relleno 0xFF: se saltan hasta dar con el marcador real
+      while (marcador === 0xFF && off + 9 < vista.byteLength) { off++; marcador = vista.getUint8(off + 1); }
+      // SOF0..SOF15 traen las dimensiones. Se excluyen DHT (C4), DNL (C8) y DAC (CC),
+      // que caen en el mismo rango pero no son SOF.
+      if (marcador >= 0xC0 && marcador <= 0xCF && marcador !== 0xC4 && marcador !== 0xC8 && marcador !== 0xCC) {
+        const alto = vista.getUint16(off + 5);
+        const ancho = vista.getUint16(off + 7);
+        return (ancho > 0 && alto > 0) ? { ancho, alto } : null;
+      }
+      const largo = vista.getUint16(off + 2);
+      if (largo < 2) return null;
+      off += 2 + largo;
+    }
+  } catch { /* encabezado ilegible */ }
+  return null;
+};
 
 const DEFAULT_STAMP_CONFIG = { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
 
-export default function PhotoManager({ onClose, datos, setDatos, proyectoActual, puntoTemporal, initialTab = 'napMec', puntoId, logoApp, onFotoSubida }) {
+export default function PhotoManager({ onClose, datos, setDatos, proyectoActual, puntoTemporal, initialTab = 'napMec', puntoId, logoApp, onFotoSubida, modoInstalacion = false, onGuardar, forzarTab, isDesktop = false, onAsegurarPunto, onEncolarFoto, perfilActivo = 'claro', setAlertData }) {
   const fotosActuales = datos?.fotos || {}; // Inicializar vacío seguro
   const [viewingPhoto, setViewingPhoto] = useState(null);
+  const [viewingBlobUrl, setViewingBlobUrl] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // { section, item } | null
+  // Si la foto abierta está PENDIENTE (aún no subida) pero su archivo está en el equipo,
+  // mostrar la foto REAL (full) desde el blob local, no solo la miniatura.
+  useEffect(() => {
+    let objUrl = null;
+    setViewingBlobUrl(null);
+    if (!viewingPhoto) return;
+    const fotoObj = fotosActuales?.[viewingPhoto.section]?.[viewingPhoto.item];
+    const tieneUrlReal = (typeof fotoObj === 'object' && fotoObj?.url && String(fotoObj.url).startsWith('http')) ||
+                         (typeof fotoObj === 'string' && fotoObj.startsWith('http'));
+    const path = (typeof fotoObj === 'object') ? fotoObj?._path : null;
+    if (tieneUrlReal || !path) return;
+    (async () => {
+      const entry = await getUploadPending(path);
+      if (entry?.blob) { objUrl = URL.createObjectURL(entry.blob); setViewingBlobUrl(objUrl); }
+    })();
+    return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
+  }, [viewingPhoto]);
   const [regenerandoThumbs, setRegenerandoThumbs] = useState(new Set());
   // compartirModal: null | { sectionId, step: 'elegir'|'config' }
   const [compartirModal, setCompartirModal] = useState(null);
@@ -334,38 +401,170 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     }
   };
 
-  // Pestaña activa — restaurar última usada, o la que pide el padre
-  const [activeTab, setActiveTab] = useState(() => {
-    const saved = localStorage.getItem('kipo_last_tab');
-    if (saved && TABS_CONFIG[saved]) return saved;
-    return initialTab;
-  });
-
-  // Main tab (fila superior): derivar desde activeTab
-  const mainTabForSub = (subId) => {
-    if (subId === 'adicionales') return 'adicionales';
-    return MAIN_TABS.find(m => m.subs.includes(subId))?.id || MAIN_TABS[0].id;
-  };
-  const [activeMainTab, setActiveMainTab] = useState(() => mainTabForSub(
-    (() => { const s = localStorage.getItem('kipo_last_tab'); return s && TABS_CONFIG[s] ? s : initialTab; })()
-  ));
+  // FILAS DESPLEGABLES (reemplazan a las pestañas): pueden estar varias abiertas a la vez.
+  const [seccionesAbiertas, setSeccionesAbiertas] = useState(() => new Set(forzarTab && TABS_CONFIG[forzarTab] ? [forzarTab] : []));
+  const toggleSeccion = (id) => setSeccionesAbiertas(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const [menuSecciones, setMenuSecciones] = useState(false); // desplegable +SECCIONES
 
   const [subGalleryOpen, setSubGalleryOpen] = useState(null); // 'site1' | 'site2' | null
 
-  const cambiarMain = (mainId) => {
-    setActiveMainTab(mainId);
-    if (mainId === 'adicionales') {
-      cambiarTab('adicionales');
-    } else {
-      const main = MAIN_TABS.find(m => m.id === mainId);
-      if (main?.subs.length) cambiarTab(main.subs[0]);
-    }
+  // Marca de fotos que solo quedaron como miniatura (url completa muerta). Inerte
+  // por ahora (sin disparador); se conserva para reactivar la detección si se quiere.
+  const [rotas, setRotas] = useState(new Set());
+
+  // ── FASE 4: estado por foto (nube/equipo/respaldo/caída) para los íconos ──
+  const [verifPaths, setVerifPaths] = useState(null);       // { path: {n,r,c} } del último análisis
+  const [localesSet, setLocalesSet] = useState(new Set());  // paths con blob en ESTE equipo
+  const [accionFoto, setAccionFoto] = useState(null);       // modal de acción de ícono
+  const [accionandoFoto, setAccionandoFoto] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    const cargar = async () => {
+      try {
+        const todos = await getAllUploadsPending();
+        if (vivo) setLocalesSet(new Set(todos.filter(e => e.blob && e.path).map(e => e.path)));
+      } catch {}
+      try {
+        if (proyectoActual?.id) {
+          const s = await getDoc(doc(db, 'verificacionesFotos', String(proyectoActual.id)));
+          if (vivo && s.exists()) {
+            const m = {};
+            (s.data().items || []).forEach(it => { if (it.p) m[it.p] = { n: it.n, r: it.r, c: it.c }; });
+            setVerifPaths(m);
+          }
+        }
+      } catch {}
+    };
+    cargar();
+    const h = () => cargar();
+    window.addEventListener('kipo-verificacion-actualizada', h);
+    return () => { vivo = false; window.removeEventListener('kipo-verificacion-actualizada', h); };
+  }, [proyectoActual?.id]);
+
+  // Estado de una foto para los íconos. respaldo === null → desconocido (gris, sin análisis)
+  const estadoDeFoto = (f) => {
+    if (!f) return null;
+    const path = (typeof f === 'object' && f._path) ? f._path : null;
+    const url = typeof f === 'string' ? f : f?.url;
+    const tieneUrl = typeof url === 'string' && url.startsWith('http');
+    const v = path && verifPaths ? verifPaths[path] : null;
+    return {
+      path, tieneUrl,
+      nube: v ? !!(v.n && !v.c && tieneUrl) : tieneUrl, // sin análisis: por url (optimista)
+      equipo: !!(path && localesSet.has(path)),
+      respaldo: v ? !!v.r : null,
+      caida: v ? !!v.c : false,
+    };
   };
 
-  const cambiarTab = (tabId) => {
-    setActiveTab(tabId);
-    try { localStorage.setItem('kipo_last_tab', tabId); } catch {}
+  // Acción de los íconos equipo/respaldo: subir a la nube (verificando antes su estado)
+  const ejecutarAccionFoto = async () => {
+    const a = accionFoto;
+    if (!a || accionandoFoto) return;
+    setAccionandoFoto(true);
+    try {
+      const { path, secId, itemId } = a;
+      let urlNueva = null;
+      if (a.tipo === 'equipo') {
+        const local = await getUploadPending(path);
+        if (!local?.blob) throw new Error('El archivo ya no está en este equipo.');
+        const { uploadImage } = await import('../utils/storage');
+        urlNueva = await uploadImage(local.blob, path);
+      } else if (a.tipo === 'respaldo') {
+        const { repararDesdeRespaldo } = await import('../services/exportacionService');
+        const r = await repararDesdeRespaldo([path]);
+        const st = r?.resultados?.[path];
+        if (!(st === 'restaurado' || st === 'ya-existia')) throw new Error('El respaldo no está disponible.');
+        const { ref, getDownloadURL } = await import('firebase/storage');
+        const { storage } = await import('../firebaseConfig');
+        urlNueva = await getDownloadURL(ref(storage, path));
+      }
+      if (!urlNueva) throw new Error('Sin fuente.');
+      // Actualizar el casillero (form + nube)
+      setDatos(prev => {
+        const pf = prev.fotos || {};
+        const sec = { ...(pf[secId] || {}) };
+        const actual = sec[itemId];
+        sec[itemId] = (actual && typeof actual === 'object') ? { ...actual, url: urlNueva, uploading: false } : { url: urlNueva, thumb: typeof actual === 'string' ? '' : (actual?.thumb || ''), timestamp: new Date().toISOString() };
+        return { ...prev, fotos: { ...pf, [secId]: sec } };
+      });
+      if (puntoId) {
+        updateDoc(doc(db, 'puntos', String(puntoId)), { [`datos.fotos.${secId}.${itemId}.url`]: urlNueva }).catch(() => {});
+      }
+      setVerifPaths(prev => prev ? { ...prev, [path]: { ...(prev[path] || {}), n: 1, c: 0 } } : prev);
+      setAccionFoto(null);
+    } catch (e) {
+      console.error('Acción foto:', e);
+      alert(e.message || 'No se pudo completar.');
+    } finally {
+      setAccionandoFoto(false);
+    }
   };
+  // Marca de fotos "en miniatura" detectadas por el botón del proyecto (localStorage
+  // 'kipo_fotos_mini'): se pintan en rojo con "Volver a tomar". Se refresca al re-analizar.
+  useEffect(() => {
+    const cargar = () => {
+      try {
+        const marcas = JSON.parse(localStorage.getItem('kipo_fotos_mini') || '{}');
+        setRotas(new Set(puntoId ? (marcas[String(puntoId)] || []) : []));
+      } catch { setRotas(new Set()); }
+    };
+    cargar();
+    window.addEventListener('kipo-fotos-mini-actualizado', cargar);
+    return () => window.removeEventListener('kipo-fotos-mini-actualizado', cargar);
+  }, [puntoId]);
+
+  // ¿La sección tiene al menos una foto? (contadores + bloqueo de quitar secciones)
+  const seccionTieneFotos = (secId) => {
+    const sec = fotosActuales?.[secId];
+    if (!sec || typeof sec !== 'object') return false;
+    const hay = (v) => {
+      if (!v) return false;
+      if (typeof v === 'string') return true;
+      if (Array.isArray(v)) return v.some(hay);
+      if (typeof v === 'object') return !!(v.url || v.thumb) || Object.values(v).some(hay);
+      return false;
+    };
+    return Object.values(sec).some(hay);
+  };
+
+  // +SECCIONES: sites/nodo agregables por PUNTO — se guardan en datos.seccionesExtra
+  const OPCIONES_SECCIONES = ['site1', 'site2', 'site3', ...(esTipoRed(proyectoActual?.tipo) ? ['nodo'] : [])];
+  const seccionesExtra = Array.isArray(datos?.seccionesExtra) ? datos.seccionesExtra : [];
+  const agregarSeccionExtra = (id) => {
+    setDatos(prev => ({ ...prev, seccionesExtra: [...(Array.isArray(prev.seccionesExtra) ? prev.seccionesExtra : []), id] }));
+    setSeccionesAbiertas(prev => new Set(prev).add(id));
+  };
+  const quitarSeccionExtra = (id) => {
+    if (seccionTieneFotos(id)) {
+      const msg = `La sección ${TABS_CONFIG[id]?.title || id} contiene fotos, no se puede quitar.`;
+      if (setAlertData) setAlertData({ title: 'Sección con fotos', message: msg }); else alert(msg);
+      return;
+    }
+    setDatos(prev => ({ ...prev, seccionesExtra: (Array.isArray(prev.seccionesExtra) ? prev.seccionesExtra : []).filter(x => x !== id) }));
+  };
+
+  // Filas visibles según el formulario: propietario → POSTE; eq. pasivo → su sección;
+  // + secciones agregadas + cualquier sección con fotos ya tomadas (puntos viejos).
+  const tiposSel = Array.isArray(datos?.tipoElemento) ? datos.tipoElemento : (datos?.tipoElemento ? [datos.tipoElemento] : []);
+  const seccionesVisibles = (() => {
+    if (modoInstalacion) return ['instalacion'];
+    const out = [];
+    const add = (id) => { if (TABS_CONFIG[id] && !out.includes(id)) out.push(id); };
+    if (datos?.tipoPoste) add('poste');
+    if (proyectoActual?.tipo === 'instalacionPostes') add('instalacion');
+    if (tiposSel.includes('fat')) add('fatPrecoNueva');
+    if (tiposSel.includes('nap')) add('napMec');
+    if (tiposSel.includes('mufa')) add('mufaTroncal');
+    if (tiposSel.includes('xbox')) add('xbox');
+    if (tiposSel.includes('hbox')) add('hbox');
+    if (tiposSel.includes('camara')) add('camara');
+    if (tiposSel.includes('medioTramo')) add('medioTramo');
+    seccionesExtra.forEach(add);
+    Object.keys(TABS_CONFIG).forEach(id => { if (id !== 'adicionales' && seccionTieneFotos(id)) add(id); });
+    add('adicionales');
+    return out;
+  })();
 
   // Bloquear botón Atrás del dispositivo mientras la cámara está abierta
   useEffect(() => {
@@ -511,6 +710,20 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     const { section, item } = activeCaptureRef.current;
     activeCaptureRef.current = null;
 
+    // Hora de captura real de la foto (file.lastModified). Fallback: ahora.
+    const capDate = file.lastModified ? new Date(file.lastModified) : new Date();
+    const fechaCaptura = capDate.toISOString();
+    const horaCaptura = capDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
+    // Datos para inyectar en EXIF de la foto (hora de captura + GPS del punto)
+    const coordsPunto = datos?.coords;
+    const datosExif = {
+      fecha: fechaCaptura,
+      hora: horaCaptura,
+      gps: coordsPunto ? `${coordsPunto.lat?.toFixed(6)}, ${coordsPunto.lng?.toFixed(6)}` : '',
+      numero: datos?.numero || '',
+      proyecto: proyectoActual?.nombre || '',
+    };
+
     // Mostrar preview inmediato con object URL (sin esperar decoding)
     const previewUrl = URL.createObjectURL(file);
     setDatos(prev => {
@@ -537,17 +750,64 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       }
     };
 
-    img.onload = async () => {
+    // La fuente es la imagen ya decodificada. Puede ser un ImageBitmap (camino nuevo,
+    // descomprimido en tamano reducido) o un HTMLImageElement (camino de siempre).
+    // Los dos exponen .width/.height y los dos sirven para drawImage(), asi que de
+    // aqui para abajo el proceso es identico en ambos casos.
+    const procesarFuente = async (fuente, liberarFuente) => {
         const altaCalidad = proyectoActual?.modoFotos === 'altaCalidad';
+
+        // Suelta la imagen DECODIFICADA (hasta ~46 MB si vino por el camino de siempre).
+        // Se llama apenas deja de necesitarse: con mala senal la subida tarda minutos y
+        // retenerla todo ese rato hace que el sistema elija cerrar la app.
+        let imagenLiberada = false;
+        const liberarImagen = () => {
+          if (imagenLiberada) return;
+          imagenLiberada = true;
+          try { liberarFuente(); } catch { /* nada que liberar */ }
+        };
+
+        // Si el casillero YA tenía una foto real (retoma, o conflicto entre dos equipos),
+        // la reemplazada va a la PAPELERA (15 días): queda visible/recuperable y su purga
+        // borra también su archivo y su respaldo → cero huérfanos invisibles.
+        const fotoAnterior = fotosActuales?.[section]?.[item];
+        const urlVieja = typeof fotoAnterior === 'string' ? fotoAnterior : fotoAnterior?.url;
+        if (fotoAnterior && typeof urlVieja === 'string' && urlVieja.startsWith('http')) {
+          (async () => {
+            try {
+              const { enviarAPapelera } = await import('../utils/papelera');
+              const { auth } = await import('../firebaseConfig');
+              const uid = auth.currentUser?.uid;
+              if (!uid) return;
+              const tab = TABS_CONFIG[section];
+              let label = item;
+              for (const it of (tab?.items || [])) {
+                if (it.id === item) { label = (it.label || item).replace(/\n/g, ' '); break; }
+                if (it.items) { const sub = it.items.find(s => s.id === item); if (sub) { label = (sub.label || item).replace(/\n/g, ' '); break; } }
+              }
+              const fv = typeof fotoAnterior === 'object' ? fotoAnterior : { url: fotoAnterior };
+              await enviarAPapelera({
+                uid, tipo: 'foto',
+                snapshot: JSON.parse(JSON.stringify(fotoAnterior)),
+                coleccionOriginal: 'puntos', idOriginal: `${puntoId || 'sin-punto'}_${section}_${item}`,
+                proyectoId: proyectoActual?.id || null,
+                proyectoNombre: proyectoActual?.nombre || '',
+                nombre: `${(tab?.title || section)} – ${label}${datos?.numero ? ` (${datos.numero})` : ''}`,
+                storagePaths: [fv._path, fv._pathHD].filter(Boolean),
+                meta: { puntoId: puntoId ? String(puntoId) : null, section, item, reemplazada: true },
+              });
+            } catch (e) { console.error('Papelera retoma:', e); }
+          })();
+        }
 
         // --- Thumbnail pequeño (max 256px, JPEG 0.6) → se guarda en Firestore ---
         const MAX_T = 256;
-        const scaleT = Math.min(MAX_T / img.width, MAX_T / img.height, 1);
-        const wt = Math.floor(img.width * scaleT);
-        const ht = Math.floor(img.height * scaleT);
+        const scaleT = Math.min(MAX_T / fuente.width, MAX_T / fuente.height, 1);
+        const wt = Math.floor(fuente.width * scaleT);
+        const ht = Math.floor(fuente.height * scaleT);
         const canvasThumb = document.createElement('canvas');
         canvasThumb.width = wt; canvasThumb.height = ht;
-        canvasThumb.getContext('2d').drawImage(img, 0, 0, wt, ht);
+        canvasThumb.getContext('2d').drawImage(fuente, 0, 0, wt, ht);
         const thumbUrl = canvasThumb.toDataURL('image/jpeg', 0.6);
 
         // Reemplazar la preview con el thumb base64 comprimido y liberar la URL temporal
@@ -563,7 +823,12 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           };
         });
 
-        const uploadPath = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}.jpg`;
+        // Asegurar que el punto exista como BORRADOR en la base ANTES de subir,
+        // así el updateDoc que engancha la foto encuentra un documento real
+        // (una foto tomada = el punto ya existe, aunque no se haya dado GUARDAR).
+        try { await onAsegurarPunto?.(); } catch (e) { console.error('asegurarPunto:', e); }
+
+        const uploadPath = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`;
 
         // Registrar path como pendiente para limpieza de huérfanos
         const trackUpload = (path) => {
@@ -583,28 +848,60 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             return { ...prev, fotos: prevFotos };
           });
         };
-        const guardarFoto = async (blobToUpload) => {
-          trackUpload(uploadPath);
-          await saveUploadPending({ path: uploadPath, blob: blobToUpload, section, item, proyectoId: proyectoActual?.id, puntoId: puntoId || null, thumb: thumbUrl });
-          const downloadUrl = await uploadImage(blobToUpload, uploadPath);
-          await deleteUploadPending(uploadPath);
-          onFotoSubida?.(downloadUrl);
-          const fotoData = { url: downloadUrl, thumb: thumbUrl, timestamp: new Date().toISOString(), _path: uploadPath };
+        // Ante fallo de subida (típico: sin señal), NO descartar la foto: dejarla como
+        // PENDIENTE (miniatura visible). El blob ya está a salvo en el equipo (IndexedDB)
+        // y se subirá/enganchará al reconectar (cola de recuperación). Se persiste al
+        // documento del punto para que se vea aunque se reabra la app.
+        const marcarPendiente = () => {
+          const fotoPend = { thumb: thumbUrl, uploading: true, _path: uploadPath };
+          setDatos(prev => {
+            const prevFotos = { ...(prev.fotos || {}) };
+            // Si el casillero YA tenía una foto buena (retoma con subida fallida), conservar
+            // su url hasta que la nueva termine de subir → nunca queda solo la miniatura.
+            const anterior = prevFotos[section]?.[item];
+            const urlPrevia = (anterior && typeof anterior === 'object' && typeof anterior.url === 'string' && anterior.url.startsWith('http')) ? anterior.url : null;
+            const valor = urlPrevia ? { url: urlPrevia, ...fotoPend } : fotoPend;
+            prevFotos[section] = { ...(prevFotos[section] || {}), [item]: valor };
+            return { ...prev, fotos: prevFotos };
+          });
+          if (puntoId) {
+            // MERGE (no reemplazo): si en la nube ya había una url buena, no se pisa/borra.
+            setDoc(doc(db, 'puntos', String(puntoId)), { datos: { fotos: { [section]: { [item]: fotoPend } } } }, { merge: true }).catch(() => {});
+          }
+        };
+        const setSlot = (valor) => {
           setDatos(prev => {
             const prevFotos = prev.fotos || {};
-            return {
-              ...prev,
-              fotos: {
-                ...prevFotos,
-                [section]: { ...(prevFotos[section] || {}), [item]: fotoData }
-              }
-            };
+            return { ...prev, fotos: { ...prevFotos, [section]: { ...(prevFotos[section] || {}), [item]: valor } } };
           });
-          // Persistir inmediatamente a Firestore si es edición de punto existente
+        };
+        const guardarFoto = async (blobToUpload) => {
+          // Inyectar metadata (hora de captura + GPS) en la foto antes de subir
+          const blobConExif = await inyectarEXIFenBlob(blobToUpload, datosExif);
+          trackUpload(uploadPath);
+          // 1) El blob queda a salvo en el equipo (IndexedDB) — pase lo que pase.
+          await saveUploadPending({ path: uploadPath, blob: blobConExif, section, item, proyectoId: proyectoActual?.id, puntoId: puntoId || null, thumb: thumbUrl, lat: coordsPunto?.lat ?? null, lng: coordsPunto?.lng ?? null });
+          // 2) Persistir la foto como PENDIENTE en el punto YA (visible + durable),
+          //    ANTES de intentar subir. Así se ve aunque no haya señal o se cierre la app.
+          const fotoPend = { thumb: thumbUrl, uploading: true, _path: uploadPath, fechaCaptura, horaCaptura };
+          setSlot(fotoPend);
+          // Fire-and-forget + merge (crea-o-fusiona, no requiere que el doc ya exista).
+          if (puntoId) { setDoc(doc(db, 'puntos', String(puntoId)), { datos: { fotos: { [section]: { [item]: fotoPend } } } }, { merge: true }).catch(() => {}); }
+          // 3) Sin señal: NO intentar subir (Storage se cuelga ~2 min offline). Encolar y salir;
+          //    se sube y reemplaza por la URL al reconectar (visible en la nube verde).
+          if (!navigator.onLine) { onEncolarFoto?.({ path: uploadPath, section, item, puntoId: puntoId || null, thumb: thumbUrl }); return; }
+          // 4) Con señal: subir ya y reemplazar la pendiente por la URL definitiva.
+          const downloadUrl = await uploadImage(blobConExif, uploadPath);
+          await marcarSubida(uploadPath); // conservar blob como respaldo local 30 días
+          onFotoSubida?.(downloadUrl);
+          const fotoData = { url: downloadUrl, thumb: thumbUrl, timestamp: new Date().toISOString(), fechaCaptura, horaCaptura, _path: uploadPath };
+          const candId = (coordsPunto?.lat != null && coordsPunto?.lng != null)
+            ? registrarCandidata({ url: downloadUrl, thumb: thumbUrl, section, item, lat: coordsPunto.lat, lng: coordsPunto.lng, proyectoId: proyectoActual?.id, puntoId: puntoId || null })
+            : null;
+          setSlot(fotoData);
           if (puntoId) {
-            updateDoc(doc(db, 'puntos', puntoId), {
-              [`datos.fotos.${section}.${item}`]: fotoData
-            }).catch(() => {});
+            updateDoc(doc(db, 'puntos', String(puntoId)), { [`datos.fotos.${section}.${item}`]: fotoData })
+              .then(() => { if (candId) quitarCandidata(candId); }).catch(() => {});
           }
         };
 
@@ -612,28 +909,57 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           // Alta calidad: subir original (urlHD) + comprimida (url), no bloqueante
           (async () => {
             try {
-              // 1. Subir original al 100% → urlHD (para encarpetado/ZIP)
               trackUpload(uploadPath);
-              const urlHD = await uploadImage(file, uploadPath);
-              onFotoSubida?.(urlHD);
 
-              // 2. Crear versión comprimida 1280px → url (para EXCEL, KMZ y vista previa)
+              // La version comprimida se genera AHORA (la imagen decodificada sigue viva)
+              // y la imagen se libera enseguida, ANTES de cualquier subida. Antes esto se
+              // hacia despues de subir el original: con mala senal, ~46 MB quedaban
+              // retenidos durante todos los minutos que durara la subida.
               const MAX_F = 1280;
-              const scaleF = Math.min(MAX_F / img.width, MAX_F / img.height, 1);
-              const wf = Math.floor(img.width * scaleF);
-              const hf = Math.floor(img.height * scaleF);
+              const scaleF = Math.min(MAX_F / fuente.width, MAX_F / fuente.height, 1);
+              const wf = Math.floor(fuente.width * scaleF);
+              const hf = Math.floor(fuente.height * scaleF);
               const canvasFull = document.createElement('canvas');
               canvasFull.width = wf; canvasFull.height = hf;
-              canvasFull.getContext('2d').drawImage(img, 0, 0, wf, hf);
-              const compressedBlob = await new Promise((res, rej) =>
+              canvasFull.getContext('2d').drawImage(fuente, 0, 0, wf, hf);
+              const compressedBlobRaw = await new Promise((res, rej) =>
                 canvasFull.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.75)
               );
-              const uploadPathC = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}_c.jpg`;
+              const compressedBlob = await inyectarEXIFenBlob(compressedBlobRaw, datosExif);
+              canvasFull.width = 0; canvasFull.height = 0; // soltar el lienzo
+              liberarImagen();                              // soltar los ~46 MB
+
+              // Sin señal: guardar el original a salvo, dejar la foto pendiente y encolar.
+              if (!navigator.onLine) {
+                const fileConExif0 = await inyectarEXIFenBlob(file, datosExif);
+                await saveUploadPending({ path: uploadPath, blob: fileConExif0, section, item, proyectoId: proyectoActual?.id, puntoId: puntoId || null, thumb: thumbUrl, lat: coordsPunto?.lat ?? null, lng: coordsPunto?.lng ?? null, pesado: true });
+                const fotoPend = { thumb: thumbUrl, uploading: true, _path: uploadPath, fechaCaptura, horaCaptura };
+                setDatos(prev => { const pf = prev.fotos || {}; return { ...prev, fotos: { ...pf, [section]: { ...(pf[section] || {}), [item]: fotoPend } } }; });
+                if (puntoId) { setDoc(doc(db, 'puntos', String(puntoId)), { datos: { fotos: { [section]: { [item]: fotoPend } } } }, { merge: true }).catch(() => {}); }
+                onEncolarFoto?.({ path: uploadPath, section, item, puntoId: puntoId || null, thumb: thumbUrl });
+                return;
+              }
+              // 1. Subir original al 100% → urlHD (con metadata inyectada)
+              const fileConExif = await inyectarEXIFenBlob(file, datosExif);
+              // Recovery: guardar el original como pendiente ANTES de subir (por si se corta).
+              await saveUploadPending({ path: uploadPath, blob: fileConExif, section, item, proyectoId: proyectoActual?.id, puntoId: puntoId || null, thumb: thumbUrl, lat: coordsPunto?.lat ?? null, lng: coordsPunto?.lng ?? null, pesado: true });
+              const urlHD = await uploadImage(fileConExif, uploadPath);
+              await marcarSubida(uploadPath); // pesado → se descarta al marcar (no ocupa 30 días)
+              onFotoSubida?.(urlHD);
+
+              // 2. Subir la versión comprimida (generada arriba) → url (para EXCEL, KMZ y vista previa)
+              const uploadPathC = `proyectos/${proyectoActual?.id || 'temp'}/fotos_detalle/${section}_${item}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_c.jpg`;
               trackUpload(uploadPathC);
+              // Recovery: guardar pendiente la versión comprimida (con coords) por si hay interrupción
+              await saveUploadPending({ path: uploadPathC, blob: compressedBlob, section, item, proyectoId: proyectoActual?.id, puntoId: puntoId || null, thumb: thumbUrl, lat: coordsPunto?.lat ?? null, lng: coordsPunto?.lng ?? null });
               const urlC = await uploadImage(compressedBlob, uploadPathC);
+              await marcarSubida(uploadPathC); // comprimida → respaldo local 30 días
               onFotoSubida?.(urlC);
 
-              const fotoDataHD = { url: urlC, urlHD, thumb: thumbUrl, timestamp: new Date().toISOString(), _path: uploadPathC, _pathHD: uploadPath };
+              const fotoDataHD = { url: urlC, urlHD, thumb: thumbUrl, timestamp: new Date().toISOString(), fechaCaptura, horaCaptura, _path: uploadPathC, _pathHD: uploadPath };
+              const candIdHD = (coordsPunto?.lat != null && coordsPunto?.lng != null)
+                ? registrarCandidata({ url: urlC, thumb: thumbUrl, section, item, lat: coordsPunto.lat, lng: coordsPunto.lng, proyectoId: proyectoActual?.id, puntoId: puntoId || null })
+                : null;
               setDatos(prev => {
                 const prevFotos = prev.fotos || {};
                 return {
@@ -647,31 +973,65 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
               if (puntoId) {
                 updateDoc(doc(db, 'puntos', puntoId), {
                   [`datos.fotos.${section}.${item}`]: fotoDataHD
-                }).catch(() => {});
+                }).then(() => { if (candIdHD) quitarCandidata(candIdHD); }).catch(() => {});
               }
             } catch (err) {
-              console.error('Error subiendo foto alta calidad:', err);
-              limpiarFoto();
+              console.error('Foto alta calidad queda pendiente (se subirá al reconectar):', err);
+              marcarPendiente();
             }
           })();
         } else {
           // Comprimido: redimensionar a 1280px, Q:0.75
           const MAX_F = 1280;
-          const scaleF = Math.min(MAX_F / img.width, MAX_F / img.height, 1);
-          const wf = Math.floor(img.width * scaleF);
-          const hf = Math.floor(img.height * scaleF);
+          const scaleF = Math.min(MAX_F / fuente.width, MAX_F / fuente.height, 1);
+          const wf = Math.floor(fuente.width * scaleF);
+          const hf = Math.floor(fuente.height * scaleF);
           const canvasFull = document.createElement('canvas');
           canvasFull.width = wf; canvasFull.height = hf;
-          canvasFull.getContext('2d').drawImage(img, 0, 0, wf, hf);
+          canvasFull.getContext('2d').drawImage(fuente, 0, 0, wf, hf);
           canvasFull.toBlob(async (blob) => {
+            canvasFull.width = 0; canvasFull.height = 0; // soltar el lienzo
+            liberarImagen();                              // soltar los ~46 MB antes de subir
             if (!blob) { limpiarFoto(); alert('Error al procesar la imagen.'); return; }
             try { await guardarFoto(blob); }
-            catch (err) { console.error('Error subiendo foto:', err); limpiarFoto(); alert('Error al subir la foto. Verifique su conexión.'); }
+            catch (err) { console.error('Foto queda pendiente (se subirá al reconectar):', err); marcarPendiente(); onEncolarFoto?.({ path: uploadPath, section, item, puntoId: puntoId || null, thumb: thumbUrl }); }
           }, 'image/jpeg', 0.75);
         }
       };
 
-    img.src = previewUrl;
+    // El <img> es el camino de siempre: descomprime la foto COMPLETA. Queda como
+    // respaldo por si la decodificacion reducida no esta disponible o falla.
+    img.onload = () => procesarFuente(img, () => {
+      // Se anulan los handlers antes de quitar el src para no disparar onerror.
+      try { img.onerror = null; img.onload = null; img.removeAttribute('src'); } catch { /* nada que liberar */ }
+    }).catch(e => console.error('Procesar foto:', e));
+
+    // Decodificacion de bajo consumo: se le pide al navegador que descomprima la foto
+    // YA reducida en vez de descomprimirla completa (12 MP = ~46 MB) y achicarla
+    // despues. Si el navegador no soporta el redimensionado (Safari o Android
+    // antiguos) o el archivo no es un JPEG legible (HEIC de iPhone), se cae al <img>
+    // de arriba y todo se comporta exactamente como antes, incluido el aviso de HEIC.
+    (async () => {
+      try {
+        if (typeof createImageBitmap !== 'function') throw new Error('sin createImageBitmap');
+        const dim = await dimensionesJPEG(file);
+        if (!dim) throw new Error('sin dimensiones');
+        const escala = Math.min(1280 / dim.ancho, 1280 / dim.alto, 1);
+        if (escala === 1) throw new Error('ya es chica'); // nada que ahorrar
+        const bmp = await createImageBitmap(file, {
+          resizeWidth: Math.max(1, Math.round(dim.ancho * escala)),
+          resizeQuality: 'high',
+          imageOrientation: 'from-image', // respetar la etiqueta EXIF de rotacion
+        });
+        // NUNCA se asume el tamano pedido: si el navegador ignoro el resize en silencio,
+        // bmp viene a tamano completo. Los canvas de abajo leen bmp.width/bmp.height
+        // reales y lo achican igual, o sea sale sin ahorro de memoria pero correcto.
+        procesarFuente(bmp, () => { try { bmp.close(); } catch { /* ya cerrado */ } })
+          .catch(e => console.error('Procesar foto:', e));
+      } catch {
+        img.src = previewUrl; // camino de siempre
+      }
+    })();
   };
 
   // Cámara general — agrega fotos a fotosGenerales para usar con ASOCIAR FOTO
@@ -716,10 +1076,48 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     reader.readAsDataURL(file);
   };
 
+  // Pide confirmación antes de borrar (el borrado es definitivo).
   const handleDelete = () => {
     if (!viewingPhoto) return;
-    const { section, item } = viewingPhoto;
+    setConfirmDelete({ section: viewingPhoto.section, item: viewingPhoto.item });
+  };
 
+  // Borrado DEFINITIVO: saca la foto del formulario Y del documento del punto.
+  const ejecutarBorrado = () => {
+    const objetivo = confirmDelete;
+    setConfirmDelete(null);
+    if (!objetivo) return;
+    const { section, item } = objetivo;
+    // Snapshot de la foto ANTES de quitarla → papelera (15 días, restaurable). El archivo
+    // de Storage NO se toca: lo borra la purga del servidor al vencer.
+    const fotoBorrada = fotosActuales?.[section]?.[item];
+    if (fotoBorrada) {
+      (async () => {
+        try {
+          const { enviarAPapelera } = await import('../utils/papelera');
+          const { auth } = await import('../firebaseConfig');
+          const uid = auth.currentUser?.uid;
+          if (!uid) return;
+          const tab = TABS_CONFIG[section];
+          let label = item;
+          for (const it of (tab?.items || [])) {
+            if (it.id === item) { label = (it.label || item).replace(/\n/g, ' '); break; }
+            if (it.items) { const sub = it.items.find(s => s.id === item); if (sub) { label = (sub.label || item).replace(/\n/g, ' '); break; } }
+          }
+          const f = typeof fotoBorrada === 'object' ? fotoBorrada : { url: fotoBorrada };
+          await enviarAPapelera({
+            uid, tipo: 'foto',
+            snapshot: JSON.parse(JSON.stringify(fotoBorrada)),
+            coleccionOriginal: 'puntos', idOriginal: `${puntoId || 'sin-punto'}_${section}_${item}`,
+            proyectoId: proyectoActual?.id || null,
+            proyectoNombre: proyectoActual?.nombre || '',
+            nombre: `${(tab?.title || section)} – ${label}${datos?.numero ? ` (${datos.numero})` : ''}`,
+            storagePaths: [f._path, f._pathHD].filter(Boolean),
+            meta: { puntoId: puntoId ? String(puntoId) : null, section, item },
+          });
+        } catch (e) { console.error('Papelera foto:', e); }
+      })();
+    }
     setDatos(prevDatos => {
       const prevFotos = prevDatos.fotos || {};
       if (prevFotos[section]) {
@@ -729,6 +1127,9 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       }
       return prevDatos;
     });
+    if (puntoId) {
+      updateDoc(doc(db, 'puntos', String(puntoId)), { [`datos.fotos.${section}.${item}`]: deleteField() }).catch(() => {});
+    }
     setViewingPhoto(null);
   };
 
@@ -743,44 +1144,48 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
         .sort(([a], [b]) => parseInt(a) - parseInt(b))
         .forEach(([idx, fotoRaw]) => {
           const url = getFotoUrl(fotoRaw);
-          if (url) items.push({ url, label: `FOTO ${parseInt(idx) + 1}` });
+          if (url) items.push({ url, foto: fotoRaw, label: `FOTO ${parseInt(idx) + 1}` });
         });
     } else {
       tab.items.forEach(item => {
         if (item.items) {
           item.items.forEach(sub => {
-            const url = getFotoUrl(sectionPhotos[sub.id]);
-            if (url) items.push({ url, label: sub.label.replace('\n', ' ') });
+            const fotoRaw = sectionPhotos[sub.id];
+            const url = getFotoUrl(fotoRaw);
+            if (url) items.push({ url, foto: fotoRaw, label: sub.label.replace('\n', ' ') });
           });
         } else {
-          const url = getFotoUrl(sectionPhotos[item.id]);
-          if (url) items.push({ url, label: item.label.replace('\n', ' ') });
+          const fotoRaw = sectionPhotos[item.id];
+          const url = getFotoUrl(fotoRaw);
+          if (url) items.push({ url, foto: fotoRaw, label: item.label.replace('\n', ' ') });
         }
       });
       EXTRAS_ITEMS.forEach(label => {
-        const url = getFotoUrl(sectionPhotos[label]);
-        if (url) items.push({ url, label });
+        const fotoRaw = sectionPhotos[label];
+        const url = getFotoUrl(fotoRaw);
+        if (url) items.push({ url, foto: fotoRaw, label });
       });
     }
     return items;
   };
 
+  const avisoCompartir = (title, message) => setAlertData ? setAlertData({ title, message }) : alert(message);
   const compartirFotos = (sectionId) => {
     const fotoItems = buildFotoItems(sectionId);
-    if (fotoItems.length === 0) { alert('No hay fotos para compartir'); return; }
-    if (!navigator.share || !/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      alert('Función de compartir no disponible en este dispositivo'); return;
+    if (fotoItems.length === 0) { avisoCompartir('Sin fotos', 'Esta sección no tiene fotos para compartir.'); return; }
+    if (!puedeCompartirArchivos()) {
+      avisoCompartir('No disponible', 'Este navegador no puede compartir archivos. Intenta desde el celular.'); return;
     }
     // Pre-fetch imágenes inmediatamente para evitar NotAllowedError
-    prefetchRef.current = Promise.all(fotoItems.map(({ url }) => fetch(url).then(r => r.blob()).catch(() => null)));
+    prefetchRef.current = Promise.all(fotoItems.map(f => fetchFotoBlob(f.foto ?? f.url)));
     setCompartirModal({ sectionId, step: 'elegir', modo: 'fotos' });
   };
 
   const compartirLista = async (sectionId) => {
     const fotoItems = buildFotoItems(sectionId);
-    if (fotoItems.length === 0) { alert('No hay fotos para compartir'); return; }
-    if (!navigator.share || !/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      alert('Función de compartir no disponible en este dispositivo'); return;
+    if (fotoItems.length === 0) { avisoCompartir('Sin fotos', 'Esta sección no tiene fotos para compartir.'); return; }
+    if (!puedeCompartirTexto()) {
+      avisoCompartir('No disponible', 'Este navegador no puede compartir. Intenta desde el celular.'); return;
     }
     const tab = TABS_CONFIG[sectionId];
     const nroPoste = datos?.numero || '';
@@ -806,7 +1211,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       const tab = TABS_CONFIG[sectionId];
       if (fotoItems.length === 0) return;
 
-      const blobs = await (prefetchRef.current || Promise.all(fotoItems.map(({ url }) => fetch(url).then(r => r.blob()).catch(() => null))));
+      const blobs = await (prefetchRef.current || Promise.all(fotoItems.map(f => fetchFotoBlob(f.foto ?? f.url))));
 
       const coords = datos?.coords;
       const gps = coords ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '';
@@ -839,16 +1244,24 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       ].filter(Boolean).join('\n');
       const listText = '*LISTA DE FOTOS:*\n' + fotoItems.map(f => `• ${f.label}`).join('\n');
 
+      let exito = false;
       if (modo === 'lista') {
         await navigator.share({ text: `${headerText}\n${listText}` });
+        exito = true;
       } else {
         await navigator.share({ files });
+        exito = true;
+      }
+      if (exito) {
+        // Compartido: cerrar el modal y contraer la fila de la sección
+        setCompartirModal(null);
+        setSeccionesAbiertas(prev => { const n = new Set(prev); n.delete(sectionId); return n; });
       }
     } catch (error) {
       if (error.name !== 'AbortError') console.log('Error compartiendo:', error);
+      setCompartirModal(m => m ? { ...m, step: 'config' } : null);
     } finally {
       setCompartiendo(false);
-      setCompartirModal(m => m ? { ...m, step: 'config' } : null);
       prefetchRef.current = null;
     }
   };
@@ -906,25 +1319,49 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     }
   };
 
-  const PhotoSquare = ({ label, help, image, onClick, uploading, isRegenerando, onThumbError }) => {
+  const PhotoSquare = ({ label, help, image, onClick, uploading, isRegenerando, onThumbError, rotaKey, esMini, fotoRaw }) => {
     const lines = label.split('\n');
-    const blocked = uploading || isRegenerando;
+    const blocked = isRegenerando; // 'uploading' (pendiente) YA no bloquea: se puede abrir para ver la foto local
+    const rota = esMini || (rotaKey && rotas.has(rotaKey)); // rojo "Volver a tomar": auto (solo miniatura) o marcado por el botón
+    // Íconos de estado (nube/equipo/respaldo/caída): gris = ausente, color = presente
+    const est = image && fotoRaw ? estadoDeFoto(fotoRaw) : null;
+    const abrirAccion = (e, tipo) => {
+      e.stopPropagation();
+      if (!est) return;
+      const sep = (rotaKey || '').indexOf('/');
+      const secId = sep > 0 ? rotaKey.slice(0, sep) : null;
+      const itemId = sep > 0 ? rotaKey.slice(sep + 1) : null;
+      setAccionFoto({ tipo, estado: est, path: est.path, secId, itemId, label });
+    };
     return (
       <div onClick={blocked ? undefined : onClick} className={`relative aspect-square rounded-xl overflow-hidden cursor-pointer transition-all select-none ${blocked ? 'cursor-wait' : 'active:scale-95'} ${image ? 'bg-black border-2 border-black' : 'bg-white border-2 border-dashed border-slate-900 hover:bg-slate-50'}`}>
         {image ? (
           <>
             <img src={image} alt={label} className="w-full h-full object-cover" onError={onThumbError} />
+            {est && (
+              <div className="absolute bottom-[26px] left-0 right-0 flex justify-center gap-1 pointer-events-none">
+                <button onClick={(e) => abrirAccion(e, 'nube')} className="pointer-events-auto bg-black/55 rounded-full p-1 active:scale-90" title="Nube">
+                  <Cloud size={11} className={est.nube ? 'text-green-400' : 'text-slate-400'} strokeWidth={3} />
+                </button>
+                <button onClick={(e) => abrirAccion(e, 'equipo')} className="pointer-events-auto bg-black/55 rounded-full p-1 active:scale-90" title="En este equipo">
+                  <Smartphone size={11} className={est.equipo ? 'text-sky-300' : 'text-slate-400'} strokeWidth={3} />
+                </button>
+                <button onClick={(e) => abrirAccion(e, 'respaldo')} className="pointer-events-auto bg-black/55 rounded-full p-1 active:scale-90" title="Respaldo">
+                  <ShieldCheck size={11} className={est.respaldo ? 'text-blue-400' : 'text-slate-400'} strokeWidth={3} />
+                </button>
+                {est.caida && (
+                  <button onClick={(e) => abrirAccion(e, 'caida')} className="pointer-events-auto bg-black/55 rounded-full p-1 active:scale-90" title="Caída">
+                    <AlertTriangle size={11} className="text-red-500" strokeWidth={3} />
+                  </button>
+                )}
+              </div>
+            )}
             <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-1 px-2">
               <p className="text-white text-[10px] font-black text-center uppercase tracking-wider leading-tight">
                 {lines.map((line, i) => <span key={i} className="block">{line}</span>)}
               </p>
             </div>
-            {uploading ? (
-              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
-                <div className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span className="text-white text-[9px] font-bold">Subiendo...</span>
-              </div>
-            ) : isRegenerando ? (
+            {isRegenerando ? (
               <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
                 <div className="w-7 h-7 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
                 <span className="text-white text-[9px] font-bold">Regenerando...</span>
@@ -932,6 +1369,18 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             ) : (
               <div className="absolute top-1 right-1 bg-black/50 rounded-full p-1">
                 <Maximize2 size={10} className="text-white" />
+              </div>
+            )}
+            {uploading && (
+              <div className="absolute top-1 left-1 bg-amber-500/95 rounded-md px-1.5 py-0.5 flex items-center gap-1 shadow">
+                <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="text-white text-[8px] font-black uppercase tracking-wide leading-none">Sin subir</span>
+              </div>
+            )}
+            {rota && !blocked && (
+              <div className="absolute inset-0 bg-red-600/45 flex flex-col items-center justify-center gap-1 px-1">
+                <RefreshCw size={18} className="text-white" strokeWidth={2.5} />
+                <span className="text-white text-[10px] font-black text-center uppercase leading-tight">Volver a<br />tomar foto</span>
               </div>
             )}
           </>
@@ -991,111 +1440,113 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
 
       {/* HEADER */}
       <div className="bg-slate-900 px-4 flex items-center justify-between shadow-md shrink-0 pt-safe-header" style={{ paddingBottom: '12px' }}>
-        <button onClick={onClose} className="flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest border-2 border-slate-300 active:scale-95 transition-all shadow-md">
-          <ArrowLeft className="w-4 h-4" strokeWidth={3} />
-          CONFIRMAR
-        </button>
-        <div className="flex flex-col items-end">
-          <span className="text-white font-black uppercase tracking-wider text-sm">CÁMARA</span>
-          <span className="text-[9px] text-orange-500 font-bold">REGISTRO</span>
-        </div>
+        {modoInstalacion ? (
+          <button onClick={onGuardar} className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest border-2 border-orange-600 active:scale-95 transition-all shadow-md">
+            <Check className="w-4 h-4" strokeWidth={3} />
+            GUARDAR
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest border-2 border-slate-300 active:scale-95 transition-all shadow-md">
+              GUARDAR FOTOS
+            </button>
+            {proyectoActual?.tipo !== 'levantamiento' && (
+              <button onClick={() => setMenuSecciones(v => !v)}
+                className={`flex items-center gap-1 px-3 py-2 rounded-xl font-black text-xs uppercase tracking-widest border-2 active:scale-95 transition-all ${menuSecciones ? 'bg-orange-500 border-orange-600 text-white' : 'bg-white/10 border-white/30 text-white'}`}>
+                <Plus className="w-4 h-4" strokeWidth={3} /> SECCIONES
+              </button>
+            )}
+          </div>
+        )}
+        {modoInstalacion ? (
+          <button onClick={onClose} className="flex items-center gap-2 bg-white/10 text-white px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest border-2 border-white/30 active:scale-95 transition-all">
+            <X className="w-4 h-4" strokeWidth={3} />
+            CERRAR
+          </button>
+        ) : (
+          <div className="flex flex-col items-end">
+            <span className="text-white font-black uppercase tracking-wider text-sm">CÁMARA</span>
+            <span className="text-[9px] text-orange-500 font-bold">REGISTRO</span>
+          </div>
+        )}
       </div>
+
+      {/* Desplegable +SECCIONES: sites/nodo agregables a ESTE punto */}
+      {menuSecciones && !modoInstalacion && (
+        <div className="bg-slate-800 border-b-2 border-slate-900 px-4 py-3 shrink-0 space-y-1.5">
+          {OPCIONES_SECCIONES.map(id => {
+            const agregada = seccionesExtra.includes(id);
+            return (
+              <div key={id} className="flex items-center gap-2">
+                <span className="flex-1 text-white font-black text-xs uppercase tracking-widest">{TABS_CONFIG[id]?.title}</span>
+                {agregada ? (
+                  <button onClick={() => quitarSeccionExtra(id)} className="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center active:scale-95" title="Quitar del punto">
+                    <X size={15} strokeWidth={3} />
+                  </button>
+                ) : (
+                  <button onClick={() => agregarSeccionExtra(id)} className="w-8 h-8 rounded-lg bg-green-600 text-white flex items-center justify-center active:scale-95" title="Agregar a este punto">
+                    <Plus size={15} strokeWidth={3} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ITEM (instalación de postes): siempre visible arriba de las fotos */}
+      {modoInstalacion && (
+        <div className="bg-white border-b-2 border-slate-900 px-4 py-2 flex items-center gap-2 shrink-0">
+          <span className="text-[11px] font-black text-slate-700 uppercase tracking-widest shrink-0">ITEM</span>
+          <input
+            value={datos?.numero || ''}
+            onChange={e => setDatos(prev => ({ ...prev, numero: (e.target.value || '').toUpperCase() }))}
+            placeholder="N° DE POSTE"
+            className="flex-1 px-3 py-2 rounded-lg border-2 border-slate-300 text-sm font-black uppercase outline-none focus:border-orange-500"
+          />
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
-        {/* PESTAÑAS - 3 FILAS JERÁRQUICAS */}
-        <div className="bg-white border-b-2 border-slate-900 flex flex-col">
-          {/* Filas 1 y 2: categorías principales (3 por fila) */}
-          {[[0,1,2],[3,4,5]].map((indices, rowIdx) => (
-            <div key={rowIdx} className={`flex ${rowIdx === 0 ? 'border-b border-slate-200' : 'border-b border-slate-900'}`}>
-              {indices.map((i) => {
-                const main = MAIN_TABS[i];
-                if (!main) return <div key={i} className="flex-1" />;
-                const isActive = activeMainTab === main.id;
-                const subIds = main.subs.length ? main.subs : [main.id];
-                const totalFotos = subIds.reduce((sum, sid) => sum + (getCounter(sid).count || 0), 0);
-                return (
-                  <button
-                    key={main.id}
-                    onClick={() => cambiarMain(main.id)}
-                    className={`flex-1 min-h-[38px] py-1 px-1 border-r last:border-r-0 border-slate-200 transition-all flex items-center justify-center ${isActive ? 'bg-slate-900' : 'bg-white hover:bg-slate-50'}`}
-                  >
-                    <div className="p-1 flex flex-col items-center gap-0.5">
-                      <div className={`text-[10px] font-black uppercase leading-tight ${isActive ? 'text-white' : 'text-slate-600'}`}>
-                        {main.label}
-                      </div>
-                      {totalFotos > 0 && (
-                        <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-orange-400' : 'bg-green-500'}`} />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-          {/* Fila 3: sub-pestañas de la categoría activa */}
-          {activeMainTab !== 'adicionales' && (
-            <div className="flex">
-              {(MAIN_TABS.find(m => m.id === activeMainTab)?.subs || []).map((tabId) => {
-                const tab = TABS_CONFIG[tabId];
-                if (!tab) return null;
-                const counter = getCounter(tab.id);
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tabId}
-                    onClick={() => cambiarTab(tab.id)}
-                    className={`flex-1 min-h-[38px] py-1 px-1 border-r last:border-r-0 border-slate-200 transition-all flex items-center justify-center ${isActive ? 'bg-orange-500' : 'bg-slate-50 hover:bg-slate-100'}`}
-                  >
-                    <div className="p-1 flex flex-col items-center">
-                      <div className={`text-[8px] font-black uppercase leading-tight ${isActive ? 'text-white' : 'text-slate-600'}`}>
-                        {tab.title}
-                      </div>
-                      <div className={`text-[9px] font-black mt-0.5 ${isActive ? 'text-white' : counter.color}`}>
-                        {counter.text}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* CONTENIDO (Grid de fotos) */}
-        <div className="p-3 flex-1 overflow-y-auto">
-          {/* Separador */}
-          <div className="flex items-center gap-2 mb-3">
-            <span className="font-black text-slate-900 text-sm uppercase tracking-widest border-b-2 border-slate-900 pb-1 shrink-0">
-              {TABS_CONFIG[activeTab]?.title}
-            </span>
-            <div className="flex-1 h-px bg-slate-300"></div>
-            {activeTab !== 'adicionales' && (
-              <button
-                onClick={() => abrirAsociarModal(activeTab)}
-                className="flex items-center gap-1 bg-slate-900 text-white rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-transform shrink-0 shadow-md hover:bg-slate-700"
-              >
-                <FolderOpen size={12} /> ASOCIAR FOTO
-              </button>
-            )}
-          </div>
-
-          {proyectoActual?.modoFotos !== 'altaCalidad' && (
-            <button onClick={() => compartirFotos(activeTab)} className="w-full mb-4 flex items-center justify-center gap-2 bg-slate-900 text-white py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95 shadow-md">
-              <Share2 size={16} />
-              COMPARTIR FOTOS
-            </button>
-          )}
-
-          {activeTab === 'adicionales' ? (
+        {/* SECCIONES EN FILAS DESPLEGABLES: aparecen según el formulario; varias pueden estar abiertas */}
+        <div className="p-3 space-y-2 pb-24">
+          {seccionesVisibles.map(secId => {
+            const tab = TABS_CONFIG[secId];
+            if (!tab) return null;
+            const abierta = seccionesAbiertas.has(secId);
+            const counter = getCounter(secId);
+            const esAdic = secId === 'adicionales';
+            return (
+              <div key={secId} className="rounded-xl border-2 border-slate-900 overflow-hidden bg-white shadow-sm">
+                {/* Encabezado de fila: título + contador + asociar + compartir + flecha */}
+                <div onClick={() => toggleSeccion(secId)} className={`flex items-center gap-1.5 px-3 py-2 cursor-pointer select-none ${esAdic ? 'bg-white' : 'bg-slate-900'}`}>
+                  <span className={`flex-1 min-w-0 font-black text-xs uppercase tracking-widest truncate ${esAdic ? 'text-slate-900' : 'text-white'}`}>{tab.title}</span>
+                  <span className={`text-xs font-black shrink-0 ${counter.count > 0 ? (esAdic ? 'text-green-600' : 'text-green-400') : 'text-slate-400'}`}>{counter.text}</span>
+                  {proyectoActual?.tipo !== 'levantamiento' && proyectoActual?.modoFotos !== 'altaCalidad' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (counter.count > 0) compartirFotos(secId); }}
+                      disabled={counter.count === 0}
+                      className={`w-[33px] h-[33px] rounded-lg border-2 flex items-center justify-center active:scale-95 shrink-0 disabled:opacity-30 disabled:active:scale-100 ${esAdic ? 'bg-white border-slate-900 text-slate-900' : 'border-white text-white'}`}
+                      title={counter.count > 0 ? 'Compartir fotos' : 'Sin fotos para compartir'}>
+                      <Share2 size={14} strokeWidth={2.5} />
+                    </button>
+                  )}
+                  <span className={`w-[33px] h-[33px] rounded-lg border-2 flex items-center justify-center shrink-0 ${esAdic ? 'bg-white border-slate-900 text-slate-900' : 'border-white text-white'}`}>
+                    <ChevronDown size={16} className={`transition-transform duration-200 ${abierta ? 'rotate-180' : ''}`} />
+                  </span>
+                </div>
+                {abierta && (
+                  <div className="p-3">
+                    {secId === 'adicionales' ? (
             /* ADICIONALES: grid dinámico con botón "+" */
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(fotosActuales['adicionales'] || {})
                 .sort(([a], [b]) => parseInt(a) - parseInt(b))
                 .map(([idx, fotoRaw]) => {
                   const image = getFotoThumb(fotoRaw);
-                  const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true;
+                  const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true && !(fotoRaw?.url && String(fotoRaw.url).startsWith('http'));
                   const isRegen = regenerandoThumbs.has(`adicionales/${idx}`);
                   const fotoUrl = getFotoUrl(fotoRaw);
                   return (
@@ -1104,9 +1555,12 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                       label={`FOTO ${parseInt(idx) + 1}`}
                       image={image}
                       uploading={isUploading}
+                      esMini={esFotoMiniatura(fotoRaw)}
+                      fotoRaw={fotoRaw}
                       isRegenerando={isRegen}
                       onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError('adicionales', idx, fotoUrl) : undefined}
-                      onClick={(e) => fotoRaw && !isUploading ? setViewingPhoto({ section: 'adicionales', item: idx, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, 'adicionales', idx) : undefined)}
+                      rotaKey={`adicionales/${idx}`}
+                      onClick={(e) => fotoRaw ? setViewingPhoto({ section: 'adicionales', item: idx, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, 'adicionales', idx) : undefined)}
                     />
                   );
                 })}
@@ -1127,7 +1581,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                   const groups = [];
                   let currentNormalGroup = [];
 
-                  (TABS_CONFIG[activeTab]?.items || []).forEach(item => {
+                  (TABS_CONFIG[secId]?.items || []).forEach(item => {
                     if (item.type === 'subgallery') {
                       if (currentNormalGroup.length > 0) {
                         groups.push({ type: 'grid', items: [...currentNormalGroup] });
@@ -1149,19 +1603,19 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                   return groups.map((group, gIdx) => {
                     if (group.type === 'subgallery') {
                       const sgItem = group.data;
-                      const sgSection = fotosActuales[activeTab] || {};
+                      const sgSection = fotosActuales[secId] || {};
                       const sgKeys = Object.keys(sgSection)
                         .filter(k => k.startsWith(sgItem.id + '_'));
                       const sgIndices = sgKeys.map(k => parseInt(k.split('_')[1]));
                       const maxIdx = sgIndices.length > 0 ? Math.max(...sgIndices) : -1;
                       const slotsToShow = Math.max(sgItem.minSlots || 5, maxIdx + 1);
                       const sgCount = sgKeys.filter(k => sgSection[k]).length;
-                      const isOpen = subGalleryOpen === activeTab + '_' + sgItem.id;
+                      const isOpen = subGalleryOpen === secId + '_' + sgItem.id;
                       return (
                         <div key={sgItem.id}>
                           {/* Tile especial */}
                           <div
-                            onClick={() => setSubGalleryOpen(isOpen ? null : activeTab + '_' + sgItem.id)}
+                            onClick={() => setSubGalleryOpen(isOpen ? null : secId + '_' + sgItem.id)}
                             className="w-full rounded-xl overflow-hidden cursor-pointer bg-blue-600 border-2 border-blue-800 active:scale-95 transition-all select-none px-4 py-3 flex items-center justify-between"
                           >
                             <div>
@@ -1178,8 +1632,8 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                                   const key = `${sgItem.id}_${idx}`;
                                   const fotoRaw = sgSection[key];
                                   const image = getFotoThumb(fotoRaw);
-                                  const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true;
-                                  const isRegen = regenerandoThumbs.has(`${activeTab}/${key}`);
+                                  const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true && !(fotoRaw?.url && String(fotoRaw.url).startsWith('http'));
+                                  const isRegen = regenerandoThumbs.has(`${secId}/${key}`);
                                   const fotoUrl = getFotoUrl(fotoRaw);
                                   return (
                                     <PhotoSquare
@@ -1187,15 +1641,18 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                                       label={`ACCESO ${idx + 1}`}
                                       image={image}
                                       uploading={isUploading}
+                      esMini={esFotoMiniatura(fotoRaw)}
+                      fotoRaw={fotoRaw}
                                       isRegenerando={isRegen}
-                                      onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(activeTab, key, fotoUrl) : undefined}
-                                      onClick={(e) => fotoRaw && !isUploading ? setViewingPhoto({ section: activeTab, item: key, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, activeTab, key) : undefined)}
+                                      onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(secId, key, fotoUrl) : undefined}
+                                      rotaKey={`${secId}/${key}`}
+                                      onClick={(e) => fotoRaw ? setViewingPhoto({ section: secId, item: key, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, secId, key) : undefined)}
                                     />
                                   );
                                 })}
                                 {/* Botón + para agregar más */}
                                 <div
-                                  onClick={(e) => triggerCamera(e, activeTab, `${sgItem.id}_${slotsToShow}`)}
+                                  onClick={(e) => triggerCamera(e, secId, `${sgItem.id}_${slotsToShow}`)}
                                   className="aspect-square rounded-xl overflow-hidden cursor-pointer bg-white border-2 border-dashed border-blue-400 hover:bg-blue-50 active:scale-95 transition-transform flex items-center justify-center"
                                 >
                                   <Plus className="w-10 h-10 text-blue-400" strokeWidth={2} />
@@ -1209,10 +1666,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                       return (
                         <div key={`g-${gIdx}`} className="grid grid-cols-2 gap-2">
                           {group.items.map(item => {
-                            const fotoRaw = fotosActuales[activeTab]?.[item.id];
+                            const fotoRaw = fotosActuales[secId]?.[item.id];
                             const image = getFotoThumb(fotoRaw);
-                            const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true;
-                            const isRegen = regenerandoThumbs.has(`${activeTab}/${item.id}`);
+                            const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true && !(fotoRaw?.url && String(fotoRaw.url).startsWith('http'));
+                            const isRegen = regenerandoThumbs.has(`${secId}/${item.id}`);
                             const fotoUrl = getFotoUrl(fotoRaw);
                             let colClass = '';
                             if (item.fullWidth) colClass = 'col-span-2';
@@ -1226,9 +1683,12 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                                     help={item.help}
                                     image={image}
                                     uploading={isUploading}
+                      esMini={esFotoMiniatura(fotoRaw)}
+                      fotoRaw={fotoRaw}
                                     isRegenerando={isRegen}
-                                    onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(activeTab, item.id, fotoUrl) : undefined}
-                                    onClick={(e) => fotoRaw && !isUploading ? setViewingPhoto({ section: activeTab, item: item.id, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, activeTab, item.id) : undefined)}
+                                    onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(secId, item.id, fotoUrl) : undefined}
+                                    rotaKey={`${secId}/${item.id}`}
+                                    onClick={(e) => fotoRaw ? setViewingPhoto({ section: secId, item: item.id, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, secId, item.id) : undefined)}
                                   />
                                 </div>
                               </div>
@@ -1245,10 +1705,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                           </h4>
                           <div className="grid grid-cols-3 gap-2">
                             {item.items.map(subItem => {
-                              const fotoRaw = fotosActuales[activeTab]?.[subItem.id];
+                              const fotoRaw = fotosActuales[secId]?.[subItem.id];
                               const image = getFotoThumb(fotoRaw);
-                              const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true;
-                              const isRegen = regenerandoThumbs.has(`${activeTab}/${subItem.id}`);
+                              const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true && !(fotoRaw?.url && String(fotoRaw.url).startsWith('http'));
+                              const isRegen = regenerandoThumbs.has(`${secId}/${subItem.id}`);
                               const fotoUrl = getFotoUrl(fotoRaw);
                               return (
                                 <PhotoSquare
@@ -1257,9 +1717,12 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                                   help={subItem.help}
                                   image={image}
                                   uploading={isUploading}
+                      esMini={esFotoMiniatura(fotoRaw)}
+                      fotoRaw={fotoRaw}
                                   isRegenerando={isRegen}
-                                  onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(activeTab, subItem.id, fotoUrl) : undefined}
-                                  onClick={(e) => fotoRaw && !isUploading ? setViewingPhoto({ section: activeTab, item: subItem.id, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, activeTab, subItem.id) : undefined)}
+                                  onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(secId, subItem.id, fotoUrl) : undefined}
+                                  rotaKey={`${secId}/${subItem.id}`}
+                                  onClick={(e) => fotoRaw ? setViewingPhoto({ section: secId, item: subItem.id, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, secId, subItem.id) : undefined)}
                                 />
                               );
                             })}
@@ -1281,10 +1744,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
               {/* Fotos extras */}
               <div className="grid grid-cols-3 gap-2">
                 {EXTRAS_ITEMS.map(item => {
-                  const fotoRaw = fotosActuales[activeTab]?.[item];
+                  const fotoRaw = fotosActuales[secId]?.[item];
                   const image = getFotoThumb(fotoRaw);
-                  const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true;
-                  const isRegen = regenerandoThumbs.has(`${activeTab}/${item}`);
+                  const isUploading = typeof fotoRaw === 'object' && fotoRaw?.uploading === true && !(fotoRaw?.url && String(fotoRaw.url).startsWith('http'));
+                  const isRegen = regenerandoThumbs.has(`${secId}/${item}`);
                   const fotoUrl = getFotoUrl(fotoRaw);
                   return (
                     <PhotoSquare
@@ -1292,18 +1755,25 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                       label={item}
                       image={image}
                       uploading={isUploading}
+                      esMini={esFotoMiniatura(fotoRaw)}
+                      fotoRaw={fotoRaw}
                       isRegenerando={isRegen}
-                      onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(activeTab, item, fotoUrl) : undefined}
-                      onClick={(e) => fotoRaw && !isUploading ? setViewingPhoto({ section: activeTab, item, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, activeTab, item) : undefined)}
+                      onThumbError={fotoUrl?.startsWith('http') ? () => handleThumbError(secId, item, fotoUrl) : undefined}
+                      rotaKey={`${secId}/${item}`}
+                      onClick={(e) => fotoRaw ? setViewingPhoto({ section: secId, item, url: fotoUrl }) : (!fotoRaw ? triggerCamera(e, secId, item) : undefined)}
                     />
                   );
                 })}
               </div>
             </>
           )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
-
       {/* MODAL: ASOCIAR FOTO (fotosGenerales → slot de tab) */}
       {asociarModal && (
         <div className="fixed inset-0 z-[1100] bg-white flex flex-col"
@@ -1453,7 +1923,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       )}
 
       {viewingPhoto && (
-        <div className="fixed inset-0 z-[1000] bg-black flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className={`fixed top-0 bottom-0 z-[1000] bg-black flex flex-col ${isDesktop ? 'right-0 w-[460px] max-w-[92vw] shadow-2xl' : 'inset-x-0'}`} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           <div className="flex justify-between items-center px-4 py-4 bg-black/80 backdrop-blur-md border-b border-white/10">
             <div>
               {/* Intentar buscar el label bonito, si no usar el ID */}
@@ -1480,12 +1950,37 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
               <X size={24} />
             </button>
           </div>
-          <div className="flex-1 flex items-center justify-center p-4 bg-black">
-            <img src={viewingPhoto.url} className="max-w-full max-h-full object-contain shadow-2xl" alt="Detalle" />
+          <div className="relative flex-1 flex items-center justify-center p-4 bg-black">
+            {(() => {
+              const fo = fotosActuales?.[viewingPhoto.section]?.[viewingPhoto.item];
+              const u = (typeof fo === 'object' && fo?.url) ? fo.url : (typeof fo === 'string' ? fo : null);
+              const httpU = (u && String(u).startsWith('http')) ? u : null; // URL real en la nube
+              const src = httpU || viewingBlobUrl || getFotoThumb(fo);      // nube → blob local → miniatura
+              const esLocal = !httpU && !!viewingBlobUrl;                   // mostrando el archivo del equipo
+              return (
+                <>
+                  <img src={src}
+                    onError={(e) => { const t = getFotoThumb(fo); if (t && e.target.src !== t) { e.target.onerror = null; e.target.src = t; } }}
+                    className="max-w-full max-h-full object-contain shadow-2xl" alt="Detalle" />
+                  {esLocal && (
+                    <div className="absolute top-2 left-2 bg-amber-500/95 rounded-lg px-2.5 py-1 flex items-center gap-1.5 shadow-lg">
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span className="text-white text-[10px] font-black uppercase tracking-wide">Foto en el equipo · sin subir a la nube</span>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
           <div className="p-6 bg-black border-t border-white/10 flex gap-4 justify-center" style={{ paddingBottom: 'calc(24px + env(safe-area-inset-bottom))' }}>
             <button
-              onClick={(e) => triggerCamera(e, viewingPhoto.section, viewingPhoto.item)}
+              onClick={(e) => {
+                const s = viewingPhoto.section, it = viewingPhoto.item;
+                triggerCamera(e, s, it);
+                setRotas(prev => { const n = new Set(prev); n.delete(`${s}/${it}`); return n; });
+                try { const marcas = JSON.parse(localStorage.getItem('kipo_fotos_mini') || '{}'); if (puntoId && Array.isArray(marcas[String(puntoId)])) { marcas[String(puntoId)] = marcas[String(puntoId)].filter(k => k !== `${s}/${it}`); localStorage.setItem('kipo_fotos_mini', JSON.stringify(marcas)); } } catch {}
+                setViewingPhoto(null);
+              }}
               className="flex-1 bg-white text-black py-4 px-6 rounded-xl font-black flex justify-center items-center gap-2 active:scale-95 transition-transform"
             >
               <RefreshCw size={20} /> RETOMAR
@@ -1496,6 +1991,64 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             >
               <Trash2 size={24} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ACCIÓN DE ÍCONO DE ESTADO (nube/equipo/respaldo/caída) */}
+      {accionFoto && (() => {
+        const a = accionFoto;
+        const est = a.estado || {};
+        const enNubeOk = est.nube && !est.caida;
+        let titulo = '', texto = '', accionable = false;
+        if (a.tipo === 'nube') {
+          titulo = enNubeOk ? 'Foto en la nube' : 'Foto NO está en la nube';
+          texto = enNubeOk ? 'Esta foto está guardada en la nube. ✅' : 'Esta foto aún no está (o dejó de estar) en la nube. Usa los íconos de equipo o respaldo para subirla.';
+        } else if (a.tipo === 'caida') {
+          titulo = 'Foto caída';
+          texto = 'La referencia existe pero el archivo ya no está en la nube. Puedes repararla desde este equipo o desde el respaldo (íconos de al lado), o con el botón REPARAR del proyecto.';
+        } else if (a.tipo === 'equipo') {
+          if (enNubeOk) { titulo = 'Ya está en la nube'; texto = 'Esta foto ya está bien en la nube; no hace falta volver a subirla desde el equipo.'; }
+          else if (!est.equipo) { titulo = 'No está en este equipo'; texto = 'Este dispositivo no tiene el archivo local de esta foto (puede estar en el equipo donde se tomó).'; }
+          else { titulo = 'Subir desde este equipo'; texto = 'La foto está guardada en este equipo. ¿Subirla a la nube ahora?'; accionable = true; }
+        } else if (a.tipo === 'respaldo') {
+          if (enNubeOk) { titulo = 'Ya está en la nube'; texto = 'Esta foto ya está bien en la nube; no hace falta cargar el respaldo.'; }
+          else if (est.respaldo === null) { titulo = 'Respaldo sin verificar'; texto = 'Aún no se corrió la verificación de fotos de este proyecto (botón de escudo en la lista de puntos).'; }
+          else if (!est.respaldo) { titulo = 'Sin respaldo'; texto = 'Esta foto no tiene copia en el respaldo.'; }
+          else { titulo = 'Cargar desde el respaldo'; texto = 'Hay una copia en el respaldo. ¿Restaurarla a la nube ahora?'; accionable = true; }
+        }
+        return (
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/85 backdrop-blur-md p-6" onClick={() => !accionandoFoto && setAccionFoto(null)}>
+            <div className="bg-white w-full max-w-xs rounded-3xl shadow-2xl p-6 text-center" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-center mb-3 text-blue-600">
+                {a.tipo === 'nube' ? <Cloud size={40} /> : a.tipo === 'equipo' ? <Smartphone size={40} /> : a.tipo === 'respaldo' ? <ShieldCheck size={40} /> : <AlertTriangle size={40} className="text-red-600" />}
+              </div>
+              <h3 className="font-black text-slate-900 text-lg mb-2">{titulo}</h3>
+              <p className="text-slate-600 text-xs mb-5">{texto}</p>
+              <div className="flex gap-3">
+                <button onClick={() => setAccionFoto(null)} disabled={accionandoFoto} className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 border-2 border-slate-300 disabled:opacity-50">CERRAR</button>
+                {accionable && (
+                  <button onClick={ejecutarAccionFoto} disabled={accionandoFoto} className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-blue-600 text-white border-2 border-blue-800 shadow-lg flex items-center justify-center gap-1.5 disabled:opacity-60">
+                    {accionandoFoto ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />} SUBIR
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* CONFIRMACIÓN: borrar foto (va a la Papelera 15 días) */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/85 backdrop-blur-md p-6" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white w-full max-w-xs rounded-3xl shadow-2xl p-6 text-center" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center mb-3 text-red-600"><Trash2 size={44} /></div>
+            <h3 className="font-black text-slate-900 text-xl mb-2">¿Borrar foto?</h3>
+            <p className="text-slate-600 text-sm mb-6">Irá a la <b>Papelera</b> por 15 días. Puedes restaurarla desde el menú principal.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 border-2 border-slate-300">CANCELAR</button>
+              <button onClick={ejecutarBorrado} className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white border-2 border-red-800 shadow-lg">BORRAR</button>
+            </div>
           </div>
         </div>
       )}
@@ -1719,16 +2272,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
                   </div>
 
                   <p className="text-center font-black text-slate-900 text-xs uppercase tracking-widest mt-1">Compartir</p>
-                  <div className="flex gap-2">
-                    <button onClick={() => { if (!logoModalBase64) { setSinLogoAdvertencia(true); } else { ejecutarCompartir(true, stampConfigCompartir); } }}
-                      className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
-                      FOTOS
-                    </button>
-                    <button onClick={() => { compartirLista(compartirModal.sectionId); setCompartirModal(null); }}
-                      className="flex-1 py-3 bg-white border-2 border-slate-900 text-slate-900 rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
-                      LISTA
-                    </button>
-                  </div>
+                  <button onClick={() => { if (!logoModalBase64) { setSinLogoAdvertencia(true); } else { ejecutarCompartir(true, stampConfigCompartir); } }}
+                    className="w-full py-3 bg-green-600 border-2 border-green-800 text-white rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform shadow-lg flex items-center justify-center gap-1.5">
+                    <Share2 size={15} strokeWidth={2.5} /> COMPARTIR FOTOS
+                  </button>
                   <button onClick={() => setCompartirModal(m => ({ ...m, step: 'elegir' }))}
                     className="w-full py-2 text-slate-900 font-bold text-sm">
                     ← Atrás

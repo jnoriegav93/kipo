@@ -4,17 +4,34 @@ service firebase.storage {
 
     // ── FOTOS Y ARCHIVOS DE PROYECTOS ─────────────────────────────────────
     // Ruta: proyectos/{proyectoId}/...
-    match /proyectos/{proyectoId}/{allPaths=**} {
-      // Leer: cualquier usuario autenticado (para exportar, ver fotos, etc.)
+    // POLÍTICA: el cliente puede SUBIR y ACTUALIZAR pero NUNCA BORRAR archivos de
+    // fotos. Los borra solo el servidor (purga de papelera, tras 15 días). Así un
+    // bug del cliente jamás puede destruir una foto.
+    // "Borrar" una foto en la app = mover su referencia a la papelera; el archivo queda.
+
+    // Reportes generados (excel): sí se pueden borrar (artefactos descartables)
+    match /proyectos/{proyectoId}/reportes/{allPaths=**} {
       allow read: if request.auth != null;
-      // Escribir: el dueño del proyecto o un editor
       allow write: if request.auth != null;
+    }
+
+    // Todo lo demás del proyecto (fotos_detalle, fotos, fotos_generales, respaldo…):
+    // crear y actualizar sí, BORRAR NO (sin regla delete → denegado).
+    match /proyectos/{proyectoId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null;
+    }
+
+    // ── RESPALDO ESPEJO (respaldo/…) — solo lectura para el cliente ────────
+    // Lo escribe y borra únicamente el servidor (Cloud Functions).
+    match /respaldo/{allPaths=**} {
+      allow read: if request.auth != null;
     }
 
     // ── FOTOS LEGACY (path antiguo fotos/{ownerId}/...) ───────────────────
     match /fotos/{ownerId}/{allPaths=**} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == ownerId;
+      allow create, update: if request.auth != null && request.auth.uid == ownerId;
     }
 
     // ── LOGOS DE EMPRESA ──────────────────────────────────────────────────

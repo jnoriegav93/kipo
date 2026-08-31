@@ -185,6 +185,27 @@ export const comprimirYEstampar = (url, maxWidth, maxHeight, datos, logoBase64) 
   });
 };
 
+// Deteccion de compartir por CAPACIDAD REAL, no por user agent. Antes se exigia que el
+// user agent dijera Android/iPhone/iPad, lo que bloqueaba la PC aunque el navegador si
+// pudiera compartir (Chrome y Edge en Windows abren el panel de compartir del sistema).
+// Se le pregunta al navegador con un archivo de prueba en vez de adivinar por el nombre
+// del dispositivo.
+export const puedeCompartirArchivos = () => {
+  try {
+    if (!navigator.share || !navigator.canShare) return false;
+    const prueba = new File([new Uint8Array(1)], 'prueba.jpg', { type: 'image/jpeg' });
+    return navigator.canShare({ files: [prueba] });
+  } catch { return false; }
+};
+
+// Compartir solo TEXTO esta soportado en muchos mas lugares que compartir archivos.
+export const puedeCompartirTexto = () => {
+  try {
+    if (!navigator.share) return false;
+    return navigator.canShare ? navigator.canShare({ text: 'x' }) : true;
+  } catch { return false; }
+};
+
 export const compartirODescargar = async (blob, nombre) => {
   if (navigator.canShare && navigator.share) {
     try {
@@ -421,11 +442,12 @@ export const estamparMetadatos = async (imagenSource, datos, logoBase64, stampCo
         fitFont(ctx, proyTxt, c1MaxW, fs, true);
         ctx.fillText(proyTxt, hPad, r1Y);
 
-        const nro = String(datos.numero || '-');
-        const pasivo = datos.pasivo || datos.codFat || '-';
+        // Sin guion cuando no hay dato (queda vacío); el separador "|" solo si AMBOS existen.
+        const nro = String(datos.numero || '').trim();
+        const pasivo = String(datos.pasivo || datos.codFat || '').trim();
         let idTxt = '';
         if (mostrarNroPoste && mostrarCodFat) {
-          idTxt = `${nro}  |  ${pasivo}`;
+          idTxt = [nro, pasivo].filter(Boolean).join('  |  ');
         } else if (mostrarNroPoste) {
           idTxt = nro;
         } else if (mostrarCodFat) {
@@ -507,4 +529,15 @@ export const estamparMetadatos = async (imagenSource, datos, logoBase64, stampCo
     };
     img.onerror = (e) => reject(e);
   });
+};
+
+// Un punto/fibra pertenece a un proyecto si su proyectoId coincide (con coerción a
+// texto: hay ids numéricos viejos). Registros legacy SIN proyectoId caen al filtro
+// por día. NUNCA filtrar solo por diaId: proyectos copiados comparten ids de día y
+// se mezclaban puntos de otros proyectos en exportaciones y contadores.
+export const perteneceAProyecto = (item, proy) => {
+  if (!proy) return false;
+  const pid = item?.proyectoId;
+  if (pid !== undefined && pid !== null && String(pid) !== '') return String(pid) === String(proy.id);
+  return !!proy.dias?.some(d => d.id === item?.diaId);
 };

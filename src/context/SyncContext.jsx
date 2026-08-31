@@ -1,8 +1,8 @@
 import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import { db, storage } from '../firebaseConfig';
-import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, updateDoc, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getAllUploadsPending, deleteUploadPending } from '../utils/photoDB';
+import { getAllUploadsPending, deleteUploadPending, marcarSubida } from '../utils/photoDB';
 import { uploadImage } from '../utils/storage';
 
 const SyncContext = createContext();
@@ -53,7 +53,11 @@ export const SyncProvider = ({ children }) => {
 
   const guardarComoNuevo = (tarea) => {
     const { coleccion, datos } = tarea.datos;
-    const nueva = { id: nextTaskId(), tipo: 'guardar_punto', datos: { modo: 'crear', coleccion, datos }, timestamp: new Date().toISOString() };
+    // Crear un punto NUEVO (id fresco y único), no pisar el original que falló.
+    // datos.id e idDoc deben coincidir para el setDoc de creación.
+    const nuevoId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const datosNuevo = { ...datos, id: nuevoId, datos: { ...(datos.datos || {}), recuperado: true } };
+    const nueva = { id: nextTaskId(), tipo: 'guardar_punto', datos: { modo: 'crear', coleccion, idDoc: nuevoId, datos: datosNuevo }, timestamp: new Date().toISOString() };
     setCola(prev => [...prev.filter(t => t.id !== tarea.id), nueva]);
   };
 
@@ -81,7 +85,7 @@ export const SyncProvider = ({ children }) => {
               prev.filter(t => t.tipo === 'subir_foto').map(t => t.datos.path)
             );
             const nuevas = pending
-              .filter(e => e.path && !existingPaths.has(e.path))
+              .filter(e => e.path && !e.subida && !existingPaths.has(e.path))
               .map(e => ({
                 id: nextTaskId(),
                 tipo: 'subir_foto',
@@ -104,6 +108,31 @@ export const SyncProvider = ({ children }) => {
     };
   }, []);
 
+  // 1b. Al RECONECTAR: re-escanear blobs pendientes del equipo y encolarlos para subir,
+  // sin necesidad de reiniciar la app. Así las fotos tomadas SIN señal se suben y se
+  // enganchan a su punto apenas vuelve la señal.
+  useEffect(() => {
+    if (!isOnline) return;
+    (async () => {
+      try {
+        const pending = await getAllUploadsPending();
+        if (!pending.length) return;
+        setCola(prev => {
+          const existentes = new Set(prev.filter(t => t.tipo === 'subir_foto').map(t => t.datos.path));
+          const nuevas = pending
+            .filter(e => e.path && !e.subida && !existentes.has(e.path))
+            .map(e => ({
+              id: nextTaskId(),
+              tipo: 'subir_foto',
+              datos: { path: e.path, section: e.section, item: e.item, puntoId: e.puntoId || null, thumb: e.thumb || null },
+              timestamp: new Date(e.ts || Date.now()).toISOString()
+            }));
+          return nuevas.length > 0 ? [...prev, ...nuevas] : prev;
+        });
+      } catch {}
+    })();
+  }, [isOnline]);
+
   // 2. Guardar cola y procesar
   useEffect(() => {
     localStorage.setItem('kipo_sync_queue_v2', JSON.stringify(cola));
@@ -112,7 +141,15 @@ export const SyncProvider = ({ children }) => {
 
   const agregarTarea = (tipo, datos) => {
     const nuevaTarea = { id: nextTaskId(), tipo, datos, timestamp: new Date().toISOString() };
-    setCola(prev => [...prev, nuevaTarea]);
+    setCola(prev => {
+      // Dedup: un guardar_punto para el MISMO punto reemplaza al anterior pendiente
+      // (evita acumular "actualizar punto" 2,3,4 veces; la última versión gana).
+      if (tipo === 'guardar_punto' && datos?.idDoc) {
+        const filtrada = prev.filter(t => !(t.tipo === 'guardar_punto' && t.datos?.idDoc === datos.idDoc));
+        return [...filtrada, nuevaTarea];
+      }
+      return [...prev, nuevaTarea];
+    });
   };
 
   // --- FUNCIÓN RECURSIVA PARA FOTOS (NECESARIA PARA GUARDAR) ---
@@ -164,21 +201,28 @@ export const SyncProvider = ({ children }) => {
         const fotosGeneralesProcesadas = await procesarFotosRecursivo(datos?.datos?.fotosGenerales, datos.ownerId, datos.proyectoId);
         const datosFinales = { ...datos, datos: { ...datos.datos, fotos: fotosProcesadas, fotosGenerales: fotosGeneralesProcesadas } };
         if (modo === 'crear') {
-          await addDoc(collection(db, coleccion), datosFinales);
+          // setDoc con el id fijo del cliente (no addDoc): el id local pasa a ser
+          // el id definitivo del documento → editar/mover/borrar offline dejan de
+          // fallar por id divergente. Además es idempotente (reintento no duplica).
+          // merge:true → no pisar campos que ya escribió la cola de fotos (URLs subidas).
+          await setDoc(doc(db, coleccion, idDoc), datosFinales, { merge: true });
         } else {
-          await updateDoc(doc(db, coleccion, idDoc), { datos: datosFinales.datos });
+          // merge:true también en EDICIÓN → NO pisar las URLs que la cola de fotos ya
+          // subió (antes updateDoc reemplazaba todo "datos.fotos" y borraba las URLs).
+          await setDoc(doc(db, coleccion, idDoc), { datos: datosFinales.datos }, { merge: true });
         }
       } else if (tarea.tipo === 'mover_punto') {
         const { coleccion, idDoc, coords, datos } = tarea.datos;
         await updateDoc(doc(db, coleccion, idDoc), { coords, datos });
       } else if (tarea.tipo === 'reasignar_punto') {
-        const { coleccion, idDoc, proyectoId, diaId } = tarea.datos;
+        const { coleccion, idDoc, proyectoId, diaId, ownerId } = tarea.datos;
         const campos = { proyectoId };
         if (diaId) campos.diaId = diaId;
+        if (ownerId) campos.ownerId = ownerId; // al mover, el punto pasa a ser del usuario
         await updateDoc(doc(db, coleccion, idDoc), campos);
       } else if (tarea.tipo === 'borrar_punto') {
         const { coleccion, idDoc } = tarea.datos;
-        await deleteDoc(doc(db, coleccion, idDoc));
+        await deleteDoc(doc(db, coleccion, String(idDoc)));
       } else if (tarea.tipo === 'subir_foto') {
         const { path, section, item, puntoId, thumb } = tarea.datos;
         const pending = await getAllUploadsPending();
@@ -191,10 +235,58 @@ export const SyncProvider = ({ children }) => {
         }
         const url = await uploadImage(entry.blob, path);
         const fotoData = { url, thumb: thumb || entry.thumb || null, timestamp: new Date().toISOString(), _path: path };
+        let asociado = false;
         if (puntoId) {
-          await updateDoc(doc(db, 'puntos', String(puntoId)), {
-            [`datos.fotos.${section}.${item}`]: fotoData
-          });
+          try {
+            // Si mientras estábamos offline OTRO equipo llenó este casillero con una foto
+            // DISTINTA, esa foto va a la papelera antes de pisarla (visible/recuperable 15 días).
+            try {
+              const snapP = await getDoc(doc(db, 'puntos', String(puntoId)));
+              const actual = snapP.exists() ? snapP.data()?.datos?.fotos?.[section]?.[item] : null;
+              const urlAct = typeof actual === 'string' ? actual : actual?.url;
+              const pathAct = (actual && typeof actual === 'object') ? actual._path : null;
+              if (actual && typeof urlAct === 'string' && urlAct.startsWith('http') && pathAct && pathAct !== path) {
+                const { enviarAPapelera } = await import('../utils/papelera');
+                const { auth } = await import('../firebaseConfig');
+                const uid = auth.currentUser?.uid;
+                if (uid) {
+                  await enviarAPapelera({
+                    uid, tipo: 'foto',
+                    snapshot: JSON.parse(JSON.stringify(actual)),
+                    coleccionOriginal: 'puntos', idOriginal: `${puntoId}_${section}_${item}`,
+                    proyectoId: entry.proyectoId || null,
+                    nombre: `Foto reemplazada (${section} – ${item})`,
+                    storagePaths: [actual._path, actual._pathHD].filter(Boolean),
+                    meta: { puntoId: String(puntoId), section, item, reemplazada: true },
+                  });
+                }
+              }
+            } catch (eArc) { console.warn('Papelera conflicto:', eArc); }
+            await updateDoc(doc(db, 'puntos', String(puntoId)), {
+              [`datos.fotos.${section}.${item}`]: fotoData
+            });
+            asociado = true;
+            // Avisar al formulario/vistas para reemplazar la foto PENDIENTE por la URL
+            // de la nube (si no, quedaría mostrando "sin subir" con el blob ya borrado).
+            try { window.dispatchEvent(new CustomEvent('kipo-foto-subida', { detail: { puntoId: String(puntoId), section, item, fotoData } })); } catch {}
+          } catch (e) {
+            // Punto inexistente (nunca se guardó) → la foto queda huérfana
+            if (!(e.code === 'not-found' || e.message?.includes('No document'))) throw e;
+          }
+        }
+        // Foto huérfana con coordenadas → cae en el mapa (fotosProyecto del proyecto), conservando su casillero
+        if (!asociado && entry.proyectoId && entry.lat != null && entry.lng != null) {
+          try {
+            await addDoc(collection(db, 'proyectos', entry.proyectoId, 'fotosProyecto'), {
+              nombre: 'Foto recuperada',
+              url, thumb: thumb || entry.thumb || null, storagePath: path,
+              sectionId: section, itemId: item,
+              lat: entry.lat, lng: entry.lng,
+              huerfana: true,
+              creadoEn: new Date().toISOString(),
+              uid: entry.uid || null,
+            });
+          } catch (e2) { console.error('Error guardando foto huérfana en mapa:', e2); }
         }
         // Actualizar draft local si aplica
         try {
@@ -204,7 +296,7 @@ export const SyncProvider = ({ children }) => {
             localStorage.setItem('kipo_draft', JSON.stringify(draft));
           }
         } catch {}
-        await deleteUploadPending(path);
+        await marcarSubida(path); // conservar el blob como respaldo local (30 días); pesado se descarta
       }
 
       console.log(`✅ Tarea ${tarea.id} completada.`);

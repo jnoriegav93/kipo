@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, ZoomOut, ZoomIn, Map, Images } from 'lucide-react';
+import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, ZoomOut, ZoomIn, Map, Image, CalendarDays } from 'lucide-react';
 
 export default function Header({
   theme,
@@ -19,14 +19,25 @@ export default function Header({
   totalNotificaciones = 0,
   fotoPuntosActivo = false,
   onToggleFotoPuntos,
+  menuDiasAbierto = false,
+  toggleMenuDias,
+  flotante = false,
 }) {
   return (
-    <div className={`${theme.header} px-4 flex items-center justify-between border-b-2 ${theme.border} z-[50] relative shrink-0`} style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))', paddingBottom: '12px', minHeight: 'calc(64px + env(safe-area-inset-top))' }}>
-      
+    <div
+      className={flotante
+        ? 'absolute top-0 inset-x-0 flex items-start justify-between px-4 z-[50] pointer-events-none'
+        : `${theme.header} px-4 flex items-center justify-between border-b-2 ${theme.border} z-[50] relative shrink-0`}
+      style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))', paddingBottom: flotante ? '0' : '12px', minHeight: flotante ? undefined : 'calc(64px + env(safe-area-inset-top))' }}
+    >
+
       {/* LADO IZQUIERDO: SOLO MENÚ */}
-      <div className="flex items-center">
-            <button onClick={() => setMenuAbierto(true)} className="relative">
-              <Menu size={28} className={theme.text} strokeWidth={2.5}/>
+      <div className={`flex items-center ${flotante ? 'pointer-events-auto' : ''}`}>
+            <button
+              onClick={() => setMenuAbierto(true)}
+              className={flotante ? 'relative bg-white text-slate-900 rounded-xl border border-slate-200 shadow-lg p-2 active:scale-95' : 'relative'}
+            >
+              <Menu size={28} className={flotante ? 'text-slate-900' : theme.text} strokeWidth={2.5}/>
               {totalNotificaciones > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white border-2 border-white shadow-sm">
                   {totalNotificaciones > 9 ? '9+' : totalNotificaciones}
@@ -36,7 +47,7 @@ export default function Header({
       </div>
 
       {/* LADO DERECHO: TODAS LAS HERRAMIENTAS */}
-      <div className="flex items-center gap-1">
+      <div className={`flex items-center gap-1 ${flotante ? 'pointer-events-auto [&_button]:shadow-lg [&>div]:shadow-lg' : ''}`}>
           
           {/* 0. INDICADOR DE SINCRONIZACIÓN */}
           <button
@@ -77,13 +88,13 @@ export default function Header({
           </button>
 
 
-          {/* 2. ESTILO DE MAPA — alterna entre google y vector */}
+          {/* 2. DÍAS — abre el panel de días en el mapa */}
           <button
-            onClick={() => setMapStyle(s => s === 'vector' ? 'google' : 'vector')}
-            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${mapStyle === 'vector' ? 'bg-blue-50 border-blue-500 text-blue-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
-            title="Estilo de mapa"
+            onClick={toggleMenuDias}
+            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${menuDiasAbierto ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+            title="Días"
           >
-            <Map size={20} />
+            <CalendarDays size={20} />
           </button>
 
           {/* 3. ETIQUETAS */}
@@ -98,10 +109,10 @@ export default function Header({
           {onToggleFotoPuntos && (
             <button
               onClick={onToggleFotoPuntos}
-              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${fotoPuntosActivo ? 'bg-purple-600 border-purple-700 text-white' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${fotoPuntosActivo ? 'bg-purple-50 border-purple-500 text-purple-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
               title="Fotos en mapa"
             >
-              <Images size={20} />
+              <Image size={20} />
             </button>
           )}
 

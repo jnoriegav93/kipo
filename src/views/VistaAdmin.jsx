@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import { PERFILES, normalizarPerfil } from '../utils/perfiles';
 import { Shield, ArrowLeft, ChevronDown, ChevronUp, User, Folder, MapPin, RefreshCw, Smartphone, Plus, Trash2, X, Lock, Camera, CheckCircle2, LogIn, AlertTriangle } from 'lucide-react';
 import { collection, getDocs, query, where, doc, getDoc, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, auth } from '../firebaseConfig';
+import InspectorHuerfanas from '../components/InspectorHuerfanas';
+import { useFerreteriaBase, guardarFerreteriaBase } from '../hooks/useFerreteriaBase';
+import { FERRETERIA_BASE_DEFAULT } from '../data/constantes';
 
 // ─── Fetch / write helpers ──────────────────────────────────────────────────────
 
@@ -17,12 +21,19 @@ const deleteErrorDoc = async (id) => {
 };
 
 const fetchUsuarios = async () => {
-  const snap = await getDocs(collection(db, 'configuraciones'));
+  // El perfil vive en usuarios/{email}; se cruza con configuraciones para mostrarlo
+  const [snap, usnap] = await Promise.all([
+    getDocs(collection(db, 'configuraciones')),
+    getDocs(collection(db, 'usuarios')),
+  ]);
+  const perfilPorEmail = {};
+  usnap.docs.forEach(d => { perfilPorEmail[d.id] = d.data().perfil; });
   return snap.docs.map(d => ({
     uid: d.id,
     nombre: d.data().nombrePersonal || '(sin nombre)',
     empresa: d.data().empresaPersonal || '(sin empresa)',
     email: d.data().email || '',
+    perfil: perfilPorEmail[d.data().email || ''],
   }));
 };
 
@@ -49,7 +60,7 @@ const agregarDispositivo = async (email, huella) => {
   const ref = doc(db, 'usuarios', email);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
-    await setDoc(ref, { dispositivosAutorizados: [huella] });
+    await setDoc(ref, { dispositivosAutorizados: [huella], perfil: 'basico' });
   } else {
     await updateDoc(ref, { dispositivosAutorizados: arrayUnion(huella) });
   }
@@ -76,7 +87,7 @@ const actualizarPermisos = async (email, permisos) => {
   const ref = doc(db, 'usuarios', email);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
-    await setDoc(ref, permisos);
+    await setDoc(ref, { ...permisos, perfil: 'basico' });
   } else {
     await updateDoc(ref, permisos);
   }
@@ -368,6 +379,108 @@ const PermisosPanel = ({ email, isDark }) => {
   );
 };
 
+// ─── Panel de FERRETERÍA BASE (global, solo admin) ────────────────────────────────
+const FerreteriaBasePanel = ({ isDark }) => {
+  const { ferreteriaBase } = useFerreteriaBase();
+  const [abierto, setAbierto] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [editId, setEditId] = useState(null); // id en edición o 'nuevo'
+  const [form, setForm] = useState({ nombre: '', codigo: '', detalle: '' });
+  const [busca, setBusca] = useState('');
+
+  const cardBg = isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200';
+  const inputCl = `w-full px-3 py-2 rounded-lg border-2 text-sm ${isDark ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`;
+
+  const persistir = async (items) => {
+    setGuardando(true);
+    try { await guardarFerreteriaBase(items); }
+    catch (e) { console.error(e); alert('No se pudo guardar (¿permisos de admin?).'); }
+    finally { setGuardando(false); }
+  };
+
+  const abrirNuevo = () => { setEditId('nuevo'); setForm({ nombre: '', codigo: '', detalle: '' }); };
+  const abrirEdit = (it) => { setEditId(it.id); setForm({ nombre: it.nombre || '', codigo: it.codigo || '', detalle: it.detalle || '' }); };
+  const cancelar = () => { setEditId(null); setForm({ nombre: '', codigo: '', detalle: '' }); };
+
+  const guardarItem = async () => {
+    const nombre = (form.nombre || '').trim();
+    if (!nombre) return;
+    let items;
+    if (editId === 'nuevo') {
+      items = [...ferreteriaBase, { id: `b_${Date.now()}`, nombre, codigo: (form.codigo || '').trim(), detalle: (form.detalle || '').trim() }];
+    } else {
+      items = ferreteriaBase.map(it => it.id === editId ? { ...it, nombre, codigo: (form.codigo || '').trim(), detalle: (form.detalle || '').trim() } : it);
+    }
+    await persistir(items);
+    cancelar();
+  };
+
+  const borrarItem = async (id) => {
+    if (!confirm('¿Borrar esta ferretería base?')) return;
+    await persistir(ferreteriaBase.filter(it => it.id !== id));
+  };
+
+  const cargarInicial = async () => {
+    if (!confirm(`Cargar la lista inicial de ${FERRETERIA_BASE_DEFAULT.length} ferreterías? (reemplaza la base actual)`)) return;
+    await persistir(FERRETERIA_BASE_DEFAULT);
+  };
+
+  const lista = ferreteriaBase.filter(it => !busca || (it.nombre || '').toLowerCase().includes(busca.toLowerCase()));
+
+  return (
+    <div className={`mb-4 rounded-2xl border overflow-hidden ${cardBg}`}>
+      <button onClick={() => setAbierto(v => !v)} className={`w-full flex items-center gap-3 px-4 py-3 ${isDark ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50'}`}>
+        <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shrink-0"><Lock size={16} className="text-white" strokeWidth={2.5} /></div>
+        <div className="flex-1 text-left">
+          <p className={`text-sm font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Ferretería base (global)</p>
+          <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{ferreteriaBase.length} ítems {guardando ? '· guardando…' : ''}</p>
+        </div>
+        {abierto ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
+      </button>
+
+      {abierto && (
+        <div className="px-4 pb-4 space-y-2">
+          <div className="flex gap-2">
+            <button onClick={abrirNuevo} className="flex-1 py-2 rounded-lg bg-slate-900 text-white text-xs font-black flex items-center justify-center gap-1 active:scale-95"><Plus size={14} /> Agregar</button>
+            {ferreteriaBase.length === 0 && (
+              <button onClick={cargarInicial} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-xs font-black active:scale-95">Cargar lista inicial ({FERRETERIA_BASE_DEFAULT.length})</button>
+            )}
+          </div>
+
+          {editId && (
+            <div className={`rounded-xl border-2 p-3 space-y-2 ${isDark ? 'border-slate-600 bg-slate-900' : 'border-slate-300 bg-slate-50'}`}>
+              <input autoFocus placeholder="Nombre (se muestra en la app)" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} className={inputCl} />
+              <input placeholder="Código (interno)" value={form.codigo} onChange={e => setForm({ ...form, codigo: e.target.value })} className={inputCl} />
+              <input placeholder="Detalle (interno)" value={form.detalle} onChange={e => setForm({ ...form, detalle: e.target.value })} className={inputCl} />
+              <div className="flex gap-2">
+                <button onClick={cancelar} className={`flex-1 py-2 rounded-lg text-xs font-bold border-2 ${isDark ? 'border-slate-600 text-slate-300' : 'border-slate-300 text-slate-600'}`}>Cancelar</button>
+                <button onClick={guardarItem} disabled={!form.nombre.trim() || guardando} className="flex-1 py-2 rounded-lg bg-green-600 text-white text-xs font-black disabled:opacity-40">Guardar</button>
+              </div>
+            </div>
+          )}
+
+          {ferreteriaBase.length > 6 && (
+            <input placeholder="Buscar…" value={busca} onChange={e => setBusca(e.target.value)} className={inputCl} />
+          )}
+
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {lista.map(it => (
+              <div key={it.id} className={`rounded-lg border px-3 py-2 flex items-center gap-2 ${isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{it.nombre}</p>
+                  <p className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{it.codigo || 's/código'} · {it.detalle || 's/detalle'}</p>
+                </div>
+                <button onClick={() => abrirEdit(it)} className={`w-8 h-8 flex items-center justify-center rounded-lg border-2 ${isDark ? 'border-slate-600 text-slate-300' : 'border-slate-300 text-slate-600'} active:scale-95`}><span className="text-[10px] font-black">EDIT</span></button>
+                <button onClick={() => borrarItem(it.id)} className="w-8 h-8 flex items-center justify-center rounded-lg border-2 border-red-300 text-red-500 active:scale-95"><Trash2 size={14} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Panel de errores ───────────────────────────────────────────────────────────
 
 const ErroresPanel = ({ errores, isDark, onDelete }) => {
@@ -456,6 +569,22 @@ const PW_KEY = (uid) => `kipo_admin_pw_${uid}`;
 
 const UsuarioCard = ({ usuario, isDark, theme, onEntrarComo, errores = [], onDeleteError }) => {
   const [expandido, setExpandido] = useState(false);
+  // Perfil (nivel) del usuario — editable por el admin aquí mismo
+  const [perfilU, setPerfilU] = useState(normalizarPerfil(usuario.perfil));
+  const [guardandoPerfil, setGuardandoPerfil] = useState(false);
+  const cambiarPerfilUsuario = async (nuevo) => {
+    if (guardandoPerfil || nuevo === perfilU || !usuario.email) return;
+    setGuardandoPerfil(true);
+    const anterior = perfilU;
+    setPerfilU(nuevo);
+    try {
+      await updateDoc(doc(db, 'usuarios', usuario.email), { perfil: nuevo });
+    } catch (e) {
+      console.error('Cambiar perfil:', e);
+      setPerfilU(anterior);
+    }
+    setGuardandoPerfil(false);
+  };
   const [tabActiva, setTabActiva] = useState('PROYECTOS');
   const [proyectos, setProyectos] = useState(null);
   const [cargando, setCargando] = useState(false);
@@ -616,6 +745,20 @@ const UsuarioCard = ({ usuario, isDark, theme, onEntrarComo, errores = [], onDel
           }
         </div>
       </button>
+
+      {/* Perfil (nivel) del usuario — fila propia, botones estilo app */}
+      <div className="px-4 pb-3 flex gap-1.5">
+        {PERFILES.map(pf => (
+          <button key={pf.id} onClick={() => cambiarPerfilUsuario(pf.id)} disabled={guardandoPerfil}
+            className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-wide border-2 transition-all active:scale-95 disabled:opacity-50 ${
+              perfilU === pf.id
+                ? 'bg-orange-500 border-orange-600 text-white shadow-sm'
+                : isDark ? 'border-slate-600 text-slate-400' : 'border-slate-300 text-slate-500'
+            }`}>
+            {pf.label}
+          </button>
+        ))}
+      </div>
       {mostrarInputPw && (
         <div className={`border-t px-4 py-3 flex flex-col gap-2 ${isDark ? 'border-slate-700 bg-slate-800/60' : 'border-slate-100 bg-slate-50'}`}
           onClick={e => e.stopPropagation()}>
@@ -833,7 +976,7 @@ const NuevoUsuarioForm = ({ isDark, theme, onCreado, onCancelar }) => {
 
 // ─── Vista principal ────────────────────────────────────────────────────────────
 
-const VistaAdmin = ({ theme, isDark, onVolver, onLoginComo }) => {
+const VistaAdmin = ({ theme, isDark, onVolver, onLoginComo, esAdmin = false, perfilActivo = 'claro', perfilPreview = null, onCambiarPerfil }) => {
   const [usuarios, setUsuarios] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -910,6 +1053,36 @@ const VistaAdmin = ({ theme, isDark, onVolver, onLoginComo }) => {
 
       {/* Sección Usuarios */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
+
+        {/* Switcher de PERFIL empresarial (preview del admin) */}
+        {esAdmin && onCambiarPerfil && (
+          <div className={`mb-4 rounded-2xl border-2 ${theme.border} p-3 ${isDark ? 'bg-slate-800' : 'bg-white'}`}>
+            <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Perfil (vista previa)</p>
+            <div className="flex gap-2">
+              {PERFILES.map(pf => (
+                <button
+                  key={pf.id}
+                  onClick={() => onCambiarPerfil(pf.id)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all active:scale-95 ${
+                    perfilActivo === pf.id ? 'bg-orange-500 text-white shadow-sm' : isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {pf.label}
+                </button>
+              ))}
+            </div>
+            <p className={`text-[10px] mt-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              Cambia solo TU vista para probar cada perfil. Activo: <b>{(perfilActivo || 'claro').toUpperCase()}</b>{perfilPreview ? ' (preview)' : ''}.
+            </p>
+          </div>
+        )}
+
+        {/* Inspector de fotos huérfanas (solo admin) */}
+        {esAdmin && <InspectorHuerfanas isDark={isDark} />}
+
+        {/* Ferretería base global (solo admin) */}
+        {esAdmin && <FerreteriaBasePanel isDark={isDark} />}
+
         {mostrarFormNuevo && (
           <div className="mb-4">
             <NuevoUsuarioForm

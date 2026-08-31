@@ -1,11 +1,67 @@
-import React, { useState, useRef } from 'react';
-import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X, RotateCcw, Check } from 'lucide-react';
 import { Modal, ThemedInput } from './UI';
+import { DATA_INICIAL, FERRETERIA_BASE_DEFAULT, VINCULOS_FERRETERIA } from '../data/constantes';
+import { useFerreteriaBase } from '../hooks/useFerreteriaBase';
 
 // --- CONFIGURADOR (FINAL: Textos Blancos en Modo Oscuro) ---
-export default function Configurador({ config, saveConfig, volver, modalState = {}, theme, tab, setTab, seccionAbierta, setSeccionAbierta }) {
+export default function Configurador({ config, saveConfig, volver, modalState = {}, theme, tab, setTab, seccionAbierta, setSeccionAbierta, perfilActivo = 'avanzado' }) {
   const { modalOpen, setModalOpen, tempData, setTempData, setConfirmData, setAlertData } = modalState;
-  
+  // BÁSICO: armados y ferretería no aplican (su tipo levantamiento no los usa)
+  const tabsVisibles = perfilActivo === 'basico' ? ['datos'] : ['armados', 'ferreteria', 'datos'];
+  useEffect(() => {
+    if (!tabsVisibles.includes(tab)) setTab('datos');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, perfilActivo]);
+  const { ferreteriaBase } = useFerreteriaBase();
+  const [ferrYaExiste, setFerrYaExiste] = useState(null); // nombre encontrado en el buscador
+  const [buscaArmado, setBuscaArmado] = useState(''); // buscador dentro del armado
+
+  // Importar / restaurar la lista base: pone TODOS los ítems de la base (con su MISMO id,
+  // así no se rompe el vínculo con proyectos) y quita las que el usuario creó (id 'f_').
+  const importarBase = () => {
+    const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
+    const creadasPropias = config.catalogoFerreteria.filter(f => String(f.id).startsWith('f_'));
+    const ejecutar = () => {
+      const nueva = base.map(b => ({ id: b.id, nombre: b.nombre, unidad: 'und', visible: true, codigo: b.codigo || '', detalle: b.detalle || '' }));
+      saveConfig({ ...config, catalogoFerreteria: nueva });
+      setAlertData?.({ title: 'Lista base cargada', message: `Se cargaron ${nueva.length} ferreterías de la base.`, theme });
+    };
+    if (creadasPropias.length > 0) {
+      setConfirmData?.({
+        title: 'Restaurar lista base',
+        message: `Vas a volver a la lista base. Se ELIMINARÁN las ${creadasPropias.length} ferreterías que agregaste tú y perderán su vínculo con los proyectos. Las de la base se mantienen. ¿Continuar?`,
+        actionText: 'RESTAURAR', theme,
+        onConfirm: () => { setConfirmData(null); ejecutar(); },
+      });
+    } else {
+      ejecutar();
+    }
+  };
+
+  // Re-agrega a la lista del usuario una ferretería que está en la BASE pero él borró.
+  // Usa su MISMO id (b..) + codigo/detalle, así vuelve tal cual la base. Va ARRIBA.
+  const agregarDesdeBase = (b) => {
+    const yaEsta = config.catalogoFerreteria.some(f => f.id === b.id || (f.nombre || '').toLowerCase() === (b.nombre || '').toLowerCase());
+    if (yaEsta) return;
+    const nuevo = { id: b.id, nombre: b.nombre, unidad: 'und', visible: true, codigo: b.codigo || '', detalle: b.detalle || '' };
+    saveConfig({ ...config, catalogoFerreteria: [nuevo, ...config.catalogoFerreteria] });
+    setModalOpen(null);
+    setTempData({ ...tempData, nombre: '' });
+  };
+
+  // Botón "Agregar" del buscador: si el texto coincide EXACTO con una de la base (que no
+  // tenés), la trae de la base; si no, la crea como nueva. Nada si ya la tenés.
+  const agregarBuscado = () => {
+    const q = (tempData.nombre || '').trim();
+    if (!q) return;
+    if (config.catalogoFerreteria.some(f => (f.nombre || '').toLowerCase() === q.toLowerCase())) return;
+    const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
+    const baseMatch = base.find(b => (b.nombre || '').toLowerCase() === q.toLowerCase() && !config.catalogoFerreteria.some(f => f.id === b.id));
+    if (baseMatch) agregarDesdeBase(baseMatch);
+    else crearFerreteria();
+  };
+
   // Helpers (Sin cambios)
   const crearArmado = () => {
     if(!tempData.nombre) return;
@@ -30,7 +86,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       listaOrden: defaultOrden,
       snapshot: JSON.stringify({ itemsSeleccion: {}, listaOrden: defaultOrden }),
     });
-    setModalOpen('SELECCIONAR_ITEMS_ARMADO');
+    setBuscaArmado(''); setModalOpen('SELECCIONAR_ITEMS_ARMADO');
   };
 
   const guardarArmadoConItems = () => {
@@ -52,23 +108,24 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
     }
     setModalOpen(null);
   };
-  const crearFerreteria = () => { 
-    if(!tempData.nombre || !tempData.unidad) return; 
-    
+  const crearFerreteria = () => {
+    if(!tempData.nombre) return;
+
     // Validar que no exista nombre duplicado
     const nombreExiste = config.catalogoFerreteria.some(f => f.nombre.toLowerCase() === tempData.nombre.toLowerCase());
     if (nombreExiste) {
-      setAlertData({ 
-        title: 'Nombre duplicado', 
+      setAlertData({
+        title: 'Nombre duplicado',
         message: `Ya existe una ferretería con el nombre "${tempData.nombre}". Por favor usa otro nombre.`,
-        theme: theme 
+        theme: theme
       });
       return;
     }
-    
-    const nuevo = { id: `f_${Date.now()}`, nombre: tempData.nombre, unidad: tempData.unidad, visible: true };
-    saveConfig({ ...config, catalogoFerreteria: [...config.catalogoFerreteria, nuevo] }); 
-    setModalOpen(null); 
+
+    // El usuario solo agrega el NOMBRE (ferretería local); unidad por defecto 'und'.
+    const nuevo = { id: `f_${Date.now()}`, nombre: tempData.nombre, unidad: 'und', visible: true };
+    saveConfig({ ...config, catalogoFerreteria: [nuevo, ...config.catalogoFerreteria] });
+    setModalOpen(null);
   };
   const agregarMaterial = () => { 
     if(!tempData.matId || !tempData.cant) return; 
@@ -286,16 +343,22 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
   return (
     <div className={`flex-1 flex flex-col ${theme.bg} overflow-hidden relative`}>
 
-      <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}> 
+      <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
           <button onClick={() => { if (editId) setEditId(null); volver(); }}>
             <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
-          </button> 
-          <span className={`font-black ${theme.text} text-lg uppercase`}>Configuración</span> 
-          <div className="w-6"></div> 
+          </button>
+          <span className={`font-black ${theme.text} text-lg uppercase`}>Configuración</span>
+          <button
+            onClick={importarBase}
+            title="Importar / restaurar lista base"
+            className="p-1.5 rounded-xl bg-slate-900 border-2 border-slate-900 active:scale-95 transition-all"
+          >
+            <RotateCcw size={16} className="text-white" strokeWidth={2.5} />
+          </button>
       </div>
       
       <div className={`flex ${theme.header} border-b-2 ${theme.border} shrink-0`}> 
-          {['armados', 'ferreteria', 'datos'].map(t => (
+          {tabsVisibles.map(t => (
               <button 
                 key={t} 
                 onClick={() => { 
@@ -311,15 +374,15 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       
       <div className="flex-1 overflow-y-auto p-3">
 
-  {tab === 'armados' && ( 
-            <div className="space-y-4 pb-24"> 
-                
-                <button 
-                    onClick={() => { setTempData({}); setModalOpen('CREAR_ARMADO'); }} 
+  {tab === 'armados' && (
+            <div className="space-y-4 pb-24">
+
+                <button
+                    onClick={() => { setTempData({}); setModalOpen('CREAR_ARMADO'); }}
                     className={`w-full py-3 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500 transition-all bg-transparent`}
                 >
                     + Crear Armado
-                </button> 
+                </button>
                 
                 <div className="space-y-3">
                     {config.armados.map(arm => {
@@ -348,18 +411,18 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                                               const restIds = config.catalogoFerreteria.filter(f => !savedIds.includes(f.id)).map(f => f.id);
                                               const listaOrden = [...savedIds, ...restIds];
                                               setTempData({ nuevoArmadoId: arm.id, nuevoArmadoNombre: arm.nombre, itemsSeleccion, listaOrden, snapshot: JSON.stringify({ itemsSeleccion, listaOrden }), modoEdicion: true });
-                                              setModalOpen('SELECCIONAR_ITEMS_ARMADO');
+                                              setBuscaArmado(''); setModalOpen('SELECCIONAR_ITEMS_ARMADO');
                                             }}
                                             className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-black text-slate-800 transition-colors opacity-60 hover:opacity-100"
                                         >
                                             <Edit3 size={18} strokeWidth={2.5}/>
                                         </button>
 
-                                        <DeleteButton 
+                                        <DeleteButton
                                             onClick={() => borrarArmado(arm.id)}
-                                            className={`w-9 h-9 flex items-center justify-center rounded-lg border-2 ${theme.border} text-red-600 bg-red-50 hover:bg-red-100 transition-colors`}
+                                            className="w-9 h-9 flex items-center justify-center rounded-lg border-2 bg-red-600 border-red-800 text-white hover:bg-red-700 active:scale-90 transition-all"
                                         >
-                                            <Trash2 size={18} strokeWidth={2.5}/>
+                                            <Trash2 size={18} strokeWidth={2.5} className="text-white"/>
                                         </DeleteButton>
 
                                         <button 
@@ -400,7 +463,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                                                         </span>
                                                         <div className="flex items-center gap-2">
                                                             <span className={`text-xs font-black ${theme.text} opacity-70`}>
-                                                                {item.cant} {matInfo?.unidad}
+                                                                {item.cant}
                                                             </span>
                                                             <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${esPrimaria ? 'border-green-500 text-green-600' : 'border-orange-500 text-orange-600'}`}>
                                                                 {esPrimaria ? 'P' : 'S'}
@@ -419,30 +482,31 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
             </div> 
         )}
 
-{tab === 'ferreteria' && ( 
+{tab === 'ferreteria' && (
             <div className="space-y-3 pb-24">
-                <button onClick={() => { setTempData({}); setModalOpen('CREAR_FERR'); }} className={`w-full py-3 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500 transition-all bg-transparent`}>+ Crear Ferretería</button> 
-                
+                <button onClick={() => { setTempData({}); setModalOpen('CREAR_FERR'); }} className={`w-full py-3 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500 transition-all bg-transparent`}>+ Crear Ferretería</button>
+
+                {config.catalogoFerreteria.length === 0 && (
+                  <p className={`text-center text-xs ${theme.textSec || 'text-slate-400'} py-4`}>Tu lista está vacía. Presiona <b>Importar base</b> para cargar el catálogo.</p>
+                )}
+
                 <div className="space-y-2">
-                  {config.catalogoFerreteria.map(f => ( 
-                    <div key={f.id} className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 flex items-center justify-between transition-all hover:shadow-md`}> 
-                      
-                      <div className="flex items-baseline gap-2 overflow-hidden">
+                  {config.catalogoFerreteria.map(f => (
+                    <div key={f.id} className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 flex items-center justify-between transition-all hover:shadow-md`}>
+
+                      <div className="flex items-center gap-2 overflow-hidden">
                         <span className={`font-bold text-sm ${theme.text} truncate`}>{f.nombre}</span>
-                        <span className="text-[10px] opacity-50 font-black uppercase shrink-0">{f.unidad}</span>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 shrink-0">
                         <DeleteButton
                            onClick={() => borrarFerreteria(f.id)}
-                           className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-black bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-600 transition-colors"
+                           className="w-9 h-9 flex items-center justify-center rounded-lg border-2 bg-red-600 border-red-800 text-white hover:bg-red-700 active:scale-90 transition-all"
                         >
-                           <Trash2 size={16} strokeWidth={2.5}/>
+                           <Trash2 size={16} strokeWidth={2.5} className="text-white"/>
                         </DeleteButton>
-
                         <div className={`h-6 w-px ${theme.border} opacity-50`}></div>
-
-                        <button 
+                        <button
                           onClick={() => {
                              const nuevos = config.catalogoFerreteria.map(item => item.id === f.id ? {...item, visible: !item.visible} : item);
                              saveConfig({...config, catalogoFerreteria: nuevos});
@@ -452,10 +516,10 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                           {f.visible === true ? <Eye size={16} strokeWidth={2.5}/> : <EyeOff size={16} strokeWidth={2.5}/>}
                         </button>
                       </div>
-                    </div> 
-                  ))} 
+                    </div>
+                  ))}
                 </div>
-            </div> 
+            </div>
         )}
         
 {tab === 'datos' && (
@@ -498,12 +562,51 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       </Modal>
 
 
-      <Modal isOpen={modalOpen === 'CREAR_FERR'} onClose={() => setModalOpen(null)} title="Nueva Ferretería" theme={theme}> 
-        <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} /> 
-        <div className="flex gap-2 my-4"> 
-          {['und', 'mts'].map(u => ( <button key={u} onClick={() => setTempData({...tempData, unidad: u})} className={`flex-1 py-4 rounded-xl font-bold border-2 text-lg ${tempData.unidad === u ? 'bg-slate-900 text-white' : theme.input}`}> {u.toUpperCase()} </button> ))} 
-        </div> 
-        <button onClick={crearFerreteria} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">REGISTRAR</button> 
+
+      <Modal isOpen={modalOpen === 'CREAR_FERR'} onClose={() => { setModalOpen(null); setFerrYaExiste(null); }} title="Nueva Ferretería" theme={theme} topAnchor>
+        {ferrYaExiste ? (
+          <div className="text-center space-y-3 py-2">
+            <p className={`text-sm ${theme.textSec || 'text-slate-500'}`}>Esta ferretería ya existe en tu configuración:</p>
+            <p className={`font-black text-lg ${theme.text}`}>{ferrYaExiste}</p>
+            <button onClick={() => { setFerrYaExiste(null); setTempData({ ...tempData, nombre: '' }); }} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg">AGREGAR OTRA FERRETERÍA</button>
+          </div>
+        ) : (
+          <>
+            <ThemedInput autoFocus placeholder="Escribe para buscar o crear…" val={tempData.nombre || ''} onChange={e => setTempData({ ...tempData, nombre: e.target.value })} theme={theme} />
+            {(() => {
+              const q = (tempData.nombre || '').trim().toLowerCase();
+              if (!q) return null;
+              const userList = config.catalogoFerreteria;
+              const enUser = (nom) => userList.some(f => (f.nombre || '').toLowerCase() === (nom || '').toLowerCase());
+              // Coincidencias en TU lista (ya las tenés → "ya existe")
+              const matchesUser = userList.filter(f => (f.nombre || '').toLowerCase().includes(q));
+              // Coincidencias en la BASE que borraste (no están en tu lista → se pueden re-agregar)
+              const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
+              const matchesBase = base.filter(b => (b.nombre || '').toLowerCase().includes(q) && !enUser(b.nombre));
+              return (
+                <div className="mt-3 space-y-1.5 max-h-56 overflow-y-auto">
+                  {matchesUser.map(f => (
+                    <button key={f.id} onClick={() => setFerrYaExiste(f.nombre)} className={`w-full text-left px-3 py-2.5 rounded-lg border-2 ${theme.border} ${theme.card} ${theme.text} text-sm font-bold active:scale-95 transition-all`}>
+                      {f.nombre}
+                    </button>
+                  ))}
+                  {/* De la base (borrada): al tocar SOLO completa el input; se agrega con el botón de abajo */}
+                  {matchesBase.map(b => (
+                    <button key={b.id} onClick={() => setTempData({ ...tempData, nombre: b.nombre })} className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg border-2 border-dashed ${theme.border} ${theme.text} text-sm font-bold active:scale-95 transition-all`}>
+                      <span className="truncate">{b.nombre}</span>
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 shrink-0">base</span>
+                    </button>
+                  ))}
+                  {!enUser(q) && (
+                    <button onClick={agregarBuscado} className="w-full px-3 py-3 rounded-lg bg-brand-600 text-white text-sm font-black active:scale-95 transition-all">
+                      + Agregar “{(tempData.nombre || '').trim()}”
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </>
+        )}
       </Modal>
 
       <Modal isOpen={modalOpen === 'AGREGAR_MAT'} onClose={() => setModalOpen(null)} title="Agregar Ferretería" theme={theme} bottomSheet> 
@@ -516,7 +619,6 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
               className={`p-3 rounded-lg text-sm font-medium cursor-pointer mb-1 transition-colors flex justify-between items-center ${tempData.matId === f.id ? 'bg-slate-900 text-white shadow-md' : `${theme.text} hover:bg-slate-100`}`}
             > 
               <span className="font-bold">{f.nombre}</span> 
-              <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${tempData.matId === f.id ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>{f.unidad}</span> 
             </div> 
           ))} 
         </div> 
@@ -553,20 +655,49 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       {modalOpen === 'SELECCIONAR_ITEMS_ARMADO' && (() => {
         const itemsSeleccion = tempData.itemsSeleccion || {};
         const listaOrden = tempData.listaOrden || config.catalogoFerreteria.map(f => f.id);
-        const listaDisplay = listaOrden.map(id => config.catalogoFerreteria.find(f => f.id === id)).filter(Boolean);
+        let listaDisplay = listaOrden.map(id => config.catalogoFerreteria.find(f => f.id === id)).filter(Boolean);
 
+        // VÍNCULOS "van juntas": al ponerle cantidad a una del grupo, las demás se JUNTAN a
+        // su lado (aunque estén en 0) y salen resaltadas como SUGERENCIA (no obliga cantidad).
+        const normV = (s) => String(s || '').trim().toLowerCase();
+        const vinculoDe = {};
+        VINCULOS_FERRETERIA.forEach((grupo, gi) => {
+          listaDisplay.forEach(f => { if (grupo.includes(normV(f.nombre))) vinculoDe[f.id] = `vg${gi}`; });
+        });
+        const gruposActivos = new Set(listaDisplay.filter(f => (itemsSeleccion[f.id]?.cant || 0) > 0 && vinculoDe[f.id]).map(f => vinculoDe[f.id]));
+        if (gruposActivos.size) {
+          const res = []; const done = new Set();
+          for (const f of listaDisplay) {
+            if (done.has(f.id)) continue;
+            const vid = vinculoDe[f.id];
+            if (vid && gruposActivos.has(vid)) {
+              listaDisplay.filter(x => vinculoDe[x.id] === vid && !done.has(x.id)).forEach(m => { res.push(m); done.add(m.id); });
+            } else { res.push(f); done.add(f.id); }
+          }
+          listaDisplay = res;
+        }
+        const esSugerida = (id) => vinculoDe[id] && gruposActivos.has(vinculoDe[id]) && (itemsSeleccion[id]?.cant || 0) === 0;
+
+        // Buscador dentro del armado (filtra por nombre)
+        if (buscaArmado.trim()) {
+          const q = normV(buscaArmado);
+          listaDisplay = listaDisplay.filter(f => normV(f.nombre).includes(q));
+        }
+
+        // Regla simple: con cantidad (>0) SIEMPRE es primaria; en cero puede ser secundaria
+        // (o blanco). Al bajar a cero, una primaria queda en blanco (none).
         const updateCant = (ferrId, delta) => {
-          const current = itemsSeleccion[ferrId] || { cant: 0, tipo: 'primaria' };
-          const newCant = Math.max(0, current.cant + delta);
-          setTempData({ ...tempData, itemsSeleccion: { ...itemsSeleccion, [ferrId]: { ...current, cant: newCant } } });
+          const current = itemsSeleccion[ferrId] || { cant: 0, tipo: 'none' };
+          const newCant = Math.max(0, (current.cant || 0) + delta);
+          const tipo = newCant > 0 ? 'primaria' : (current.tipo === 'secundaria' ? 'secundaria' : 'none');
+          setTempData({ ...tempData, itemsSeleccion: { ...itemsSeleccion, [ferrId]: { ...current, cant: newCant, tipo } } });
         };
+        // El botón P/S solo actúa cuando la cantidad es CERO: alterna blanco ↔ secundaria.
+        // Con cantidad es primaria fija (no se toca).
         const toggleTipo = (ferrId) => {
           const current = itemsSeleccion[ferrId] || { cant: 0, tipo: 'none' };
-          const tieneCant = (current.cant || 0) > 0;
-          let nextTipo;
-          if (current.tipo === 'none' || !current.tipo) nextTipo = 'primaria';
-          else if (current.tipo === 'primaria') nextTipo = 'secundaria';
-          else nextTipo = tieneCant ? 'primaria' : 'none'; // con cantidad no puede ir a none
+          if ((current.cant || 0) > 0) return; // con cantidad = primaria, no cambia
+          const nextTipo = current.tipo === 'secundaria' ? 'none' : 'secundaria';
           setTempData({ ...tempData, itemsSeleccion: { ...itemsSeleccion, [ferrId]: { ...current, tipo: nextTipo } } });
         };
         const aplicarOrden = () => {
@@ -607,6 +738,17 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
               </button>
             </div>
 
+            {/* Buscador */}
+            <div className={`px-3 pt-3 shrink-0 ${theme.bg}`}>
+              <input
+                type="text"
+                placeholder="Buscar ferretería…"
+                value={buscaArmado}
+                onChange={e => setBuscaArmado(e.target.value)}
+                className={`w-full px-4 py-2.5 rounded-lg border-2 ${theme.border} ${theme.bg} ${theme.text} font-bold placeholder-slate-400 focus:border-blue-500 focus:outline-none text-sm`}
+              />
+            </div>
+
             {/* Lista de ferreterías */}
             <div className="flex-1 overflow-y-auto p-3 space-y-px">
               {listaDisplay.length === 0 ? (
@@ -618,26 +760,34 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                 const esPrimaria = tipo === 'primaria';
                 const esSecundaria = tipo === 'secundaria';
                 const tieneSelTipo = esPrimaria || esSecundaria;
+                const sugerida = esSugerida(f.id);
                 // Color de fondo de fila
-                const filaBg = tieneCant
-                  ? (esPrimaria ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200')
-                  : tieneSelTipo
-                    ? (esPrimaria ? 'bg-green-50/40 border border-green-100' : 'bg-orange-50/40 border border-orange-100')
-                    : `${theme.card} border border-transparent`;
-                // Estilo botón P/S
-                const btnCls = tieneSelTipo
-                  ? (esPrimaria ? 'border-green-500 text-green-600' : 'border-orange-500 text-orange-600')
-                  : 'border-slate-900 text-slate-400';
+                const filaBg = sugerida
+                  ? 'bg-purple-50/40 border border-dashed border-purple-400'
+                  : tieneCant
+                    ? (esPrimaria ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200')
+                    : tieneSelTipo
+                      ? (esPrimaria ? 'bg-green-50/40 border border-green-100' : 'bg-orange-50/40 border border-orange-100')
+                      : `${theme.card} border border-transparent`;
+                // Botón P/S: P verde (con cantidad) · S naranja (secundaria) · S gris tenue (blanco)
+                const btnLetra = esPrimaria ? 'P' : 'S';
+                const btnCls = esPrimaria
+                  ? 'border-green-500 text-green-600'
+                  : esSecundaria
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-slate-300 text-slate-300';
                 return (
                   <div key={f.id} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors ${filaBg}`}>
-                    <span className={`flex-1 font-bold text-sm ${theme.text} truncate`}>{f.nombre}</span>
-                    <span className="text-[9px] font-black opacity-40 uppercase shrink-0">{f.unidad}</span>
+                    <span className={`flex-1 font-bold text-sm ${theme.text} truncate flex items-center gap-1.5`}>
+                      {f.nombre}
+                      {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">sugerida</span>}
+                    </span>
                     {/* Toggle P/S — siempre clickeable */}
                     <button
                       onClick={() => toggleTipo(f.id)}
-                      className={`w-8 h-8 rounded-lg text-[11px] font-black border-2 bg-transparent transition-all shrink-0 ${btnCls}`}
+                      className={`w-8 h-8 rounded-lg text-[11px] font-black border-2 bg-transparent transition-all shrink-0 ${btnCls} ${tieneCant ? 'opacity-60' : ''}`}
                     >
-                      {esSecundaria ? 'S' : 'P'}
+                      {btnLetra}
                     </button>
                     {/* Contador */}
                     <div className={`flex items-center border-2 ${theme.border} rounded-lg overflow-hidden shrink-0`}>

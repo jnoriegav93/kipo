@@ -94,10 +94,11 @@ async function estamparEnWorker(imageBitmap, datos, logoBase64, stampConfig, qua
     fitFont(ctx, proyTxt, c1MaxW, fs, true);
     ctx.fillText(proyTxt, hPad, r1Y);
 
-    const nro = String(datos.numero || '-');
-    const pasivo = datos.pasivo || datos.codFat || '-';
+    // Sin guion cuando no hay dato; el separador "|" solo si AMBOS existen.
+    const nro = String(datos.numero || '').trim();
+    const pasivo = String(datos.pasivo || datos.codFat || '').trim();
     let idTxt = '';
-    if (mostrarNroPoste && mostrarCodFat) idTxt = `${nro}  |  ${pasivo}`;
+    if (mostrarNroPoste && mostrarCodFat) idTxt = [nro, pasivo].filter(Boolean).join('  |  ');
     else if (mostrarNroPoste) idTxt = nro;
     else if (mostrarCodFat) idTxt = pasivo;
     else idTxt = nro;

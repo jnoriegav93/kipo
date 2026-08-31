@@ -65,3 +65,12 @@ details > summary {
 .animate-progress {
   animation: progress 2s ease-out forwards;
 }
+/* Punto en estado BORRADOR (sin terminar): parpadea LLEGANDO a su color normal
+   (no atenuado) para distinguirlo de un confirmado. Retomar = EDITAR, descartar = BORRAR. */
+.punto-borrador {
+  animation: borrador-pulse 1.3s ease-in-out infinite;
+}
+@keyframes borrador-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

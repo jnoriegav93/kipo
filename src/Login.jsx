@@ -36,6 +36,9 @@ const Login = ({ onLogin, initialBlocked }) => {
       const userCredential = await signInWithEmailAndPassword(auth, emailFinal, password);
       const user = userCredential.user;
 
+      // Esperar a que el token esté listo antes de leer Firestore
+      await user.getIdToken();
+
       const userRef = doc(db, "usuarios", user.email);
       const userSnap = await getDoc(userRef);
 
@@ -44,13 +47,13 @@ const Login = ({ onLogin, initialBlocked }) => {
         const permitidos = datos.dispositivosAutorizados || [];
 
         if (permitidos.includes(huellaActual)) {
-          onLogin({ 
-            name: datos.nombre || user.email.split('@')[0], 
+          onLogin({
+            name: datos.nombre || user.email.split('@')[0],
             uid: user.uid,
             email: user.email
           });
         } else {
-          await signOut(auth); 
+          await signOut(auth);
           setDeviceCode(huellaActual);
           setBloqueoDispositivo(true);
         }
@@ -60,8 +63,15 @@ const Login = ({ onLogin, initialBlocked }) => {
       }
     } catch (error) {
       console.error(error);
-      if(error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') setErrorMsg("Usuario o contraseña incorrectos.");
-      else setErrorMsg("Error de conexión o credenciales.");
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') {
+        setErrorMsg("Usuario o contraseña incorrectos.");
+      } else if (!auth.currentUser) {
+        // auth.currentUser es null → useAuth ya cerró sesión por dispositivo no autorizado
+        setDeviceCode(generarHuellaDigital());
+        setBloqueoDispositivo(true);
+      } else {
+        setErrorMsg("Error de conexión o credenciales.");
+      }
     } finally {
       setLoading(false);
     }

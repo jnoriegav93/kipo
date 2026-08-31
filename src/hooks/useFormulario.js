@@ -13,6 +13,7 @@ export const useFormulario = () => {
     fuerza: null,
     material: null,
     tipo: null,
+    tipoPoste: null,   // Tipo de poste: Tercero / Eléctrico / Propio (opciones fijas)
     cables: null,
 
     // ARRAYS Y OBJETOS OBLIGATORIOS (Evitan el crash)

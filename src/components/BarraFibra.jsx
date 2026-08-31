@@ -18,7 +18,9 @@ export default function BarraFibra({
   setFibrasVisibles,
   totalFibras,
   onCerrar,
-  setPuntosRecorrido
+  setPuntosRecorrido,
+  nombreFibra = '',
+  setNombreFibra
 }) {
   const [barraCapacidadAbierta, setBarraCapacidadAbierta] = useState(false);
   const refBarra = useRef(null);
@@ -51,6 +53,19 @@ export default function BarraFibra({
 
   return (
     <div className="relative shrink-0 flex flex-col items-center justify-center w-full pointer-events-none" ref={refBarra}>
+      {/* Nombre del ramal: aparece en cuanto el trazo tiene al menos dos vértices */}
+      {puntosRecorrido.length >= 2 && !conexionSeleccionada && (
+        <div className={`pointer-events-auto mt-2 rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 px-2 py-1.5 shadow-xl backdrop-blur-sm`}>
+          <input
+            value={nombreFibra}
+            onChange={(e) => setNombreFibra?.(e.target.value)}
+            placeholder="NOMBRE DEL RAMAL (opcional)"
+            maxLength={60}
+            className={`w-56 bg-transparent outline-none text-[11px] font-black uppercase tracking-wide text-center ${isDark ? 'text-slate-100 placeholder:text-slate-500' : 'text-slate-800 placeholder:text-slate-400'}`}
+          />
+        </div>
+      )}
+
       {/* Barra principal flotante */}
       <div className={`pointer-events-auto mt-2 rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 px-2 py-1.5 flex items-center gap-1.5 shadow-xl backdrop-blur-sm`}>
 

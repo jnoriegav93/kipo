@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Eye, Edit3, Trash2, Plus, ArrowLeft, Cable, Move, X, Link2, Camera, FolderInput, Check } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Eye, EyeOff, Edit3, Trash2, Plus, ArrowLeft, Cable, Move, X, Link2, Camera, FolderInput, Check, Copy, Scissors, RefreshCw, CalendarPlus, CornerDownRight } from 'lucide-react';
 import { MapaReal } from '../components/Mapas';
 import BarraFibra from '../components/BarraFibra';
 
@@ -12,7 +12,7 @@ const haversine = (lat1, lng1, lat2, lng2) => {
 };
 
 const VistaMapa = ({
-  theme, mapStyle, mapViewState, setMapViewState, handleMapaClick,
+  theme, isDesktop = false, mapStyle, mapViewState, setMapViewState, handleMapaClick,
   puntosVisiblesMapa, iconSize, obtenerColorDia, puntoSeleccionado,
   handlePuntoClick, puntoTemporal, gpsTrigger, yaSaltoAlInicio,
   setYaSaltoAlInicio, isDark, verDetalle, iniciarEdicion,
@@ -40,6 +40,8 @@ const VistaMapa = ({
   setConexionSeleccionada,
   handleConexionClick,
   onGuardarFibra,
+  nombreFibra = '',
+  setNombreFibra,
   onEliminarConexion,
   onCambiarCapacidad,
   totalFibras,
@@ -49,20 +51,59 @@ const VistaMapa = ({
   menuEtiquetasAbierto = false,
   setMostrarEtiquetas,
   mostrarEtiquetas = { item: false, pasivo: false },
+  // Panel de días
+  menuDiasAbierto = false,
+  diasPanelData = [],
+  diaExpandido = null,
+  setDiaExpandido,
+  diasVisibles = [],
+  toggleVisibilidadDia,
+  cambiarColorDia,
+  uniformizarColorDias,
+  coloresDia = [],
+  proyectoActivoId = null,
   // Fotos en mapa
   fotosConCoordenadas = [],
   fotoPuntosActivo = false,
   onAsociarFoto,
+  onCapturarFotoMapa,
+  tabsConfig = {},
+  proyectoTipo,
   puntos = [],
   abrirCamaraDirecta,
+  puntoSinDia = false,
+  onAsignarDiasSueltos,
   // Modo reasignación de puntos
   modoMoverPuntos = false,
   puntosSeleccionadosMover = [],
   setPuntosSeleccionadosMover,
-  onEjecutarMoverPuntos,
+  onEjecutarCopiarCortar,
   onCancelarMoverPuntos,
   proyectosDestino = [],
+  // Modo ordenar (editar posición)
+  modoOrdenar = false,
+  esOrdenable,
+  ordenSeleccion = [],
+  setOrdenSeleccion,
+  guardandoOrden = false,
+  onGuardarOrden,
+  onReiniciarOrden,
+  onCancelarOrdenar,
+  // Corregir posición (mover varios puntos detrás de otro)
+  modoCorregir = null,
+  correccionSel = [],
+  setCorreccionSel,
+  ordenTrabajo = [],
+  huboCorreccion = false,
+  onIniciarCorreccion,
+  onPedirDestino,
+  onVolverASeleccion,
+  onAplicarCorreccion,
 }) => {
+  // REINICIAR es contextual. Sin correcciones hechas y sin nada marcado, lo que
+  // corresponde es salir del modo corregir, así que se anuncia como VOLVER.
+  const etiquetaReiniciar = (modoCorregir && correccionSel.length === 0 && !huboCorreccion)
+    ? 'VOLVER' : 'REINICIAR';
   const [fotoSeleccionada, setFotoSeleccionada] = useState(null);
   const [panelAsociarVisible, setPanelAsociarVisible] = useState(false);
   const [puntosProximos, setPuntosProximos] = useState([]);
@@ -71,6 +112,10 @@ const VistaMapa = ({
   const [asociando, setAsociando] = useState(false);
   const [showSelectorProyecto, setShowSelectorProyecto] = useState(false);
   const [confirmMoverData, setConfirmMoverData] = useState(null);
+  const [modoMoverAccion, setModoMoverAccion] = useState(null); // 'copiar' | 'cortar'
+  const fotoMapaInputRef = useRef(null);
+  const [pickerDestino, setPickerDestino] = useState(null); // { foto, puntoId } para foto sin sección
+  const [pickerTab, setPickerTab] = useState(null);
 
   const abrirPopup = (foto) => {
     setFotoSeleccionada(foto);
@@ -96,12 +141,18 @@ const VistaMapa = ({
     setMapViewState(prev => ({ ...prev, center: [punto.coords.lat, punto.coords.lng] }));
   };
 
-  const ejecutarAsociacion = async (foto, puntoId, forzar = false) => {
+  const ejecutarAsociacion = async (foto, puntoId, forzar = false, secId = null, itmId = null) => {
+    // Foto directa sin sección: pedir destino (sección + casillero) antes de asociar
+    if (!foto.sectionId && !secId) {
+      setPickerDestino({ foto, puntoId });
+      setPickerTab(null);
+      return;
+    }
     setAsociando(true);
-    const resultado = await onAsociarFoto?.(foto, puntoId, forzar);
+    const resultado = await onAsociarFoto?.(foto, puntoId, forzar, secId, itmId);
     setAsociando(false);
     if (resultado === 'existe') {
-      setConfirmReemplazar({ foto, puntoId });
+      setConfirmReemplazar({ foto, puntoId, secId, itmId });
       return;
     }
     if (resultado === 'ok') {
@@ -109,8 +160,19 @@ const VistaMapa = ({
       setPanelAsociarVisible(false);
       setPuntosProximos([]);
       setPuntoResaltado(null);
+      setPickerDestino(null);
+      setPickerTab(null);
     }
   };
+
+  // Estilos de botones flotantes (solo PC)
+  const pill = 'flex items-center gap-2 bg-white text-slate-900 font-black text-base rounded-2xl px-5 py-3 shadow-xl border border-slate-200 active:scale-95 transition-transform hover:bg-slate-50';
+  const pillOff = 'flex items-center gap-2 bg-white text-slate-400 font-black text-base rounded-2xl px-5 py-3 shadow-xl border border-slate-200 opacity-60 cursor-not-allowed';
+
+  // Etiqueta "proyecto - Ddía" del punto seleccionado (texto suelto sobre el mapa)
+  const puntoSelObj = puntoSeleccionado ? (puntosVisiblesMapa || []).find(p => p.id === puntoSeleccionado) : null;
+  const diaSelNum = puntoSelObj ? (diasPanelData.find(d => d.id === puntoSelObj.diaId)?.numero) : null;
+  const etiquetaPuntoSel = puntoSelObj ? `${(nombreProyecto || '').trim()}${diaSelNum != null ? ` - D${diaSelNum}` : ''}` : '';
 
   return (
     <div className="flex-1 relative h-full w-full overflow-hidden flex flex-col">
@@ -125,13 +187,30 @@ const VistaMapa = ({
             puntosVisiblesMapa={puntosVisiblesMapa}
             iconSize={iconSize}
             obtenerColorDia={obtenerColorDia}
-            puntoSeleccionado={modoMoverPuntos ? null : puntoSeleccionado}
-            handlePuntoClick={modoMoverPuntos
-              ? (e, id) => setPuntosSeleccionadosMover(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-              : handlePuntoClick
+            puntoSeleccionado={(modoMoverPuntos || modoOrdenar) ? null : puntoSeleccionado}
+            handlePuntoClick={modoCorregir
+              ? (e, id) => {
+                  if (esOrdenable && !esOrdenable(id)) return;
+                  if (modoCorregir === 'seleccion') {
+                    setCorreccionSel?.(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+                  } else if (!correccionSel.includes(id)) {
+                    // Destino: un punto marcado no puede ser su propio ancla
+                    onAplicarCorreccion?.(id);
+                  }
+                }
+              : modoOrdenar
+              ? (e, id) => { if (esOrdenable && !esOrdenable(id)) return; setOrdenSeleccion?.(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); }
+              : modoMoverPuntos
+                ? (e, id) => setPuntosSeleccionadosMover(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+                : handlePuntoClick
             }
             modoMoverPuntos={modoMoverPuntos}
             puntosSeleccionadosMover={puntosSeleccionadosMover}
+            modoOrdenar={modoOrdenar}
+            ordenSeleccion={ordenSeleccion}
+            modoCorregir={modoCorregir}
+            correccionSel={correccionSel}
+            ordenTrabajo={ordenTrabajo}
             puntoTemporal={puntoTemporal}
             modoFibra={modoFibra}
             dibujandoFibra={dibujandoFibra}
@@ -174,6 +253,8 @@ const VistaMapa = ({
               setCapacidadFibra={setCapacidadFibra}
               puntosRecorrido={puntosRecorrido}
               onGuardarFibra={onGuardarFibra}
+              nombreFibra={nombreFibra}
+              setNombreFibra={setNombreFibra}
               conexionSeleccionada={conexionSeleccionada}
               onEliminarConexion={onEliminarConexion}
               onCambiarCapacidad={onCambiarCapacidad}
@@ -341,7 +422,7 @@ const VistaMapa = ({
                   Cancelar
                 </button>
                 <button
-                  onClick={() => { const c = confirmReemplazar; setConfirmReemplazar(null); ejecutarAsociacion(c.foto, c.puntoId, true); }}
+                  onClick={() => { const c = confirmReemplazar; setConfirmReemplazar(null); ejecutarAsociacion(c.foto, c.puntoId, true, c.secId, c.itmId); }}
                   className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-black active:scale-95"
                 >
                   Reemplazar
@@ -353,11 +434,18 @@ const VistaMapa = ({
 
         {/* Info proyecto + botones flotantes (esquina superior derecha) */}
         {!modoSupervision && nombreProyecto && (
-          <div className="absolute top-2 right-3 z-40 flex flex-col items-end gap-1.5">
+          <div className={`absolute ${isDesktop ? 'top-20' : 'top-2'} right-3 z-40 flex flex-col items-end gap-1.5`}>
             {/* Overlay nombre */}
             <div className={`rounded-lg px-2 py-1 pointer-events-none ${proyectoEsCompartido ? 'bg-brand-500' : 'bg-slate-900'}`}>
               <p className="text-[11px] font-bold text-white leading-tight max-w-[200px] truncate uppercase">{nombreProyecto} · {totalPuntosProyecto} pts</p>
             </div>
+
+            {/* Aviso de puntos ocultos (cuando el panel de días está cerrado) */}
+            {!menuDiasAbierto && diasPanelData.some(d => d.count > 0 && !diasVisibles.includes(d.id)) && (
+              <div className="rounded-lg px-2 py-0.5 bg-amber-500 pointer-events-none">
+                <p className="text-[10px] font-black text-white leading-tight">Hay puntos ocultos</p>
+              </div>
+            )}
 
             {/* Botones ITEM / PASIVO */}
             {menuEtiquetasAbierto && (
@@ -374,6 +462,82 @@ const VistaMapa = ({
                 >
                   PASIVO
                 </button>
+              </div>
+            )}
+
+            {/* PANEL DE DÍAS */}
+            {menuDiasAbierto && (
+              <div className="flex flex-col gap-1 items-end max-h-[65vh] overflow-y-auto py-0.5">
+                {diasPanelData.length === 0 ? (
+                  <div className="bg-white border-2 border-slate-900 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-600 shadow-md">Sin días</div>
+                ) : (
+                  <>
+                    {/* Cuadro uniformizar color de todos los días */}
+                    {(() => {
+                      const colores = [...new Set(diasPanelData.map(d => d.color))];
+                      const colorComun = colores.length === 1 ? colores[0] : null;
+                      return (
+                        <button
+                          onClick={() => {
+                            const idx = colorComun ? coloresDia.indexOf(colorComun) : -1;
+                            const next = coloresDia[(idx + 1) % (coloresDia.length || 1)];
+                            if (uniformizarColorDias && proyectoActivoId) uniformizarColorDias(proyectoActivoId, next);
+                          }}
+                          className="w-9 h-9 rounded-lg border-2 border-slate-900 shadow-md active:opacity-80 shrink-0"
+                          style={{ backgroundColor: colorComun || '#9ca3af' }}
+                          title="Uniformizar color de todos los días"
+                        />
+                      );
+                    })()}
+
+                    {diasPanelData.map(dia => {
+                      const visible = diasVisibles.includes(dia.id);
+                      const expandido = diaExpandido === dia.id;
+                      const fechaCorta = (dia.fecha || '').replace(/(\d{4})/, m => m.slice(-2));
+                      return (
+                        <div key={dia.id} className="flex items-stretch rounded-lg border-2 border-slate-900 bg-white shadow-md overflow-hidden">
+                          {expandido && (
+                            <>
+                              {/* Color (cicla colores) — cuadrado, a la izquierda */}
+                              <button
+                                onClick={() => {
+                                  const idx = coloresDia.indexOf(dia.color);
+                                  const next = coloresDia[(idx + 1) % (coloresDia.length || 1)];
+                                  if (cambiarColorDia && proyectoActivoId) cambiarColorDia(proyectoActivoId, dia.id, next);
+                                }}
+                                className="w-9 border-r-2 border-slate-900 active:opacity-80"
+                                style={{ backgroundColor: dia.color }}
+                                title="Cambiar color"
+                              />
+                              {/* Info: cantidad de puntos (arriba, negro) + fecha (abajo, gris) */}
+                              <div className="flex flex-col justify-center px-2 py-1 border-r-2 border-slate-900">
+                                <span className="text-[11px] font-black text-slate-900 leading-none whitespace-nowrap">{dia.count} pts</span>
+                                <span className="text-[9px] font-bold text-slate-400 leading-none mt-0.5 whitespace-nowrap">{fechaCorta}</span>
+                              </div>
+                              {/* Ojo (visibilidad) — cuadrado */}
+                              <button
+                                onClick={() => toggleVisibilidadDia && toggleVisibilidadDia(dia.id)}
+                                className="w-9 flex items-center justify-center border-r-2 border-slate-900 bg-white active:bg-slate-100"
+                                title={visible ? 'Ocultar' : 'Mostrar'}
+                              >
+                                {visible ? <Eye size={14} className="text-slate-900" strokeWidth={2.5} /> : <EyeOff size={14} className="text-slate-400" strokeWidth={2.5} />}
+                              </button>
+                            </>
+                          )}
+                          {/* Número del día (toca para expandir/comprimir) */}
+                          <button
+                            onClick={() => setDiaExpandido && setDiaExpandido(expandido ? null : dia.id)}
+                            className="w-9 h-9 font-black text-sm active:opacity-80 flex items-center justify-center shrink-0"
+                            style={visible ? { backgroundColor: dia.color, color: '#fff' } : { backgroundColor: '#fff', color: '#0f172a' }}
+                            title={`Día ${dia.numero}`}
+                          >
+                            {dia.numero}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -399,9 +563,28 @@ const VistaMapa = ({
         </div>
       )}
 
+      {/* Etiqueta proyecto - Ddía del punto seleccionado (texto suelto, izquierda, sobre la barra) */}
+      {puntoSeleccionado && etiquetaPuntoSel && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
+        <div className="absolute bottom-24 left-4 z-[400] pointer-events-none max-w-[55%]">
+          <span className="block truncate text-[13px] font-black text-slate-900" style={{ textShadow: '0 1px 2px rgba(255,255,255,0.9)' }}>
+            {etiquetaPuntoSel}
+          </span>
+        </div>
+      )}
+
       {/* Botones flotantes CÁMARA + MOVER (sobre la barra inferior, solo cuando hay punto seleccionado) */}
       {puntoSeleccionado && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
         <div className="absolute bottom-24 right-4 z-[400] flex flex-col items-center gap-2">
+          {/* Punto SIN día: asignar día por fecha (arriba de FOTOS) */}
+          {puntoSinDia && onAsignarDiasSueltos && (
+            <button
+              onClick={onAsignarDiasSueltos}
+              className="w-14 h-14 bg-purple-600 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-purple-800"
+            >
+              <CalendarPlus size={22} strokeWidth={2.5} />
+              <span className="text-[9px] font-black tracking-wide">DÍA</span>
+            </button>
+          )}
           {abrirCamaraDirecta && (
             <button
               onClick={abrirCamaraDirecta}
@@ -421,8 +604,27 @@ const VistaMapa = ({
         </div>
       )}
 
+      {/* Barra flotante PC: modo reasignación de puntos */}
+      {isDesktop && modoMoverPuntos && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] flex items-stretch gap-3">
+          <div className="bg-white rounded-2xl px-5 py-2 shadow-xl border border-slate-200 flex flex-col items-center justify-center">
+            <span className="font-black text-lg text-purple-600 leading-none">{puntosSeleccionadosMover.length}</span>
+            <span className="text-[9px] font-bold tracking-widest text-slate-500">SELECC.</span>
+          </div>
+          <button onClick={() => { if (puntosSeleccionadosMover.length > 0) { setModoMoverAccion('copiar'); setShowSelectorProyecto(true); } }} disabled={puntosSeleccionadosMover.length === 0} className={puntosSeleccionadosMover.length > 0 ? `${pill} text-purple-600` : pillOff}>
+            <Copy size={20} strokeWidth={2.5} /> COPIAR
+          </button>
+          <button onClick={() => { if (puntosSeleccionadosMover.length > 0) { setModoMoverAccion('cortar'); setShowSelectorProyecto(true); } }} disabled={puntosSeleccionadosMover.length === 0} className={puntosSeleccionadosMover.length > 0 ? `${pill} text-purple-600` : pillOff}>
+            <Scissors size={20} strokeWidth={2.5} /> CORTAR
+          </button>
+          <button onClick={onCancelarMoverPuntos} className={`${pill} text-red-600`}>
+            <X size={20} strokeWidth={2.5} /> CANCELAR
+          </button>
+        </div>
+      )}
+
       {/* Barra inferior: modo reasignación de puntos */}
-      {modoMoverPuntos && (
+      {!isDesktop && modoMoverPuntos && (
         <div className={`h-20 ${theme.bottomBar} border-t-2 border-purple-400 shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-[400] flex overflow-hidden shrink-0`}>
           <div className="flex-1 flex flex-col items-center justify-center px-3">
             <span className={`font-black text-lg text-purple-600`}>{puntosSeleccionadosMover.length}</span>
@@ -430,27 +632,128 @@ const VistaMapa = ({
           </div>
           <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
           <button
-            onClick={() => puntosSeleccionadosMover.length > 0 && setShowSelectorProyecto(true)}
+            onClick={() => { if (puntosSeleccionadosMover.length > 0) { setModoMoverAccion('copiar'); setShowSelectorProyecto(true); } }}
             disabled={puntosSeleccionadosMover.length === 0}
-            className={`flex-1 font-black text-sm flex items-center justify-center gap-2 transition-colors ${
+            className={`flex-1 font-black text-sm flex flex-col items-center justify-center gap-0.5 transition-colors ${
               puntosSeleccionadosMover.length > 0 ? 'text-purple-600 active:opacity-80' : `${theme.text} opacity-30 cursor-not-allowed`
             } ${theme.card}`}
           >
-            <FolderInput size={22} strokeWidth={2.5} /> MOVER
+            <Copy size={20} strokeWidth={2.5} />
+            <span className="text-[10px] tracking-widest">COPIAR</span>
+          </button>
+          <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
+          <button
+            onClick={() => { if (puntosSeleccionadosMover.length > 0) { setModoMoverAccion('cortar'); setShowSelectorProyecto(true); } }}
+            disabled={puntosSeleccionadosMover.length === 0}
+            className={`flex-1 font-black text-sm flex flex-col items-center justify-center gap-0.5 transition-colors ${
+              puntosSeleccionadosMover.length > 0 ? 'text-purple-600 active:opacity-80' : `${theme.text} opacity-30 cursor-not-allowed`
+            } ${theme.card}`}
+          >
+            <Scissors size={20} strokeWidth={2.5} />
+            <span className="text-[10px] tracking-widest">CORTAR</span>
           </button>
           <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
           <button
             onClick={onCancelarMoverPuntos}
-            className={`w-20 ${theme.card} font-black flex flex-col items-center justify-center text-red-600 active:bg-red-500/10 transition-colors`}
+            className={`w-16 ${theme.card} font-black flex flex-col items-center justify-center text-red-600 active:bg-red-500/10 transition-colors`}
           >
-            <X size={24} strokeWidth={2.5} />
+            <X size={22} strokeWidth={2.5} />
             <span className="text-[9px] mt-1 tracking-widest">CANCELAR</span>
           </button>
         </div>
       )}
 
+      {/* Barra flotante PC: modo ORDENAR */}
+      {isDesktop && modoOrdenar && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] flex items-stretch gap-3">
+          <div className="bg-white rounded-2xl px-5 py-2 shadow-xl border border-slate-200 flex flex-col items-center justify-center">
+            <span className="font-black text-lg text-blue-600 leading-none">{ordenSeleccion.length}/{totalPuntosProyecto}</span>
+            <span className="text-[9px] font-bold tracking-widest text-slate-500">EN ORDEN</span>
+          </div>
+          <button onClick={onReiniciarOrden} className={pill}>
+            <RefreshCw size={20} strokeWidth={2.5} /> {etiquetaReiniciar}
+          </button>
+          <button
+            onClick={() => { if (!modoCorregir) onIniciarCorreccion?.(); else if (modoCorregir === 'seleccion') onPedirDestino?.(); else onVolverASeleccion?.(); }}
+            disabled={!modoCorregir ? ordenSeleccion.length > 0 : (modoCorregir === 'seleccion' && correccionSel.length === 0)}
+            className={(!modoCorregir ? ordenSeleccion.length > 0 : (modoCorregir === 'seleccion' && correccionSel.length === 0)) ? pillOff : `${pill} text-orange-600`}
+          >
+            <CornerDownRight size={20} strokeWidth={2.5} />
+            {!modoCorregir ? 'CORREGIR' : modoCorregir === 'seleccion' ? `DESPUÉS DE… (${correccionSel.length})` : 'ELIGE DESTINO'}
+          </button>
+          <button onClick={onGuardarOrden} disabled={guardandoOrden} className={guardandoOrden ? pillOff : `${pill} text-green-600`}>
+            {guardandoOrden ? <RefreshCw size={20} className="animate-spin" /> : <Check size={20} strokeWidth={2.5} />} GUARDAR
+          </button>
+          <button onClick={onCancelarOrdenar} className={`${pill} text-red-600`}>
+            <X size={20} strokeWidth={2.5} /> SALIR
+          </button>
+        </div>
+      )}
+
+      {/* Barra inferior: modo ORDENAR (editar posición) */}
+      {!isDesktop && modoOrdenar && (
+        <div className={`h-20 ${theme.bottomBar} border-t-2 border-blue-400 shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-[400] flex overflow-hidden shrink-0`}>
+          <div className="flex-1 flex flex-col items-center justify-center px-3">
+            <span className="font-black text-lg text-blue-600">{ordenSeleccion.length}/{totalPuntosProyecto}</span>
+            <span className={`text-[10px] font-bold tracking-widest ${theme.text} opacity-60`}>EN ORDEN</span>
+          </div>
+          <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
+          <button onClick={onReiniciarOrden} className={`flex-1 font-black text-sm flex flex-col items-center justify-center gap-0.5 ${theme.text} active:opacity-80 ${theme.card}`}>
+            <RefreshCw size={20} strokeWidth={2.5} />
+            <span className="text-[9px] tracking-widest">{etiquetaReiniciar}</span>
+          </button>
+          <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
+          <button
+            onClick={() => { if (!modoCorregir) onIniciarCorreccion?.(); else if (modoCorregir === 'seleccion') onPedirDestino?.(); else onVolverASeleccion?.(); }}
+            disabled={!modoCorregir ? ordenSeleccion.length > 0 : (modoCorregir === 'seleccion' && correccionSel.length === 0)}
+            className={`flex-1 font-black flex flex-col items-center justify-center gap-0.5 text-orange-600 disabled:opacity-40 active:opacity-80 ${theme.card}`}
+          >
+            <CornerDownRight size={20} strokeWidth={2.5} />
+            <span className="text-[9px] tracking-widest leading-tight text-center">
+              {!modoCorregir ? 'CORREGIR' : modoCorregir === 'seleccion' ? `DESPUÉS (${correccionSel.length})` : 'DESTINO'}
+            </span>
+          </button>
+          <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
+          <button onClick={onGuardarOrden} disabled={guardandoOrden} className={`flex-1 font-black text-sm flex flex-col items-center justify-center gap-0.5 text-green-600 active:opacity-80 disabled:opacity-40 ${theme.card}`}>
+            {guardandoOrden ? <RefreshCw size={20} className="animate-spin" /> : <Check size={20} strokeWidth={2.5} />}
+            <span className="text-[10px] tracking-widest">GUARDAR</span>
+          </button>
+          <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
+          <button onClick={onCancelarOrdenar} className={`w-16 ${theme.card} font-black flex flex-col items-center justify-center text-red-600 active:bg-red-500/10`}>
+            <X size={22} strokeWidth={2.5} />
+            <span className="text-[9px] mt-1 tracking-widest">SALIR</span>
+          </button>
+        </div>
+      )}
+
+      {/* Barra flotante PC: acciones principales */}
+      {isDesktop && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] flex items-stretch gap-3">
+          {modoSupervision ? (
+            <>
+              <button onClick={onVolverSupervision} className={pill}><ArrowLeft size={20} strokeWidth={2.5} /> VOLVER</button>
+              <button onClick={() => { if (puntoSeleccionado) { setVistaAnterior('mapa'); verDetalle(); } }} disabled={!puntoSeleccionado} className={puntoSeleccionado ? pill : pillOff}><Eye size={20} strokeWidth={2.5} /> VER</button>
+            </>
+          ) : puntoSeleccionado ? (
+            <>
+              <button onClick={() => { if (!overlayGPSActivo) { setVistaAnterior('mapa'); verDetalle(); } }} disabled={overlayGPSActivo} className={overlayGPSActivo ? pillOff : pill}><Eye size={20} strokeWidth={2.5} /> VER</button>
+              <button onClick={() => { if (!overlayGPSActivo) iniciarEdicion(); }} disabled={overlayGPSActivo} className={overlayGPSActivo ? pillOff : pill}><Edit3 size={20} strokeWidth={2.5} /> EDITAR</button>
+              <button onClick={() => { if (!overlayGPSActivo) solicitarBorrarPunto(); }} disabled={overlayGPSActivo} className={overlayGPSActivo ? pillOff : `${pill} text-red-600`}><Trash2 size={20} strokeWidth={2.5} /> BORRAR</button>
+            </>
+          ) : (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
+              {proyectoTipo === 'instalacionPostes' && (
+                <button onClick={() => fotoMapaInputRef.current?.click()} className={pill}><Camera size={20} strokeWidth={2.5} /> FOTO</button>
+              )}
+              <button onClick={intentarAgregarDatos} disabled={!puntoTemporal} className={puntoTemporal ? `${pill} text-green-600` : pillOff}><Plus size={20} strokeWidth={2.5} /> AGREGAR</button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Barra inferior: se oculta cuando modoFibra está activo */}
-      {!modoFibra && !modoMoverPuntos && (
+      {!isDesktop && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
         <div className={`h-20 ${theme.bottomBar} border-t-2 ${theme.border} shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-[400] flex overflow-hidden shrink-0`}>
           {modoSupervision ? (
             // === MODO SUPERVISIÓN ===
@@ -517,6 +820,18 @@ const VistaMapa = ({
                   <Cable size={24} strokeWidth={2.5} /> FIBRA
                 </button>
                 <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
+                {proyectoTipo === 'instalacionPostes' && (
+                  <>
+                    <button
+                      onClick={() => fotoMapaInputRef.current?.click()}
+                      className={`w-20 ${theme.card} ${theme.text} font-black flex flex-col items-center justify-center active:opacity-80 transition-colors`}
+                    >
+                      <Camera size={24} strokeWidth={2.5} />
+                      <span className="text-[9px] mt-1 tracking-widest">FOTO</span>
+                    </button>
+                    <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
+                  </>
+                )}
                 <button
                   onClick={intentarAgregarDatos}
                   disabled={!puntoTemporal}
@@ -535,33 +850,45 @@ const VistaMapa = ({
         <div className="absolute inset-0 z-[500] bg-black/80 flex items-end justify-center" onClick={() => setShowSelectorProyecto(false)}>
           <div className={`w-full ${theme.card} rounded-t-2xl overflow-hidden`} onClick={e => e.stopPropagation()}>
             <div className={`px-5 py-4 border-b-2 ${theme.border} flex items-center justify-between`}>
-              <h3 className={`font-black text-sm uppercase tracking-wide ${theme.text}`}>Selecciona el proyecto destino</h3>
+              <h3 className={`font-black text-sm uppercase tracking-wide ${theme.text}`}>
+                {modoMoverAccion === 'copiar' ? 'Copiar a…' : 'Cortar y mover a…'}
+              </h3>
               <button onClick={() => setShowSelectorProyecto(false)} className={`p-1.5 rounded-lg ${theme.text} active:scale-95`}>
                 <X size={20} />
               </button>
             </div>
             <div className="overflow-y-auto max-h-72 p-3 space-y-2">
-              {proyectosDestino.length === 0 ? (
-                <p className={`text-center ${theme.text} opacity-60 py-6 text-sm font-bold`}>No hay otros proyectos disponibles</p>
-              ) : (
-                proyectosDestino.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      setShowSelectorProyecto(false);
-                      const idsSet = new Set(puntosSeleccionadosMover);
-                      const nConexiones = conexionesVisiblesMapa.filter(c => {
-                        const ids = c.puntos?.length >= 2 ? c.puntos : [c.from, c.to].filter(Boolean);
-                        return ids.length >= 2 && ids.every(id => idsSet.has(id));
-                      }).length;
-                      setConfirmMoverData({ proyecto: p, nConexiones });
-                    }}
-                    className={`w-full text-left px-4 py-3 rounded-xl border-2 ${theme.border} ${theme.text} font-bold text-sm active:scale-95 transition-all`}
-                  >
-                    {p.nombre}
-                  </button>
-                ))
-              )}
+              {(() => {
+                const idsSet = new Set(puntosSeleccionadosMover);
+                const nConexiones = conexionesVisiblesMapa.filter(c => {
+                  const ids = c.puntos?.length >= 2 ? c.puntos : [c.from, c.to].filter(Boolean);
+                  return ids.length >= 2 && ids.every(id => idsSet.has(id));
+                }).length;
+                return (
+                  <>
+                    {/* Nuevo proyecto */}
+                    <button
+                      onClick={() => { setShowSelectorProyecto(false); setConfirmMoverData({ proyecto: { id: 'NUEVO', nombre: 'nuevo' }, nConexiones, esNuevo: true }); }}
+                      className="w-full text-left px-4 py-3 rounded-xl border-2 border-dashed border-purple-400 text-purple-600 font-black text-sm active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      <Plus size={18} strokeWidth={2.5} /> Nuevo proyecto
+                    </button>
+                    {proyectosDestino.length === 0 ? (
+                      <p className={`text-center ${theme.text} opacity-60 py-4 text-sm font-bold`}>No hay otros proyectos</p>
+                    ) : (
+                      proyectosDestino.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => { setShowSelectorProyecto(false); setConfirmMoverData({ proyecto: p, nConexiones }); }}
+                          className={`w-full text-left px-4 py-3 rounded-xl border-2 ${theme.border} ${theme.text} font-bold text-sm active:scale-95 transition-all`}
+                        >
+                          {p.nombre}
+                        </button>
+                      ))
+                    )}
+                  </>
+                );
+              })()}
             </div>
             <div className="h-4" />
           </div>
@@ -572,13 +899,17 @@ const VistaMapa = ({
       {confirmMoverData && (
         <div className="absolute inset-0 z-[500] bg-black/80 flex items-center justify-center p-6">
           <div className={`w-full ${theme.card} rounded-2xl p-6 space-y-4`}>
-            <h3 className={`font-black text-base uppercase tracking-wide ${theme.text}`}>Confirmar movimiento</h3>
+            <h3 className={`font-black text-base uppercase tracking-wide ${theme.text}`}>
+              {modoMoverAccion === 'copiar' ? 'Confirmar copia' : 'Confirmar movimiento'}
+            </h3>
             <p className={`text-sm ${theme.text} opacity-80`}>
-              Se moverán <span className="font-black text-purple-600">{puntosSeleccionadosMover.length} punto{puntosSeleccionadosMover.length !== 1 ? 's' : ''}</span>
+              Se {modoMoverAccion === 'copiar' ? 'copiarán' : 'moverán'} <span className="font-black text-purple-600">{puntosSeleccionadosMover.length} punto{puntosSeleccionadosMover.length !== 1 ? 's' : ''}</span>
               {confirmMoverData.nConexiones > 0 && <> y <span className="font-black text-purple-600">{confirmMoverData.nConexiones} conexión{confirmMoverData.nConexiones !== 1 ? 'es' : ''}</span></>}
-              {' '}al proyecto:
+              {' '}{modoMoverAccion === 'copiar' ? 'a' : 'al proyecto'}{confirmMoverData.esNuevo ? ' un' : ''}:
             </p>
-            <p className={`font-black text-base text-purple-600 border-2 border-purple-300 rounded-xl px-4 py-2`}>{confirmMoverData.proyecto.nombre}</p>
+            <p className={`font-black text-base text-purple-600 border-2 border-purple-300 rounded-xl px-4 py-2`}>
+              {confirmMoverData.esNuevo ? 'Nuevo proyecto "nuevo"' : confirmMoverData.proyecto.nombre}
+            </p>
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setConfirmMoverData(null)}
@@ -587,7 +918,12 @@ const VistaMapa = ({
                 CANCELAR
               </button>
               <button
-                onClick={() => { onEjecutarMoverPuntos(confirmMoverData.proyecto); setConfirmMoverData(null); }}
+                onClick={() => {
+                  const destino = confirmMoverData.esNuevo ? 'NUEVO' : confirmMoverData.proyecto;
+                  onEjecutarCopiarCortar(destino, modoMoverAccion);
+                  setConfirmMoverData(null);
+                  setModoMoverAccion(null);
+                }}
                 className="flex-1 py-3 rounded-xl bg-purple-600 text-white font-black text-sm active:scale-95 transition-all border-b-4 border-purple-800 active:border-b-0 active:mt-1"
               >
                 CONFIRMAR
@@ -596,6 +932,54 @@ const VistaMapa = ({
           </div>
         </div>
       )}
+
+      {/* Input oculto para la cámara directa (lo dispara el botón negro de la barra en proyectos de instalación) */}
+      <input ref={fotoMapaInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onCapturarFotoMapa?.(f); }} />
+
+      {/* Selector de destino para foto directa (sección + casillero) */}
+      {pickerDestino && (() => {
+        const flatten = (tab) => {
+          const out = [];
+          (tab.items || []).forEach(it => {
+            if (it.items) it.items.forEach(sub => out.push({ itemId: sub.id, label: `${(it.title || it.label || '').replace(/\n/g, ' ')} ${(sub.label || '').replace(/\n/g, ' ')}`.trim() }));
+            else if (it.type === 'subgallery') out.push({ itemId: `${it.id}_${Date.now()}`, label: `${(it.label || '').replace(/\n/g, ' ')} (nueva)` });
+            else out.push({ itemId: it.id, label: (it.label || '').replace(/\n/g, ' ') });
+          });
+          if (tab.dynamic) out.push({ itemId: `extra_${Date.now()}`, label: 'Adicional (nueva)' });
+          return out;
+        };
+        return (
+          <div className="absolute inset-0 z-[500] bg-black/70 flex items-end" onClick={() => { setPickerDestino(null); setPickerTab(null); }}>
+            <div className={`w-full ${isDark ? 'bg-slate-900' : 'bg-white'} rounded-t-2xl max-h-[72%] flex flex-col`} onClick={e => e.stopPropagation()}>
+              <div className={`px-4 py-3 border-b-2 ${theme.border} flex items-center gap-2 shrink-0`}>
+                <button onClick={() => pickerTab ? setPickerTab(null) : (setPickerDestino(null))} className={`p-1 ${theme.text} active:scale-90`}>
+                  {pickerTab ? <ArrowLeft size={20} /> : <X size={20} />}
+                </button>
+                <p className={`font-black text-sm uppercase ${theme.text}`}>{pickerTab ? (tabsConfig[pickerTab]?.title || 'Casillero') : 'Elegí dónde va la foto'}</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2">
+                {!pickerTab ? (
+                  Object.keys(tabsConfig).map(tid => (
+                    <button key={tid} onClick={() => setPickerTab(tid)}
+                      className={`py-3 rounded-xl border-2 ${theme.border} ${theme.text} font-black text-xs uppercase active:scale-95`}>
+                      {tabsConfig[tid].title}
+                    </button>
+                  ))
+                ) : (
+                  flatten(tabsConfig[pickerTab]).map((it, i) => (
+                    <button key={i} disabled={asociando}
+                      onClick={() => ejecutarAsociacion(pickerDestino.foto, pickerDestino.puntoId, false, pickerTab, it.itemId)}
+                      className={`py-3 px-2 rounded-xl border-2 ${theme.border} ${theme.text} font-bold text-[11px] active:scale-95 disabled:opacity-50`}>
+                      {it.label}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

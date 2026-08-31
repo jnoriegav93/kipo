@@ -141,6 +141,11 @@ export const MapaReal = ({
   puntoResaltado = null,
   modoMoverPuntos = false,
   puntosSeleccionadosMover = [],
+  modoOrdenar = false,
+  ordenSeleccion = [],
+  modoCorregir = null,
+  correccionSel = [],
+  ordenTrabajo = [],
 }) => {
 
   const [miUbicacion, setMiUbicacion] = useState(null);
@@ -191,27 +196,50 @@ export const MapaReal = ({
   const { segmentosRenderizables, gruposTramo, offsetIndices } = useMemo(() => {
     const segmentos = [];
 
-    // 1. Descomponer conexiones (multi-punto o simples) en segmentos
+    // Coordenada de un poste por id. Solo hace falta para las fibras LEGADAS, que
+    // guardaban únicamente ids y sacaban su forma de dónde estuvieran los postes.
+    const coordDePunto = (id) => {
+      const p = puntosVisiblesMapa.find(x => String(x.id) === String(id));
+      return p?.coords?.lat != null ? { lat: p.coords.lat, lng: p.coords.lng } : null;
+    };
+
+    // 1. Descomponer conexiones en segmentos, cada uno ya con sus dos coordenadas
     conexionesVisiblesMapa.forEach(con => {
-      if (con.puntos && con.puntos.length >= 2) {
-        // Es un trazo multi-punto
-        for (let i = 0; i < con.puntos.length - 1; i++) {
+      // NUEVO: la fibra trae su propia geometría; no depende de ningún poste.
+      if (Array.isArray(con.vertices) && con.vertices.length >= 2) {
+        for (let i = 0; i < con.vertices.length - 1; i++) {
+          const a = con.vertices[i], b = con.vertices[i + 1];
+          if (a?.lat == null || b?.lat == null) continue;
           segmentos.push({
-            ...con, // Hereda props del padre (id, capacidad, etc)
-            idOriginal: con.id, // Referencia al doc original
-            idSegmento: `${con.id}-${i}`, // ID único para key de React
+            ...con,
+            idOriginal: con.id,
+            idSegmento: `${con.id}-${i}`,
+            coordA: { lat: a.lat, lng: a.lng },
+            coordB: { lat: b.lat, lng: b.lng },
+            esSegmento: true
+          });
+        }
+        return;
+      }
+      // LEGADO: lista de ids de poste. Se sigue dibujando igual que siempre.
+      if (con.puntos && con.puntos.length >= 2) {
+        for (let i = 0; i < con.puntos.length - 1; i++) {
+          const a = coordDePunto(con.puntos[i]), b = coordDePunto(con.puntos[i + 1]);
+          if (!a || !b) continue; // poste oculto o borrado: ese tramo no se dibuja
+          segmentos.push({
+            ...con,
+            idOriginal: con.id,
+            idSegmento: `${con.id}-${i}`,
             from: con.puntos[i],
             to: con.puntos[i + 1],
+            coordA: a, coordB: b,
             esSegmento: true
           });
         }
       } else {
-        // Es una conexión simple (legado o tramo único)
-        segmentos.push({
-          ...con,
-          idOriginal: con.id,
-          idSegmento: con.id
-        });
+        const a = coordDePunto(con.from), b = coordDePunto(con.to);
+        if (!a || !b) return;
+        segmentos.push({ ...con, idOriginal: con.id, idSegmento: con.id, coordA: a, coordB: b });
       }
     });
 
@@ -237,7 +265,7 @@ export const MapaReal = ({
       gruposTramo: grupos,
       offsetIndices: indices
     };
-  }, [conexionesVisiblesMapa]);
+  }, [conexionesVisiblesMapa, puntosVisiblesMapa]);
 
   return (
     <div className="h-full w-full relative z-0">
@@ -290,10 +318,6 @@ export const MapaReal = ({
 
         {/* Renderizado de conexiones/fibras */}
         {segmentosRenderizables.map(con => {
-          const pA = puntosVisiblesMapa.find(p => p.id === con.from);
-          const pB = puntosVisiblesMapa.find(p => p.id === con.to);
-          if (!pA || !pB) return null;
-
           const isSelCon = conexionSeleccionada && (conexionSeleccionada.id === con.idOriginal || conexionSeleccionada.id === con.id);
           const capacidad = con.capacidad || 12;
           const colorFibra = getColorFibra(capacidad);
@@ -301,8 +325,8 @@ export const MapaReal = ({
           // Offset paralelo
           const info = offsetIndices[con.idSegmento] || { indice: 0, total: 1 };
           const [posA, posB] = calcularOffsetCoords(
-            [pA.coords.lat, pA.coords.lng],
-            [pB.coords.lat, pB.coords.lng],
+            [con.coordA.lat, con.coordA.lng],
+            [con.coordB.lat, con.coordB.lng],
             info.indice, info.total
           );
 
@@ -341,22 +365,86 @@ export const MapaReal = ({
           if (modoMover && p.id === puntoSeleccionado) return null;
           const colorDia = obtenerColorDia(p.diaId);
           const isSelected = !modoMoverPuntos && puntoSeleccionado === p.id;
-          const isInRecorrido = modoFibra && dibujandoFibra && puntosRecorrido.includes(p.id);
+          const isInRecorrido = modoFibra && dibujandoFibra &&
+            puntosRecorrido.some(v => v && String(v.puntoId) === String(p.id));
           const isEnSeleccion = modoMoverPuntos && puntosSeleccionadosMover.includes(p.id);
-          const baseSize = 24 * iconSize;
-          const customIcon = L.divIcon({
-            className: 'custom-icon',
-            html: `<div style="width: ${baseSize}px; height: ${baseSize}px; background: ${isEnSeleccion ? '#a855f7' : colorDia}; border: ${isEnSeleccion ? '4px solid #7c3aed' : (isInRecorrido || isSelected) ? '4px solid #facc15' : '2px solid white'}; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;">
-                          ${(() => {
-                            const showItem = mostrarEtiquetas?.item;
-                            const showPasivo = mostrarEtiquetas?.pasivo;
-                            if (!showItem && !showPasivo) return '';
-                            const txt = [showItem ? (p.datos.numero || 'S/N') : null, showPasivo ? (p.datos.pasivo || '-') : null].filter(Boolean).join(' · ');
-                            return `<div style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: white; color: #333; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 800; border: 2px solid black; white-space: nowrap; z-index: 1000; margin-bottom: 2px;">${txt}</div>`;
-                          })()}
+          // Corrigiendo: TODOS los puntos muestran su posición actual (hace falta para
+          // poder elegir el ancla). Los marcados muestran en cambio el orden en que se
+          // tocaron, que es el orden en que se van a insertar.
+          const marcaCorr = modoCorregir ? (correccionSel.indexOf(p.id) + 1) : 0;
+          const posOrden = modoCorregir
+            ? (marcaCorr > 0 ? marcaCorr : ordenTrabajo.indexOf(p.id) + 1)
+            : (modoOrdenar ? (ordenSeleccion.indexOf(p.id) + 1) : 0);
+          const isEnOrden = posOrden > 0;
+          const te = p.datos?.tipoElemento;
+          const tiposArr = Array.isArray(te) ? te : (te ? [te] : []);
+          const isMedioTramo = tiposArr.includes('medioTramo');
+          const isCajaEquipo = !isMedioTramo && ['mufa', 'xbox', 'hbox', 'fat'].some(x => tiposArr.includes(x));
+          const isBorrador = p.datos?.estado === 'borrador'; // punto sin terminar (aún no confirmado)
+          // Reducción de tamaño por forma, en "toques de lupa" (cada toque = 0.2):
+          // cuadrado −2, triángulo −1, círculo −1.
+          const reduccionForma = isCajaEquipo ? 0.4 : 0.2;
+          const multForma = Math.max(0.4, iconSize - reduccionForma);
+          const baseSize = (isEnOrden ? 30 : 24) * multForma;
+          const bg = marcaCorr > 0 ? '#ea580c' : isEnOrden ? '#16a34a' : (isEnSeleccion ? '#a855f7' : colorDia);
+          const bord = marcaCorr > 0 ? '4px solid #9a3412' : isEnOrden ? '4px solid #15803d' : isEnSeleccion ? '4px solid #7c3aed' : (isInRecorrido || isSelected) ? '4px solid #facc15' : '2px solid white';
+          const numOrdenHtml = isEnOrden ? `<span style="color:white; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.5))}px; line-height:1;">${posOrden}</span>` : '';
+          const labelHtml = (() => {
+            const showItem = mostrarEtiquetas?.item;
+            const showPasivo = mostrarEtiquetas?.pasivo;
+            if (!showItem && !showPasivo) return '';
+            const limpio = (x) => { const s = (x == null ? '' : x).toString().trim(); return (s && s !== '-') ? s : null; };
+            const partes = [];
+            if (showItem) { const v = limpio(p.datos.numero); if (v) partes.push(v); }
+            if (showPasivo) { const v = limpio(p.datos.pasivo); if (v) partes.push(v); }
+            if (partes.length === 0) return ''; // sin datos → sin globito
+            const bgLabel = isMedioTramo ? '#facc15' : isCajaEquipo ? '#22c55e' : '#ffffff';
+            const fgLabel = isMedioTramo ? '#000000' : isCajaEquipo ? '#000000' : '#333333';
+            return `<div style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: ${bgLabel}; color: ${fgLabel}; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 800; border: 2px solid black; white-space: nowrap; z-index: 1000; margin-bottom: 2px;">${partes.join(' - ')}</div>`;
+          })();
+          let customIcon;
+          if (isMedioTramo) {
+            // Medio tramo: triángulo SIEMPRE amarillo (sin importar el día). El borde refleja selección/orden.
+            const half = baseSize / 2;
+            const t = Math.max(2, Math.round(baseSize * 0.16));
+            const outline = isEnOrden ? '#15803d' : isEnSeleccion ? '#7c3aed' : (isInRecorrido || isSelected) ? '#ea580c' : '#1e293b';
+            customIcon = L.divIcon({
+              className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
+              html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));">
+                          ${labelHtml}
+                          <div style="position:absolute; left:0; bottom:0; width:0; height:0; border-left:${half}px solid transparent; border-right:${half}px solid transparent; border-bottom:${baseSize}px solid ${outline};"></div>
+                          <div style="position:absolute; left:${t}px; bottom:${Math.round(t * 0.6)}px; width:0; height:0; border-left:${half - t}px solid transparent; border-right:${half - t}px solid transparent; border-bottom:${baseSize - Math.round(t * 1.8)}px solid #facc15;"></div>
+                          ${isEnOrden ? `<div style="position:absolute; left:0; bottom:0; width:${baseSize}px; height:${baseSize}px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:1px;"><span style="color:#000; font-weight:900; font-size:${Math.max(8, Math.round(baseSize * 0.36))}px; line-height:1;">${posOrden}</span></div>` : ''}
                         </div>`,
-            iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
-          });
+              iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
+            });
+          } else if (isCajaEquipo) {
+            // Mufa/Xbox/Hbox/Fat: cuadrado SIEMPRE rojo con borde y punto negro (sin importar el día).
+            const bw = Math.max(2, Math.round(baseSize * 0.14));
+            const dot = Math.max(4, Math.round(baseSize * 0.28));
+            const ring = isEnOrden ? '#15803d' : isEnSeleccion ? '#a855f7' : (isInRecorrido || isSelected) ? '#f97316' : null;
+            customIcon = L.divIcon({
+              className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
+              html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px; display:flex; align-items:center; justify-content:center;">
+                          ${labelHtml}
+                          <div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:#22c55e; border:${bw}px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.5)${ring ? `, 0 0 0 3px ${ring}` : ''}; display:flex; align-items:center; justify-content:center;">
+                            ${isEnOrden
+                              ? `<span style="color:#fff; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.45))}px; line-height:1; text-shadow:0 1px 2px #000;">${posOrden}</span>`
+                              : `<div style="width:${dot}px; height:${dot}px; background:#000; border-radius:50%;"></div>`}
+                          </div>
+                        </div>`,
+              iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
+            });
+          } else {
+            customIcon = L.divIcon({
+              className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
+              html: `<div style="width: ${baseSize}px; height: ${baseSize}px; background: ${bg}; border: ${bord}; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;">
+                          ${numOrdenHtml}
+                          ${labelHtml}
+                        </div>`,
+              iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
+            });
+          }
           return <Marker
             key={p.id}
             position={[p.coords.lat, p.coords.lng]}
@@ -368,27 +456,38 @@ export const MapaReal = ({
         })}
 
         {/* Polylines temporales del trazo de fibra actual */}
-        {modoFibra && dibujandoFibra && puntosRecorrido.length >= 2 && puntosRecorrido.slice(0, -1).map((fromId, idx) => {
-          const toId = puntosRecorrido[idx + 1];
-          const pA = puntosVisiblesMapa.find(p => p.id === fromId);
-          const pB = puntosVisiblesMapa.find(p => p.id === toId);
-          if (!pA || !pB) return null;
+        {modoFibra && dibujandoFibra && puntosRecorrido.length >= 2 && puntosRecorrido.slice(0, -1).map((vA, idx) => {
+          const vB = puntosRecorrido[idx + 1];
+          if (vA?.lat == null || vB?.lat == null) return null;
           return <Polyline
             key={`rec-${idx}`}
-            positions={[[pA.coords.lat, pA.coords.lng], [pB.coords.lat, pB.coords.lng]]}
+            positions={[[vA.lat, vA.lng], [vB.lat, vB.lng]]}
             pathOptions={{ color: getColorFibra(capacidadFibra), weight: 5, opacity: 0.9 }}
           />;
         })}
 
+        {/* Marcas de los vértices LIBRES del trazo en curso (los que no caen sobre
+            un poste no tendrían nada que los señale) */}
+        {modoFibra && puntosRecorrido.map((v, idx) => (v && v.lat != null && !v.puntoId) ? (
+          <Marker
+            key={`vert-${idx}`}
+            position={[v.lat, v.lng]}
+            icon={L.divIcon({
+              className: '',
+              html: `<div style="width:14px;height:14px;border-radius:50%;background:${getColorFibra(capacidadFibra)};border:3px solid white;box-shadow:0 0 0 1px rgba(0,0,0,.4)"></div>`,
+              iconSize: [14, 14], iconAnchor: [7, 7]
+            })}
+            zIndexOffset={500}
+          />
+        ) : null)}
+
         {/* Polylines del trazo terminado pero no guardado */}
-        {modoFibra && !dibujandoFibra && puntosRecorrido.length >= 2 && puntosRecorrido.slice(0, -1).map((fromId, idx) => {
-          const toId = puntosRecorrido[idx + 1];
-          const pA = puntosVisiblesMapa.find(p => p.id === fromId);
-          const pB = puntosVisiblesMapa.find(p => p.id === toId);
-          if (!pA || !pB) return null;
+        {modoFibra && !dibujandoFibra && puntosRecorrido.length >= 2 && puntosRecorrido.slice(0, -1).map((vA, idx) => {
+          const vB = puntosRecorrido[idx + 1];
+          if (vA?.lat == null || vB?.lat == null) return null;
           return <Polyline
             key={`pending-${idx}`}
-            positions={[[pA.coords.lat, pA.coords.lng], [pB.coords.lat, pB.coords.lng]]}
+            positions={[[vA.lat, vA.lng], [vB.lat, vB.lng]]}
             pathOptions={{ color: getColorFibra(capacidadFibra), weight: 5, dashArray: '12,6', opacity: 0.7 }}
           />;
         })}
@@ -434,5 +533,46 @@ export const MapaReal = ({
         })()}
       </MapContainer>
     </div>
+  );
+};
+
+// ─── MINI-MAPA de revisión (read-only): centra en el punto activo, etiqueta los
+// postes por ITEM y resalta el que se está revisando. Se embebe en el visor. ───
+const RecenterMini = ({ center }) => {
+  const map = useMap();
+  useEffect(() => { const t = setTimeout(() => map.invalidateSize(), 60); return () => clearTimeout(t); }, [map]);
+  useEffect(() => { if (center) map.setView(center, map.getZoom()); }, [center && center[0], center && center[1]]); // eslint-disable-line
+  return null;
+};
+
+export const MiniMapaRevision = ({ puntos = [], puntoActivo }) => {
+  const conCoords = (puntos || []).filter(p => p.coords && p.coords.lat != null && p.coords.lng != null);
+  const c = puntoActivo && puntoActivo.coords;
+  if (!c || c.lat == null || c.lng == null) {
+    return <div className="h-full w-full flex items-center justify-center bg-slate-100 text-slate-400 text-sm font-bold">Este punto no tiene ubicación</div>;
+  }
+  const center = [c.lat, c.lng];
+  return (
+    <MapContainer center={center} zoom={19} maxZoom={22} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
+      {/* Base: Google Maps satélite + capa de etiquetas de calles */}
+      <TileLayer url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" maxZoom={22} maxNativeZoom={21} />
+      <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} opacity={0.9} />
+      <RecenterMini center={center} />
+      {conCoords.map(p => {
+        const activo = puntoActivo && p.id === puntoActivo.id;
+        const label = (p.datos && p.datos.numero) || '';
+        const dot = activo ? 20 : 12;
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-${dot / 2}px);">
+              <div style="width:${dot}px;height:${dot}px;background:${activo ? '#f97316' : '#3b82f6'};border:2px solid #fff;border-radius:50%;box-shadow:${activo ? '0 0 0 4px rgba(249,115,22,.35),' : ''}0 1px 3px rgba(0,0,0,.5);"></div>
+              ${label ? `<span style="font-size:9px;font-weight:800;color:#111;background:rgba(255,255,255,.85);border-radius:3px;padding:0 3px;margin-top:1px;white-space:nowrap;line-height:1.3;">${label}</span>` : ''}
+            </div>`,
+          iconSize: [60, dot + 16],
+          iconAnchor: [30, dot / 2],
+        });
+        return <Marker key={p.id} position={[p.coords.lat, p.coords.lng]} icon={icon} zIndexOffset={activo ? 2000 : 0} />;
+      })}
+    </MapContainer>
   );
 };

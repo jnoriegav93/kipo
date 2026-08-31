@@ -17,16 +17,45 @@ export const COLORES_FIBRA = {
 export const getColorFibra = (capacidad) => COLORES_FIBRA[capacidad] || '#3b82f6';
 
 // Agrupar conexiones por par de postes (para offset paralelo)
-export const agruparPorTramo = (conexiones) => {
+// Agrupa los segmentos que ocupan el MISMO vano, para poder separarlos visualmente.
+// Antes se agrupaba por el par de ids de poste, pero ahora una fibra tiene geometría
+// propia y puede no pasar por ningún poste: la clave se arma con las coordenadas.
+// Se redondea a 6 decimales (~10 cm) para que dos trazos dibujados sobre el mismo
+// vano caigan en el mismo grupo aunque no sean idénticos al bit.
+export const agruparPorTramo = (segmentos) => {
+  const r = (v) => Math.round(v * 1e6) / 1e6;
+  const clave = (seg) => {
+    if (seg.coordA && seg.coordB) {
+      const a = `${r(seg.coordA.lat)},${r(seg.coordA.lng)}`;
+      const b = `${r(seg.coordB.lat)},${r(seg.coordB.lng)}`;
+      return a < b ? `${a}|${b}` : `${b}|${a}`;
+    }
+    const a = String(seg.from), b = String(seg.to);
+    return a < b ? `${a}-${b}` : `${b}-${a}`;
+  };
   const grupos = {};
-  conexiones.forEach(con => {
-    const a = String(con.from);
-    const b = String(con.to);
-    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+  segmentos.forEach(seg => {
+    const key = clave(seg);
     if (!grupos[key]) grupos[key] = [];
-    grupos[key].push(con);
+    grupos[key].push(seg);
   });
   return grupos;
+};
+
+// Distancia en metros entre dos coordenadas (aproximación plana, exacta de sobra a
+// escala de un proyecto de fibra).
+export const distanciaMetros = (a, b) => {
+  const R = 111320; // metros por grado de latitud
+  const dLat = (b.lat - a.lat) * R;
+  const dLng = (b.lng - a.lng) * R * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+};
+
+// Largo total de un trazo, en metros.
+export const longitudFibra = (vertices = []) => {
+  let total = 0;
+  for (let i = 0; i < vertices.length - 1; i++) total += distanciaMetros(vertices[i], vertices[i + 1]);
+  return total;
 };
 
 // Calcular posiciones con offset perpendicular para fibras paralelas

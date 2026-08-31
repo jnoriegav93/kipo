@@ -1,8 +1,9 @@
 // src/components/Sidebar.jsx
-import { useState } from 'react';
-import { Folder, Settings, LogOut, User, Eye, Key, Shield, LogIn, ArrowRight, Sun, Moon, Stethoscope } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2 } from 'lucide-react';
 
 const ADMIN_UID = 'E8CaZVgP4eZnjnN3OKTVi7bmoJN2';
+
 
 export default function Sidebar({
   isOpen,
@@ -13,13 +14,14 @@ export default function Sidebar({
   vista,
   setVista,
   cerrarSesion,
+  perfilLabel,
   config,
   totalProyectos,
   totalProyectosEditor,
-  totalSupervision,
-  totalPermisos,
   totalNotifProyectos = 0,
-  totalNotifSupervisados = 0,
+  notifEquipos = 0,
+  mapStyle,
+  setMapStyle,
   adminReturnEmail = null,
   onVolverAAdmin,
 }) {
@@ -58,7 +60,7 @@ export default function Sidebar({
     return (
       <button
         onClick={() => { setVista(vistaKey); setMenuAbierto(false); }}
-        className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl transition-all ${active ? activeBg : hoverBg}`}
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-2xl transition-all ${active ? activeBg : hoverBg}`}
       >
         {/* Icono con badge de notificación */}
         <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${active ? activeBox : iconBox}`}>
@@ -93,19 +95,22 @@ export default function Sidebar({
       <div className={`w-4/5 max-w-xs h-full shadow-2xl flex flex-col animate-in slide-in-from-left duration-200 border-r ${panel}`}>
 
         {/* Header */}
-        <div className={`px-4 pb-4 border-b-2 ${header} shrink-0 pt-safe-header`}>
+        <div className={`px-4 pb-4 border-b-2 ${header} shrink-0`} style={{ paddingTop: 'calc(20px + env(safe-area-inset-top, 0px))' }}>
           <div className="flex items-center gap-3 mb-3">
             {/* Avatar */}
             <div className="w-12 h-12 rounded-2xl bg-orange-500 flex items-center justify-center shrink-0">
               <span className="text-white font-black text-xl leading-none">{inicial}</span>
             </div>
             <div className="overflow-hidden flex-1">
-              <p className={`font-black text-sm leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {nombrePersonal || usuarioKipo}
+              <p className={`text-sm leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                <span className="font-black">{nombrePersonal || usuarioKipo}</span>
+                <span className="text-xs font-bold text-slate-400"> · {empresaPersonal || 'Sin empresa'}</span>
               </p>
-              <p className="text-xs text-slate-400 truncate mt-0.5">
-                {empresaPersonal || 'Sin empresa'}
-              </p>
+              {perfilLabel && (
+                <p className="text-[9px] font-black uppercase tracking-widest text-orange-500 mt-0.5">
+                  Perfil {perfilLabel}
+                </p>
+              )}
             </div>
             {/* Dot incompleto */}
             {!datosCompletos && !adminReturnEmail && (
@@ -121,11 +126,6 @@ export default function Sidebar({
                 <LogIn size={18} className="text-white" strokeWidth={2.5} />
               </button>
             )}
-          </div>
-
-          {/* Email */}
-          <div className={`${emailRow} rounded-xl px-3 py-2`}>
-            <span className="text-[10px] text-slate-400 truncate block">{correoKipo}</span>
           </div>
 
           {/* Password input para volver al admin */}
@@ -177,15 +177,12 @@ export default function Sidebar({
         </div>
 
         {/* Navegación */}
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-0 overflow-y-auto">
-          <p className={`text-[9px] font-black uppercase tracking-widest px-3 mb-2 ${section}`}>Menú</p>
-
+        <nav className="flex-1 px-3 py-2 flex flex-col gap-0 overflow-y-auto">
           <NavItem icon={User}     label="Datos Usuario"  vistaKey="datosUsuario" />
-          <Divider />
           {/* Proyectos con badge doble si hay proyectos de editor */}
           <button
             onClick={() => { setVista('proyectos'); setMenuAbierto(false); }}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl transition-all ${vista === 'proyectos' ? activeBg : hoverBg}`}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-2xl transition-all ${vista === 'proyectos' ? activeBg : hoverBg}`}
           >
             <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${vista === 'proyectos' ? activeBox : iconBox}`}>
               <Folder size={18} strokeWidth={2.5} className={vista === 'proyectos' ? 'text-white' : iconColor} />
@@ -209,29 +206,32 @@ export default function Sidebar({
               )}
             </div>
           </button>
-          <Divider />
           <NavItem icon={Settings} label="Configuración"  vistaKey="config" />
-          <Divider />
-          <NavItem icon={Key}      label="Permisos"       vistaKey="permisos"     count={totalPermisos} />
-          <Divider />
-          <NavItem icon={Eye}      label="Supervisión"    vistaKey="supervision"  count={totalSupervision} notif={totalNotifSupervisados} />
-          <Divider />
+          <NavItem icon={ClipboardList} label="Control Ferretería" vistaKey="controlFerreteria" />
+          <NavItem icon={Users}   label="Equipos"        vistaKey="equipos"      notif={notifEquipos} />
           <NavItem icon={Stethoscope} label="Diagnóstico" vistaKey="diagnostico" />
+          <NavItem icon={Trash2} label="Papelera" vistaKey="papelera" />
 
           {setIsDark && (
             <>
-              <Divider />
-              <div className="px-3 py-2">
-                <p className={`text-[9px] font-black uppercase tracking-widest mb-2 ${section}`}>Apariencia</p>
+                            {/* Apariencia: solo botones (tema oscuro/claro · mapa vector/satélite) */}
+              <div className="px-3 py-2 flex items-center gap-2">
                 <button
-                  onClick={() => { setIsDark(!isDark); setMenuAbierto(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl transition-all ${hoverBg}`}
+                  onClick={() => setIsDark(!isDark)}
+                  title={isDark ? 'Modo claro' : 'Modo oscuro'}
+                  className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${isDark ? 'border-slate-500 bg-slate-800' : 'border-slate-900 bg-white'}`}
                 >
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconBox}`}>
-                    {isDark ? <Sun size={18} strokeWidth={2.5} className={iconColor} /> : <Moon size={18} strokeWidth={2.5} className={iconColor} />}
-                  </div>
-                  <span className={`text-sm font-bold ${labelInactive}`}>{isDark ? 'Modo Claro' : 'Modo Oscuro'}</span>
+                  {isDark ? <Sun size={18} strokeWidth={2.5} className={iconColor} /> : <Moon size={18} strokeWidth={2.5} className={iconColor} />}
                 </button>
+                {setMapStyle && (
+                  <button
+                    onClick={() => setMapStyle(v => v === 'vector' ? 'google' : 'vector')}
+                    title="Estilo de mapa"
+                    className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${isDark ? 'border-slate-500 bg-slate-800' : 'border-slate-900 bg-white'}`}
+                  >
+                    {mapStyle === 'vector' ? <Satellite size={18} strokeWidth={2.5} className={iconColor} /> : <Map size={18} strokeWidth={2.5} className={iconColor} />}
+                  </button>
+                )}
               </div>
             </>
           )}

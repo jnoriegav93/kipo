@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc } from "firebase/firestore";
-import { db } from '../firebaseConfig';
+import { db, auth } from '../firebaseConfig';
 
 export const useFirebaseData = (user) => {
   // 1. ESTADOS (El almacén de datos)
@@ -14,68 +14,74 @@ export const useFirebaseData = (user) => {
 
   // 2. EFECTO (La lógica de conexión que me pasaste)
   useEffect(() => {
-if (!user) {
-      setProyectos([]); 
+    if (!user) {
+      setProyectos([]);
       setProyectosSupervisados([]);
-      setPuntos([]); 
-      setConexiones([]); 
+      setPuntos([]);
+      setConexiones([]);
       setConfig(null);
       return;
     }
 
-    console.log("Iniciando conexión con Firebase para UID:", user.uid);
+    let unsubProyectos, unsubSupervisados, unsubPuntos, unsubConexiones, unsubConfig;
+    let cancelado = false;
 
-    // A. ESCUCHAR PROYECTOS
-    const qProyectos = query(collection(db, "proyectos"), where("ownerId", "==", user.uid));
-    const unsubProyectos = onSnapshot(qProyectos, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-      console.log("Proyectos cargados:", docs.length);
-      setProyectos(docs);
-    }, (error) => console.error("Error en Proyectos:", error));
+    // Esperar a que el token esté validado por Firestore antes de abrir listeners
+    // auth.currentUser puede ser null si el dispositivo fue bloqueado y se cerró sesión
+    if (!auth.currentUser) return;
+    auth.currentUser.getIdToken().then(() => {
+      if (cancelado) return;
 
-    // A2. ESCUCHAR PROYECTOS SUPERVISADOS
-    const qSupervisados = query(
-      collection(db, "proyectos"), 
-      where("compartidoCon", "array-contains", user.uid)
-    );
-    const unsubSupervisados = onSnapshot(qSupervisados, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ 
-        ...doc.data(), 
-        id: doc.id,
-        esCompartido: true,
-        permisoActual: doc.data().permisos?.[user.uid] || 'solo_lectura'
-      }));
-      console.log("Proyectos supervisados:", docs.length);
-      setProyectosSupervisados(docs);
-    }, (error) => console.error("Error en Supervisados:", error));
+        // A. ESCUCHAR PROYECTOS
+      const qProyectos = query(collection(db, "proyectos"), where("ownerId", "==", user.uid));
+      unsubProyectos = onSnapshot(qProyectos, (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        setProyectos(docs);
+      }, (error) => console.error("Error en Proyectos:", error));
 
-    // B. ESCUCHAR PUNTOS
-    const qPuntos = query(collection(db, "puntos"), where("ownerId", "==", user.uid));
-    const unsubPuntos = onSnapshot(qPuntos, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-      console.log("Puntos cargados:", docs.length);
-      setPuntos(docs);
-    }, (error) => console.error("Error en Puntos:", error));
+      // A2. ESCUCHAR PROYECTOS SUPERVISADOS
+      const qSupervisados = query(
+        collection(db, "proyectos"),
+        where("compartidoCon", "array-contains", user.uid)
+      );
+      unsubSupervisados = onSnapshot(qSupervisados, (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({
+          ...doc.data(),
+          id: doc.id,
+          esCompartido: true,
+          permisoActual: doc.data().permisos?.[user.uid] || 'solo_lectura'
+        }));
+        setProyectosSupervisados(docs);
+      }, (error) => console.error("Error en Supervisados:", error));
 
-    // C. ESCUCHAR CABLES
-    const qConexiones = query(collection(db, "conexiones"), where("ownerId", "==", user.uid));
-    const unsubConexiones = onSnapshot(qConexiones, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-      setConexiones(docs);
+      // B. ESCUCHAR PUNTOS
+      const qPuntos = query(collection(db, "puntos"), where("ownerId", "==", user.uid));
+      unsubPuntos = onSnapshot(qPuntos, (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        setPuntos(docs);
+      }, (error) => console.error("Error en Puntos:", error));
+
+      // C. ESCUCHAR CABLES
+      const qConexiones = query(collection(db, "conexiones"), where("ownerId", "==", user.uid));
+      unsubConexiones = onSnapshot(qConexiones, (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        setConexiones(docs);
+      }, (error) => console.error("Error en Conexiones:", error));
+
+      // D. ESCUCHAR CONFIGURACIÓN
+      const configRef = doc(db, "configuraciones", user.uid);
+      unsubConfig = onSnapshot(configRef, (docSnap) => {
+        if (docSnap.exists()) setConfig(docSnap.data());
+      }, (error) => console.error("Error en Config:", error));
     });
 
-    // D. ESCUCHAR CONFIGURACIÓN
-    const configRef = doc(db, "configuraciones", user.uid);
-    const unsubConfig = onSnapshot(configRef, (docSnap) => {
-      if (docSnap.exists()) setConfig(docSnap.data());
-    });
-
-    return () => { 
-      unsubProyectos(); 
-      unsubSupervisados();
-      unsubPuntos(); 
-      unsubConexiones(); 
-      unsubConfig(); 
+    return () => {
+      cancelado = true;
+      unsubProyectos?.();
+      unsubSupervisados?.();
+      unsubPuntos?.();
+      unsubConexiones?.();
+      unsubConfig?.();
     };
   }, [user]);
 

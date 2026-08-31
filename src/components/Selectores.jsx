@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
+import { VINCULOS_FERRETERIA } from '../data/constantes';
 
 // Subcomponentes auxiliares
 const chunkArray = (arr, size) => {
@@ -8,7 +9,7 @@ const chunkArray = (arr, size) => {
   return result;
 };
 
-export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, textSize = 'text-lg', theme, titleLine = false }) => {
+export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, textSize = 'text-lg', theme, titleLine = false, borderAccent = '', activeClass = '' }) => {
   const visibles = opciones.filter(o => o.visible);
   if (visibles.length === 0) return null;
   const colW = `calc((100% - ${cols - 1} * 0.5rem) / ${cols})`;
@@ -19,11 +20,15 @@ export const SelectorGrid = ({ titulo, opciones, seleccion, onSelect, cols, text
       <div className="flex flex-col gap-2">
         {filas.map((fila, fi) => (
           <div key={fi} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${fila.length}, ${colW})`, justifyContent: 'center' }}>
-            {fila.map(op => (
-              <button key={op.v} onClick={() => onSelect(op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${seleccion === op.v ? theme.gridBtnActive : theme.gridBtn}`}>
-                <span className="px-1 break-words leading-tight">{op.v}</span>
-              </button>
-            ))}
+            {fila.map(op => {
+              const activo = seleccion === op.v;
+              // Toggle: al tocar la opción ya seleccionada, se deselecciona (null)
+              return (
+                <button key={op.v} onClick={() => onSelect(activo ? null : op.v)} className={`h-14 rounded-lg ${textSize} font-black border-2 active:scale-95 leading-none flex items-center justify-center text-center ${activo ? (activeClass || theme.gridBtnActive) : theme.gridBtn} ${borderAccent}`}>
+                  <span className="px-1 break-words leading-tight">{op.v}</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -59,7 +64,7 @@ export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols,
 
 
 // --- COMPONENTE DE LISTA CON CONTADORES ---
-export const ListaContadores = ({ config, datos, setDatos, theme, disabled, armadoSeleccionado }) => {
+export const ListaContadores = ({ config, datos, setDatos, theme, disabled, armadoSeleccionado, subirConValor }) => {
   const itemsVisibles = config.catalogoFerreteria.filter(f => f.visible !== false);
 
   // Determinar tipo de cada ítem según el armado seleccionado
@@ -73,7 +78,30 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
   const primarias   = itemsVisibles.filter(f => getTipo(f.id) === 'primaria');
   const secundarias = itemsVisibles.filter(f => getTipo(f.id) === 'secundaria');
   const resto       = itemsVisibles.filter(f => !getTipo(f.id));
-  const itemsOrdenados = [...primarias, ...secundarias, ...resto];
+  let itemsOrdenados = [...primarias, ...secundarias, ...resto];
+  // Subir al inicio las ferreterías con valor mayor a cero (sort estable)
+  if (subirConValor) itemsOrdenados = [...itemsOrdenados].sort((a, b) => ((datos[b.id] || 0) > 0 ? 1 : 0) - ((datos[a.id] || 0) > 0 ? 1 : 0));
+
+  // VÍNCULOS ("van juntas"): pares INTERNOS (constantes.js, por nombre). Al tener cantidad
+  // UNA del grupo, las demás se JUNTAN a su lado (aunque estén en 0) como SUGERENCIA.
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const vinculoDe = {};
+  VINCULOS_FERRETERIA.forEach((grupo, gi) => {
+    itemsVisibles.forEach(f => { if (grupo.includes(norm(f.nombre))) vinculoDe[f.id] = `vg${gi}`; });
+  });
+  const gruposActivos = new Set(itemsVisibles.filter(f => (datos[f.id] || 0) > 0 && vinculoDe[f.id]).map(f => vinculoDe[f.id]));
+  if (gruposActivos.size) {
+    const res = []; const done = new Set();
+    for (const f of itemsOrdenados) {
+      if (done.has(f.id)) continue;
+      const vid = vinculoDe[f.id];
+      if (vid && gruposActivos.has(vid)) {
+        itemsOrdenados.filter(x => vinculoDe[x.id] === vid && !done.has(x.id)).forEach(m => { res.push(m); done.add(m.id); });
+      } else { res.push(f); done.add(f.id); }
+    }
+    itemsOrdenados = res;
+  }
+  const esSugerida = (id) => vinculoDe[id] && gruposActivos.has(vinculoDe[id]) && (datos[id] || 0) === 0;
 
   const actualizarCantidad = (itemId, delta) => {
     if (disabled) return;
@@ -92,7 +120,9 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
         const cantidad = datos[item.id] || 0;
         const isActive = cantidad > 0;
         const tipo = getTipo(item.id);
-        const borderClass = tipo === 'primaria'   ? (isActive ? 'border-green-500 bg-green-50/40'   : 'border-green-400/50')
+        const sugerida = esSugerida(item.id);
+        const borderClass = sugerida             ? 'border-dashed border-purple-400 bg-purple-50/30'
+                          : tipo === 'primaria'   ? (isActive ? 'border-green-500 bg-green-50/40'   : 'border-green-400/50')
                           : tipo === 'secundaria' ? (isActive ? 'border-orange-500 bg-orange-50/40' : 'border-orange-400/50')
                           : isActive              ? 'border-blue-500 bg-blue-50/40'
                           : theme.border;
@@ -100,8 +130,10 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
         return (
           <div key={item.id} className={`${theme.card} border-2 ${borderClass} p-2 rounded-xl flex items-center justify-between transition-all`}>
             <div className="flex-1 pl-2">
-              <div className={`font-bold text-sm leading-tight ${theme.text}`}>{item.nombre}</div>
-              <div className="text-[10px] opacity-60 uppercase font-black">{item.unidad}</div>
+              <div className={`font-bold text-sm leading-tight ${theme.text} flex items-center gap-1.5`}>
+                {item.nombre}
+                {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">sugerida</span>}
+              </div>
             </div>
             <div className="flex items-center gap-2 bg-slate-900/5 rounded-lg p-1">
               <button

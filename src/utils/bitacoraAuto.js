@@ -16,7 +16,8 @@ const NOMBRE_SLOT = {
 };
 
 export const formatId = (datos) => {
-  const pasivo = datos?.codFat || '-';
+  // El campo actual del formulario es 'pasivo'; codFat queda por puntos viejos
+  const pasivo = datos?.pasivo || datos?.codFat || '-';
   const item = datos?.numero || '-';
   return `ITEM: ${item} | PASIVO: ${pasivo}`;
 };

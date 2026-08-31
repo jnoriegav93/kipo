@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { ArrowLeft, Plus, X, Camera, Maximize2, Loader2, Trash2 } from 'lucide-react';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { uploadImage, deleteImage } from '../utils/storage';
+import { uploadImage } from '../utils/storage';
 import { procesarImagenInput } from '../utils/helpers';
 
 const FotosProyecto = ({ proyectoId, proyectoNombre, modoFotos, theme, user, onClose, onCountChange }) => {
@@ -133,7 +133,25 @@ const FotosProyecto = ({ proyectoId, proyectoNombre, modoFotos, theme, user, onC
   const handleEliminar = async (foto, e) => {
     e.stopPropagation();
     try {
-      await deleteImage(foto.storagePath || foto.url);
+      // A la papelera (15 días). El archivo de Storage NO se borra aquí: lo hace la
+      // purga del servidor al vencer la entrada (así siempre se puede restaurar).
+      try {
+        const { enviarAPapelera } = await import('../utils/papelera');
+        const { auth } = await import('../firebaseConfig');
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          const { id: _omit, ...snapshotFoto } = foto;
+          await enviarAPapelera({
+            uid, tipo: 'foto',
+            snapshot: JSON.parse(JSON.stringify(snapshotFoto)),
+            coleccionOriginal: 'fotosProyecto', idOriginal: foto.id,
+            proyectoId,
+            nombre: foto.nombre || 'Foto del mapa',
+            storagePaths: [foto.storagePath].filter(Boolean),
+            meta: { mapa: true, proyectoId },
+          });
+        }
+      } catch (e2) { console.error('Papelera foto mapa:', e2); }
       await deleteDoc(doc(db, 'proyectos', proyectoId, 'fotosProyecto', foto.id));
       setFotos(prev => {
         const actualizado = prev.filter(f => f.id !== foto.id);
