@@ -386,7 +386,13 @@ export const handleExportKML = async (proy, puntos, conexiones, logoApp, setExpo
   const conexionesProyecto = conexiones.filter(c => perteneceAProyecto(c, proy));
 
   // Colores por capacidad de fibra (hex → KML AABBGGRR)
-  const KML_COLORES = { 6:'fff65c8b', 12:'fff6823b', 24:'ff9948ec', 48:'ff1673f9', 96:'ff4444ef', 144:'ff16cc84' };
+  // Escapa texto que va dentro de una etiqueta XML/KML. El nombre del ramal lo
+// escribe el usuario y un solo & dejaría el KMZ ilegible para Google Earth.
+const escXml = (t) => String(t == null ? '' : t)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+const KML_COLORES = { 6:'fff65c8b', 12:'fff6823b', 24:'ff9948ec', 48:'ff1673f9', 96:'ff4444ef', 144:'ff16cc84' };
   const capsUnicas = [...new Set(conexionesProyecto.map(c => c.capacidad).filter(Boolean))];
   const estilosLineas = [
     ...capsUnicas.map(cap => `  <Style id="linea_${cap}"><LineStyle><color>${KML_COLORES[cap] || 'fff6823b'}</color><width>3</width></LineStyle></Style>`),
@@ -619,18 +625,23 @@ ${estilosLineas}
     if (numVol === 1) { // LÍNEAS SOLO EN VOL 1
       kmlLines += `</Folder><Folder><name>Líneas</name>`;
       conexionesProyecto.forEach(c => {
-        // Usar todos los puntos del recorrido (multi-segmento), con fallback a from/to
-        const idsSerie = (Array.isArray(c.puntos) && c.puntos.length >= 2)
-          ? c.puntos
-          : [c.from, c.to].filter(Boolean);
-        const coords = idsSerie
-          .map(id => puntos.find(p => p.id === id))
-          .filter(p => p && p.coords)
-          .map(p => `${p.coords.lng.toFixed(6)},${p.coords.lat.toFixed(6)},0`);
+        // La fibra nueva trae su propia geometría. Las viejas solo guardan ids de
+        // poste y su forma se sigue deduciendo de dónde estén esos postes.
+        const coords = (Array.isArray(c.vertices) && c.vertices.length >= 2)
+          ? c.vertices
+              .filter(v => v && v.lat != null && v.lng != null)
+              .map(v => `${(v.lng || 0).toFixed(6)},${(v.lat || 0).toFixed(6)},0`)
+          : ((Array.isArray(c.puntos) && c.puntos.length >= 2) ? c.puntos : [c.from, c.to].filter(Boolean))
+              .map(id => puntos.find(p => String(p.id) === String(id)))
+              .filter(p => p && p.coords)
+              .map(p => `${(p.coords.lng || 0).toFixed(6)},${(p.coords.lat || 0).toFixed(6)},0`);
         if (coords.length < 2) return;
         const cap = c.capacidad;
         const styleId = (cap && KML_COLORES[cap]) ? `linea_${cap}` : 'linea_default';
-        const nombre = cap ? `${cap} hilos` : 'Línea de fibra';
+        // El nombre lo escribe el usuario: hay que escaparlo o un & rompe el KML entero.
+        const nombre = c.nombre
+          ? `${escXml(c.nombre)}${cap ? ` · ${cap} hilos` : ''}`
+          : (cap ? `${cap} hilos` : 'Línea de fibra');
         kmlLines += `<Placemark><name>${nombre}</name><styleUrl>#${styleId}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords.join(' ')}</coordinates></LineString></Placemark>`;
       });
     }

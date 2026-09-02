@@ -5,6 +5,7 @@ import { addDoc, collection, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { TABS_CONFIG, MAIN_TABS, EXTRAS_ITEMS } from './PhotoManager';
 import { estamparMetadatos, urlABase64, puedeCompartirArchivos, puedeCompartirTexto } from '../utils/helpers';
+import ZoomImage from './ZoomImage';
 
 // Componente fuera de VerDetalle para evitar remounts
 function FotoMini({ url, label, onClickPhoto }) {
@@ -38,38 +39,20 @@ function FotoMini({ url, label, onClickPhoto }) {
 }
 
 function FullscreenPhotoModal({ photo, onClose }) {
-  const [imgSrc, setImgSrc] = useState(photo.url);
-  const [loading, setLoading] = useState(true);
-
   return (
     <div className="fixed inset-0 z-[999] bg-black flex flex-col"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
-      onClick={onClose}>
-      <div className="flex justify-between items-center px-4 py-4 bg-black/80 backdrop-blur-md border-b border-white/10">
-        <h3 className="font-bold text-white text-base">{photo.label.replace('\n', ' ')}</h3>
-        <button onClick={onClose} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20">
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="shrink-0 flex justify-between items-center px-4 py-4 bg-black/80 backdrop-blur-md border-b border-white/10">
+        <h3 className="font-bold text-white text-base truncate pr-2">{photo.label.replace('\n', ' ')}</h3>
+        <button onClick={onClose} className="shrink-0 p-2 bg-white/10 rounded-full text-white hover:bg-white/20">
           <X size={24} />
         </button>
       </div>
-      <div className="flex-1 flex items-center justify-center p-4 bg-black relative">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-10 h-10 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          </div>
-        )}
-        <img
-          src={imgSrc}
-          className="max-w-full max-h-full object-contain"
-          alt={photo.label}
-          onLoad={() => setLoading(false)}
-          onError={() => {
-            if (photo.thumb && imgSrc !== photo.thumb) {
-              setImgSrc(photo.thumb);
-            } else {
-              setLoading(false);
-            }
-          }}
-        />
+      {/* min-h-0 es lo que faltaba: sin él, un hijo flex no baja de su altura de
+          contenido, así que la foto se salía de la pantalla y quedaba recortada.
+          Y el visor con zoom es el mismo que usa el comparativo de ferretería. */}
+      <div className="flex-1 min-h-0 bg-black">
+        <ZoomImage src={photo.url} fallback={photo.thumb || null} alt={photo.label} heightClass="h-full" />
       </div>
     </div>
   );

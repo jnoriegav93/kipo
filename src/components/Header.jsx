@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, ZoomOut, ZoomIn, Map, Image, CalendarDays } from 'lucide-react';
+import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, ZoomOut, ZoomIn, Map, Image, CalendarDays, Palette } from 'lucide-react';
 
 export default function Header({
   theme,
@@ -15,10 +15,11 @@ export default function Header({
   setIsDark,
   setIconSize,
   mapStyle,
+  simbologiaAbierta = false,
+  simbologiaActiva = false,
+  onToggleSimbologia,
   setMapStyle,
   totalNotificaciones = 0,
-  fotoPuntosActivo = false,
-  onToggleFotoPuntos,
   menuDiasAbierto = false,
   toggleMenuDias,
   flotante = false,
@@ -105,14 +106,14 @@ export default function Header({
             <Tag size={20} />
           </button>
 
-          {/* 4. FOTOS EN MAPA */}
-          {onToggleFotoPuntos && (
+          {/* 4. SIMBOLOGÍA: colorear los puntos por armado */}
+          {onToggleSimbologia && (
             <button
-              onClick={onToggleFotoPuntos}
-              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${fotoPuntosActivo ? 'bg-purple-50 border-purple-500 text-purple-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
-              title="Fotos en mapa"
+              onClick={onToggleSimbologia}
+              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${simbologiaAbierta || simbologiaActiva ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+              title="Simbología por armado"
             >
-              <Image size={20} />
+              <Palette size={20} />
             </button>
           )}
 

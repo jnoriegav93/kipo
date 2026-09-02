@@ -3,7 +3,15 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa' // Importamos el plugin mágico
 
 // https://vite.dev/config/
+// Sello del momento exacto de compilación. Permite saber, desde la app, si el
+// dispositivo tiene el build recién desplegado o uno viejo cacheado por la PWA.
+const SELLO_BUILD = new Date().toLocaleString('es-PE', {
+  timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false
+});
+
 export default defineConfig({
+  define: { 'import.meta.env.VITE_BUILD': JSON.stringify(SELLO_BUILD) },
   server: {
     proxy: {
       '/api/nominatim': {
@@ -23,6 +31,7 @@ export default defineConfig({
     // Configuración de la PWA (App Móvil)
     VitePWA({
       registerType: 'prompt',
+      injectRegister: null, // registra UpdateBanner con useRegisterSW; ver comentario arriba
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB — el bundle principal ya pesa ~2.4 MB; con 3 MB dejaría de precachearse al crecer y la app moriría offline

@@ -28,7 +28,6 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 
 // Componentes principales
 import Login from './Login';
-import UpdateBanner from './components/UpdateBanner';
 import Header from './components/Header';
 import QueueModal from './components/QueueModal';
 import Sidebar from './components/Sidebar';
@@ -38,6 +37,7 @@ import PhotoManager, { TABS_CONFIG } from './components/PhotoManager';
 import { ConfirmModal, AlertModal, ExportModal } from './components/UI';
 import VerDetalle from './components/VerDetalle';
 import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bitacoraAuto';
+import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } from './utils/fibraUtils';
 import { perteneceAProyecto } from './utils/helpers';
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
@@ -147,7 +147,6 @@ function App() {
     capacidadFibra, setCapacidadFibra,
     fibrasVisibles, setFibrasVisibles,
     puntosRecorrido, setPuntosRecorrido,
-    nombreFibra, setNombreFibra,
     puntoSeleccionado, setPuntoSeleccionado,
     conexionSeleccionada, setConexionSeleccionada,
     modoEdicion, setModoEdicion,
@@ -536,25 +535,40 @@ function App() {
 
   // REINICIAR es contextual: limpia marcados → descarta correcciones → VOLVER al modo normal.
   const reiniciarOrden = React.useCallback(() => {
-    if (!modoCorregir) { setOrdenSeleccion([]); return; }
+    if (!modoCorregir) { setOrdenSeleccion([]); setRetomarOrden(false); return; }
     if (correccionSel.length > 0) { setCorreccionSel([]); return; }
     if (huboCorreccion) { setOrdenTrabajo(ordenBaseTendido()); setHuboCorreccion(false); return; }
     limpiarCorreccion();
   }, [modoCorregir, correccionSel, huboCorreccion, ordenBaseTendido, limpiarCorreccion]);
+
+  // RETOMAR una edición anterior: los postes que YA tienen posición guardada se
+  // muestran verdes con su número y quedan bloqueados; lo que se toque a partir de
+  // ahí sigue numerando después de ellos. Evita rehacer 200 postes para agregar 10.
+  const [retomarOrden, setRetomarOrden] = React.useState(false);
+  const prefijoOrden = React.useMemo(() => {
+    if (!retomarOrden || !proyOrdenar) return [];
+    return todosLosPuntos
+      .filter(p => perteneceAProyecto(p, proyOrdenar) && p.datos?.ordenTendido != null)
+      .sort((a, b) => a.datos.ordenTendido - b.datos.ordenTendido)
+      .map(p => p.id);
+  }, [retomarOrden, todosLosPuntos, proyOrdenar]);
 
   const guardarOrdenTendido = React.useCallback(async () => {
     if (guardandoOrden || !proyOrdenar?.id) return;
     setGuardandoOrden(true);
     try {
       const ptsProy = todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar));
-      const seleccionados = ordenSeleccion.filter(id => ptsProy.some(p => p.id === id));
-      const restantes = ptsProy.filter(p => !seleccionados.includes(p.id))
+      // Al retomar, el bloque ya ordenado va primero y conserva su numeración.
+      const enPrefijo = new Set(prefijoOrden.map(String));
+      const seleccionados = ordenSeleccion.filter(id => ptsProy.some(p => p.id === id) && !enPrefijo.has(String(id)));
+      const usados = new Set([...prefijoOrden.map(String), ...seleccionados.map(String)]);
+      const restantes = ptsProy.filter(p => !usados.has(String(p.id)))
         .sort((a, b) => parseInt(a.id) - parseInt(b.id)).map(p => p.id);
       // Con correcciones se guarda el orden de trabajo completo; sin ellas, el
       // comportamiento de siempre (lo tocado primero, el resto detrás).
       const ordenFinal = (huboCorreccion && ordenTrabajo.length)
         ? ordenTrabajo.filter(id => ptsProy.some(p => String(p.id) === String(id)))
-        : [...seleccionados, ...restantes];
+        : [...prefijoOrden, ...seleccionados, ...restantes];
       const { doc: docRef, updateDoc } = await import('firebase/firestore');
       const { db: fireDb } = await import('./firebaseConfig');
       for (let i = 0; i < ordenFinal.length; i++) {
@@ -566,6 +580,7 @@ function App() {
       }));
       setModoOrdenar(false);
       setOrdenSeleccion([]);
+      setRetomarOrden(false);
       limpiarCorreccion();
       setOrdenarProyId(null);
       setModalPendiente(`LISTA_PUNTOS_${proyOrdenar.id}`);
@@ -577,7 +592,7 @@ function App() {
     } finally {
       setGuardandoOrden(false);
     }
-  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, huboCorreccion, ordenTrabajo, limpiarCorreccion, setPuntos, setModalPendiente, setVista, setAlertData]);
+  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, prefijoOrden, huboCorreccion, ordenTrabajo, limpiarCorreccion, setPuntos, setModalPendiente, setVista, setAlertData]);
 
   // Copiar o cortar puntos seleccionados hacia un proyecto destino (existente o nuevo).
   // modo: 'copiar' (duplica, deja originales) | 'cortar' (reasigna, los saca del origen).
@@ -1410,11 +1425,205 @@ function App() {
   const conexionesVisiblesBase = filtrosVisibilidad.getConexionesVisibles(conexiones, diasVisibles, proyectos.filter(p => !p.archivado));
   const conexionesVisiblesMapa = fibrasVisibles ? conexionesVisiblesBase : [];
 
+  // ── AJUSTAR POSTES A LA FIBRA ─────────────────────────────────────────────
+  // Jala los postes cercanos hasta apoyarlos sobre la línea, perpendicularmente.
+  // La coordenada anterior se guarda solo mientras dure la sesión de fibra: la
+  // buena es la nueva, la vieja únicamente sirve para deshacer si el umbral se pasó.
+  const [modoAjuste, setModoAjuste] = React.useState(false);
+  const [umbralAjuste, setUmbralAjuste] = React.useState(3);
+  const [deshacerAjuste, setDeshacerAjuste] = React.useState(null);
+  const [aplicandoAjuste, setAplicandoAjuste] = React.useState(false);
+
+  // Tres grupos, no dos: los que hay que mover, los que YA están sobre la línea
+  // (nada que ajustar) y el resto. Antes los del medio se quedaban sin color y
+  // parecía que el umbral no los había visto.
+  const YA_APOYADO = 0.3; // metros: por debajo de esto, moverlo no cambia nada
+  const analisisAjuste = React.useMemo(() => {
+    if (!modoAjuste || !proyectoActual) return { mover: [], apoyados: [] };
+    const buscar = (id) => todosLosPuntos.find(p => String(p.id) === String(id));
+    const fibras = conexionesVisiblesMapa.map(c => {
+      const vs = verticesDeConexion(c, buscar);
+      return vs.length >= 2
+        ? { id: c.id, capacidad: c.capacidad || 12, vertices: vs, largo: longitudFibra(vs) }
+        : null;
+    }).filter(Boolean);
+    if (fibras.length === 0) return { mover: [], apoyados: [] };
+    const mover = [], apoyados = [];
+    todosLosPuntos.forEach(p => {
+      if (!perteneceAProyecto(p, proyectoActual) || p.coords?.lat == null) return;
+      const m = mejorProyeccion({ lat: p.coords.lat, lng: p.coords.lng }, fibras, umbralAjuste);
+      if (!m) return;
+      if (m.dist <= YA_APOYADO) apoyados.push(p.id);
+      else mover.push({ id: p.id, antes: { lat: p.coords.lat, lng: p.coords.lng }, destino: m.destino });
+    });
+    return { mover, apoyados };
+  }, [modoAjuste, umbralAjuste, conexionesVisiblesMapa, todosLosPuntos, proyectoActual]);
+  const previewAjuste = analisisAjuste.mover;
+
+  // Escribe coordenadas nuevas en lote. Se reutiliza para aplicar y para deshacer.
+  const escribirCoords = React.useCallback(async (cambios) => {
+    const { doc: dref, writeBatch } = await import('firebase/firestore');
+    const { db: fdb } = await import('./firebaseConfig');
+    for (let i = 0; i < cambios.length; i += 400) {
+      const lote = writeBatch(fdb);
+      cambios.slice(i, i + 400).forEach(c => lote.update(dref(fdb, 'puntos', String(c.id)), { coords: c.coords }));
+      await lote.commit();
+    }
+    const mapa = new Map(cambios.map(c => [String(c.id), c.coords]));
+    setPuntos(prev => prev.map(p => mapa.has(String(p.id)) ? { ...p, coords: mapa.get(String(p.id)) } : p));
+  }, [setPuntos]);
+
+  const aplicarAjuste = React.useCallback(async () => {
+    if (aplicandoAjuste || previewAjuste.length === 0) return;
+    setAplicandoAjuste(true);
+    try {
+      await escribirCoords(previewAjuste.map(x => ({ id: x.id, coords: x.destino })));
+      setDeshacerAjuste(previewAjuste.map(x => ({ id: x.id, coords: x.antes })));
+      setModoAjuste(false);
+      setAlertData({ title: 'Postes ajustados', message: `Se apoyaron ${previewAjuste.length} poste${previewAjuste.length === 1 ? '' : 's'} sobre la fibra.` });
+    } catch (e) {
+      console.error('Error ajustando postes:', e);
+      setAlertData({ title: 'Error', message: 'No se pudieron mover los postes.' });
+    } finally { setAplicandoAjuste(false); }
+  }, [aplicandoAjuste, previewAjuste, escribirCoords, setAlertData]);
+
+  const revertirAjuste = React.useCallback(async () => {
+    if (aplicandoAjuste || !deshacerAjuste?.length) return;
+    setAplicandoAjuste(true);
+    try {
+      await escribirCoords(deshacerAjuste);
+      setDeshacerAjuste(null);
+    } catch (e) { console.error('Error deshaciendo ajuste:', e); }
+    finally { setAplicandoAjuste(false); }
+  }, [aplicandoAjuste, deshacerAjuste, escribirCoords]);
+
+  // CATÁLOGO DE FERRETERÍA DEL DUEÑO DEL PROYECTO.
+  // Los puntos guardan ids de ferretería, y el nombre de cada id vive en la
+  // configuración de quien creó el proyecto. Si se resolvieran con la configuración
+  // del que mira, un miembro del equipo vería la ferretería vacía: sus ids no
+  // coinciden con los del dueño. Se lee solo cuando el proyecto es de otro.
+  const [configPropietario, setConfigPropietario] = React.useState(null);
+  React.useEffect(() => {
+    const proy = mapaSupervision ? mapaSupervision.proyecto : proyectoActual;
+    const dueno = proy?.ownerId;
+    if (!dueno || !user?.uid || String(dueno) === String(user.uid)) { setConfigPropietario(null); return; }
+    let vivo = true;
+    (async () => {
+      try {
+        const { doc: dref, getDoc } = await import('firebase/firestore');
+        const snap = await getDoc(dref(db, 'configuraciones', String(dueno)));
+        if (vivo) setConfigPropietario(snap.exists() ? snap.data() : null);
+      } catch (e) { console.error('No se pudo leer la configuración del propietario:', e); }
+    })();
+    return () => { vivo = false; };
+  }, [proyectoActual?.ownerId, proyectoActual?.id, mapaSupervision, user?.uid]);
+
+  // ARMADOS DEL PROYECTO.
+  // Los armados dejaron de ser del usuario y pasaron a vivir en el proyecto, porque
+  // cada obra usa los suyos. Mientras un proyecto todavía no tenga los propios, se
+  // usan TODOS los del dueño —sin filtrar por el ojito— para que los puntos ya
+  // asignados no se queden sin su armado. Ese respaldo se puede quitar cuando todos
+  // los proyectos estén migrados.
+  const armadosDelProyecto = React.useMemo(() => {
+    const proy = mapaSupervision ? mapaSupervision.proyecto : proyectoActual;
+    const delDueno = configPropietario?.armados || config?.armados || [];
+    const propios = Array.isArray(proy?.armados) ? proy.armados : [];
+    if (propios.length === 0) return delDueno;
+    // Los que el proyecto no fijó se conservan SOLO para poder resolver el nombre de
+    // los puntos que ya los tenían asignados. Van con visible:false, que es el filtro
+    // que usa el selector, así que no se ofrecen al asignar pero sí se encuentran.
+    const ids = new Set(propios.map(a => String(a.id)));
+    const heredados = delDueno.filter(a => !ids.has(String(a.id))).map(a => ({ ...a, visible: false }));
+    return [...propios, ...heredados];
+  }, [proyectoActual, mapaSupervision, configPropietario, config]);
+
+  // Configuración con la que se pintan formulario y detalle: la propia, con el
+  // catálogo de ferretería del dueño (los ids de material son suyos) y los armados
+  // del proyecto.
+  const configParaDetalle = React.useMemo(() => ({
+    ...config,
+    catalogoFerreteria: configPropietario?.catalogoFerreteria || config?.catalogoFerreteria || [],
+    armados: armadosDelProyecto,
+  }), [config, configPropietario, armadosDelProyecto]);
+
+  // SIMBOLOGÍA: colorear los puntos por su armado en vez de por su día.
+  // Los colores se guardan en el dispositivo y por proyecto: son una ayuda de
+  // lectura de quien mira el plano, no un dato del proyecto.
+  const [simbologiaActiva, setSimbologiaActiva] = React.useState(false);
+  const [simbologiaAbierta, setSimbologiaAbierta] = React.useState(false);
+  const claveSimbologia = `kipo_simbologia_${proyectoActual?.id || 'sin'}`;
+  const [coloresArmado, setColoresArmado] = React.useState({});
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(claveSimbologia);
+      setColoresArmado(raw ? JSON.parse(raw) : {});
+    } catch { setColoresArmado({}); }
+  }, [claveSimbologia]);
+  const asignarColorArmado = React.useCallback((armadoId, color) => {
+    setColoresArmado(prev => {
+      const next = { ...prev };
+      if (color) next[armadoId] = color; else delete next[armadoId];
+      try { localStorage.setItem(claveSimbologia, JSON.stringify(next)); } catch { /* sin espacio */ }
+      return next;
+    });
+  }, [claveSimbologia]);
+
+  // Nombre propuesto para el próximo ramal: se toma el mayor "RAMAL NN" que ya
+  // exista en el proyecto y se suma uno, así borrar uno no genera duplicados.
+  // Solo se usa si el usuario no escribe nombre.
+  const nombreSugeridoFibra = React.useMemo(() => {
+    let max = 0;
+    (conexiones || []).forEach(c => {
+      if (String(c.proyectoId) !== String(proyectoActual?.id)) return;
+      const m = String(c.nombre || '').match(/^RAMAL\s+(\d+)$/i);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return `RAMAL ${String(max + 1).padStart(2, '0')}`;
+  }, [conexiones, proyectoActual]);
+
   if (!user) return <Login onLogin={() => { }} initialBlocked={deviceBlocked} />;
+
+  // Cada ramal reserva un pasillo de 2 m: no se deja poner un vértice que haría
+  // pasar el trazo más cerca de otra fibra. Antes se dibujaban encima y se separaban
+  // luego con un desfase visual, que movía las líneas de donde de verdad están.
+  const UMBRAL_FIBRA = 1;
+  const ajustarVerticeFibra = (v) => separarDeFibras(
+    v, conexionesVisiblesMapa, UMBRAL_FIBRA, null,
+    // El vértice anterior marca de qué lado viene el trazo: el nuevo se pone del
+    // mismo lado para que el tramo no atraviese la fibra existente.
+    puntosRecorrido[puntosRecorrido.length - 1] || null
+  );
+
+  // Borra un ramal: lo manda a la papelera y luego quita el documento.
+  const borrarConexion = async (con) => {
+            setConexiones(prev => prev.filter(c => c.id !== con.id));
+            setConexionSeleccionada(null);
+            // A la papelera (con las coords de sus puntos AL MOMENTO del borrado)
+            try {
+              const { enviarAPapelera } = await import('./utils/papelera');
+              const idsPts = (con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean).map(String);
+              const metaPuntos = idsPts.map(pid => {
+                const p = todosLosPuntos.find(x => String(x.id) === pid);
+                return { id: pid, coords: { lat: p?.coords?.lat ?? null, lng: p?.coords?.lng ?? null } };
+              });
+              await enviarAPapelera({
+                uid: user.uid, tipo: 'fibra',
+                snapshot: JSON.parse(JSON.stringify(con)),
+                coleccionOriginal: 'conexiones', idOriginal: con.id,
+                proyectoId: con.proyectoId || null,
+                proyectoNombre: proyectos.find(p => p.id === con.proyectoId)?.nombre || '',
+                nombre: `Fibra ${con.capacidad || ''} (${idsPts.length} puntos)`.trim(),
+                meta: { puntos: metaPuntos },
+              });
+            } catch (e) { console.error('Papelera fibra:', e); }
+            import("firebase/firestore").then(({ deleteDoc, doc: fbDoc }) => {
+              deleteDoc(fbDoc(db, "conexiones", con.id));
+            }).catch(e => console.error("Error eliminando fibra:", e));
+  };
+
 
   return (
     <div className={`h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
-      <UpdateBanner />
 
       {/* Indicador de perfil activo — solo admin (para saber qué perfil se está previsualizando) */}
       {esAdmin && (
@@ -1433,6 +1642,9 @@ function App() {
         mostrarEtiquetas={mostrarEtiquetas}
         setMostrarEtiquetas={setMostrarEtiquetas}
         menuEtiquetasAbierto={menuEtiquetasAbierto}
+        simbologiaAbierta={simbologiaAbierta}
+        simbologiaActiva={simbologiaActiva}
+        onToggleSimbologia={() => setSimbologiaAbierta(v => !v)}
         setMenuEtiquetasAbierto={setMenuEtiquetasAbierto}
         toggleMenuEtiquetas={toggleMenuEtiquetas}
         isDark={isDark}
@@ -1443,8 +1655,6 @@ function App() {
         menuDiasAbierto={menuDiasAbierto}
         toggleMenuDias={toggleMenuDias}
         totalNotificaciones={totalNotificaciones + totalSolicitudesColaboracion}
-        fotoPuntosActivo={fotoPuntosActivo}
-        onToggleFotoPuntos={() => setFotoPuntosActivo(v => !v)}
         flotante={isDesktop && vista === 'mapa'}
       />
 
@@ -1462,6 +1672,8 @@ function App() {
       />
 
       <Sidebar
+        fotoPuntosActivo={fotoPuntosActivo}
+        onToggleFotoPuntos={() => setFotoPuntosActivo(v => !v)}
         isOpen={menuAbierto}
         setMenuAbierto={setMenuAbierto}
         theme={theme}
@@ -1497,6 +1709,7 @@ function App() {
               setConexionSeleccionada(null);
               mapInteractions.handleMapaClick({
                 e, menuAbierto, modoFibra, dibujandoFibra, setPuntosRecorrido,
+                ajustarVertice: ajustarVerticeFibra,
                 puntoSeleccionado, vista, diaActual,
                 diasVisibles, proyectos, proyectoActual, theme,
                 setPuntoSeleccionado, setPuntoTemporal, setVista, setAlertData,
@@ -1518,12 +1731,20 @@ function App() {
               e, puntoId,
               puntoCoords: todosLosPuntos.find(p => String(p.id) === String(puntoId))?.coords,
               modoFibra, dibujandoFibra, setPuntosRecorrido,
+              ajustarVertice: ajustarVerticeFibra,
               setPuntoSeleccionado, setPuntoTemporal
             })
           }
           puntoTemporal={mapaSupervision ? null : puntoTemporal}
           mostrarEtiquetas={mostrarEtiquetas}
           menuEtiquetasAbierto={menuEtiquetasAbierto}
+          simbologiaActiva={simbologiaActiva}
+          simbologiaAbierta={simbologiaAbierta}
+          onToggleSimbologia={() => setSimbologiaAbierta(v => !v)}
+          coloresArmado={coloresArmado}
+          onAsignarColorArmado={asignarColorArmado}
+          onToggleSimbologiaActiva={() => setSimbologiaActiva(v => !v)}
+          armadosProyecto={armadosDelProyecto}
           setMostrarEtiquetas={setMostrarEtiquetas}
           menuDiasAbierto={menuDiasAbierto}
           diasPanelData={diasPanelData}
@@ -1588,8 +1809,39 @@ function App() {
           dibujandoFibra={dibujandoFibra}
           setDibujandoFibra={setDibujandoFibra}
           capacidadFibra={capacidadFibra}
-          nombreFibra={nombreFibra}
-          setNombreFibra={setNombreFibra}
+          nombreSugeridoFibra={nombreSugeridoFibra}
+          modoAjuste={modoAjuste}
+          setModoAjuste={setModoAjuste}
+          umbralAjuste={umbralAjuste}
+          setUmbralAjuste={setUmbralAjuste}
+          previewAjuste={previewAjuste}
+          apoyadosAjuste={analisisAjuste.apoyados}
+          aplicandoAjuste={aplicandoAjuste}
+          onAplicarAjuste={aplicarAjuste}
+          hayDeshacerAjuste={!!deshacerAjuste?.length}
+          onDeshacerAjuste={revertirAjuste}
+          onActualizarConexion={async (con, cambios) => {
+            // Nombre, capacidad y geometría se guardan juntos en una sola escritura:
+            // así no puede quedar a medias si algo falla entre una y otra.
+            const parche = {};
+            if (cambios.nombre !== undefined) parche.nombre = String(cambios.nombre || '').trim();
+            if (cambios.capacidad !== undefined) parche.capacidad = cambios.capacidad;
+            if (cambios.vertices !== undefined) {
+              parche.vertices = cambios.vertices;
+              // Se mantiene al día la lista de postes por los que pasa (compatibilidad)
+              parche.puntos = cambios.vertices.filter(v => v.puntoId).map(v => String(v.puntoId));
+              parche.from = parche.puntos[0] || null;
+              parche.to = parche.puntos[parche.puntos.length - 1] || null;
+            }
+            if (Object.keys(parche).length === 0) return;
+            setConexiones(prev => prev.map(c => c.id === con.id ? { ...c, ...parche } : c));
+            setConexionSeleccionada(prev => prev && prev.id === con.id ? { ...prev, ...parche } : prev);
+            try {
+              const { updateDoc: fbUp, doc: fbDoc } = await import("firebase/firestore");
+              await fbUp(fbDoc(db, "conexiones", String(con.id)), parche);
+            } catch (e) { console.error("Error actualizando ramal:", e); }
+          }}
+
           setCapacidadFibra={setCapacidadFibra}
           fibrasVisibles={fibrasVisibles}
           setFibrasVisibles={setFibrasVisibles}
@@ -1610,8 +1862,9 @@ function App() {
           nombreProyecto={mapaSupervision ? mapaSupervision.proyecto?.nombre : proyectoActual?.nombre}
           totalPuntosProyecto={mapaSupervision ? mapaSupervision.puntos.length : (modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto)}
           proyectoEsCompartido={!!proyectoActual?.esCompartido}
-          onGuardarFibra={async () => {
+          onGuardarFibra={async ({ nombre = '', capacidad } = {}) => {
             if (puntosRecorrido.length < 2 || !diaActual || !proyectoActual) return;
+            const capFinal = capacidad || capacidadFibra;
 
             // La fibra guarda su PROPIA geometría: una lista de vértices con coordenadas.
             // Un vértice puede estar clavado en un poste (lleva puntoId) o ser libre.
@@ -1628,14 +1881,14 @@ function App() {
             const puntoInicialFibra = todosLosPuntos.find(x => String(x.id) === String(idsPostes[0]));
             const datos = {
               vertices,                    // ← geometría real, manda esta
-              nombre: (nombreFibra || '').trim(),
+              nombre: (nombre || '').trim(),
               puntos: idsPostes,           // legado
               from: idsPostes[0] || null,
               to: idsPostes[idsPostes.length - 1] || null,
               diaId: puntoInicialFibra?.diaId || diaActual,
               proyectoId: String(puntoInicialFibra?.proyectoId || proyectoActual.id),
               ownerId: user.uid,
-              capacidad: capacidadFibra,
+              capacidad: capFinal,
               tipo: 'trazo',
               timestamp: new Date().toISOString()
             };
@@ -1645,44 +1898,16 @@ function App() {
             } catch (error) {
               console.error("Error guardando fibra:", error);
             }
+            // Se limpia el trazo pero NO se sale del modo fibra: se sigue dibujando.
             setPuntosRecorrido([]);
-            setNombreFibra('');
           }}
-          onEliminarConexion={async (con) => {
-            setConexiones(prev => prev.filter(c => c.id !== con.id));
-            setConexionSeleccionada(null);
-            // A la papelera (con las coords de sus puntos AL MOMENTO del borrado)
-            try {
-              const { enviarAPapelera } = await import('./utils/papelera');
-              const idsPts = (con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean).map(String);
-              const metaPuntos = idsPts.map(pid => {
-                const p = todosLosPuntos.find(x => String(x.id) === pid);
-                return { id: pid, coords: { lat: p?.coords?.lat ?? null, lng: p?.coords?.lng ?? null } };
-              });
-              await enviarAPapelera({
-                uid: user.uid, tipo: 'fibra',
-                snapshot: JSON.parse(JSON.stringify(con)),
-                coleccionOriginal: 'conexiones', idOriginal: con.id,
-                proyectoId: con.proyectoId || null,
-                proyectoNombre: proyectos.find(p => p.id === con.proyectoId)?.nombre || '',
-                nombre: `Fibra ${con.capacidad || ''} (${idsPts.length} puntos)`.trim(),
-                meta: { puntos: metaPuntos },
-              });
-            } catch (e) { console.error('Papelera fibra:', e); }
-            import("firebase/firestore").then(({ deleteDoc, doc: fbDoc }) => {
-              deleteDoc(fbDoc(db, "conexiones", con.id));
-            }).catch(e => console.error("Error eliminando fibra:", e));
-          }}
-          onCambiarCapacidad={async (con, nuevaCapacidad) => {
-            setConexiones(prev => prev.map(c =>
-              c.id === con.id ? { ...c, capacidad: nuevaCapacidad } : c
-            ));
-            setConexionSeleccionada(prev => prev ? { ...prev, capacidad: nuevaCapacidad } : null);
-            try {
-              const { updateDoc: fbUp, doc: fbDoc } = await import("firebase/firestore");
-              await fbUp(fbDoc(db, "conexiones", con.id), { capacidad: nuevaCapacidad });
-            } catch (e) { console.error("Error actualizando capacidad:", e); }
-          }}
+          onEliminarConexion={(con) => setConfirmData({
+            title: 'Eliminar ramal',
+            message: `Se eliminará "${con.nombre || 'sin nombre'}" (${con.capacidad || 12} FO). Va a la papelera y se puede recuperar.`,
+            actionText: 'ELIMINAR',
+            theme,
+            onConfirm: () => { setConfirmData(null); borrarConexion(con); }
+          })}
           modoSupervision={!!mapaSupervision}
           onVolverSupervision={() => {
             // La sección Supervisión se retiró: los supervisores entran desde EQUIPOS
@@ -1729,6 +1954,10 @@ function App() {
           guardandoOrden={guardandoOrden}
           onGuardarOrden={guardarOrdenTendido}
           onReiniciarOrden={reiniciarOrden}
+          prefijoOrden={prefijoOrden}
+          retomarOrden={retomarOrden}
+          hayPosicionesPrevias={todosLosPuntos.some(p => perteneceAProyecto(p, proyOrdenar) && p.datos?.ordenTendido != null)}
+          onRetomarOrden={() => setRetomarOrden(true)}
           modoCorregir={modoCorregir}
           correccionSel={correccionSel}
           setCorreccionSel={setCorreccionSel}
@@ -1739,10 +1968,12 @@ function App() {
           onVolverASeleccion={() => setModoCorregir('seleccion')}
           onAplicarCorreccion={aplicarCorreccion}
           esOrdenable={(id) => {
+            // Los del bloque retomado están fijos: no se vuelven a tocar.
+            if (prefijoOrden.some(x => String(x) === String(id))) return false;
             const pt = todosLosPuntos.find(p => String(p.id) === String(id));
             return pt ? perteneceAProyecto(pt, proyOrdenar) : false;
           }}
-          onCancelarOrdenar={() => { setModoOrdenar(false); setOrdenSeleccion([]); limpiarCorreccion(); setModalPendiente(`LISTA_PUNTOS_${ordenarProyId || proyectoActual?.id}`); setOrdenarProyId(null); setVista('proyectos'); }}
+          onCancelarOrdenar={() => { setModoOrdenar(false); setOrdenSeleccion([]); setRetomarOrden(false); limpiarCorreccion(); setModalPendiente(`LISTA_PUNTOS_${ordenarProyId || proyectoActual?.id}`); setOrdenarProyId(null); setVista('proyectos'); }}
         />
       )}
       {vista === 'proyectos' && (
@@ -1961,7 +2192,7 @@ function App() {
           perfilActivo={perfilActivo}
           datosFormulario={datosFormulario}
           setDatosFormulario={setDatosFormulario}
-          config={config}
+          config={configParaDetalle}
           proyectoActual={proyectoActual}
           modoLectura={modoLectura}
           modoEdicion={modoEdicion}
@@ -1990,7 +2221,7 @@ function App() {
         <VerDetalle
           datos={datosFormulario}
           proyectoActual={mapaSupervision ? mapaSupervision.proyecto : proyectoActual}
-          config={config}
+          config={configParaDetalle}
           theme={theme}
           readOnly={!!mapaSupervision}
           esSupervision={!!mapaSupervision}

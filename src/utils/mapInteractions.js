@@ -1,7 +1,7 @@
 export const mapInteractions = {
   handleMapaClick(params) {
     const {
-      e, menuAbierto, modoFibra, dibujandoFibra, setPuntosRecorrido,
+      e, menuAbierto, modoFibra, dibujandoFibra, setPuntosRecorrido, ajustarVertice,
       puntoSeleccionado, vista, diaActual,
       diasVisibles, proyectos, proyectoActual, theme,
       setPuntoSeleccionado, setPuntoTemporal, setVista, setAlertData,
@@ -13,7 +13,8 @@ export const mapInteractions = {
     // VÉRTICE LIBRE. La fibra tiene geometría propia, así que no necesita un poste
     // debajo para doblar.
     if (modoFibra && dibujandoFibra && e?.latlng) {
-      setPuntosRecorrido?.(prev => [...prev, { lat: e.latlng.lat, lng: e.latlng.lng }]);
+      const bruto = { lat: e.latlng.lat, lng: e.latlng.lng };
+      setPuntosRecorrido?.(prev => [...prev, ajustarVertice ? ajustarVertice(bruto) : bruto]);
       return;
     }
     if (modoFibra) { return; }
@@ -64,7 +65,7 @@ export const mapInteractions = {
   handlePuntoClick(params) {
     const {
       e, puntoId, puntoCoords, modoFibra, dibujandoFibra, setPuntosRecorrido,
-      setPuntoSeleccionado, setPuntoTemporal
+      ajustarVertice, setPuntoSeleccionado, setPuntoTemporal
     } = params;
 
     if (e && typeof e.stopPropagation === 'function') {
@@ -78,10 +79,14 @@ export const mapInteractions = {
     // de qué poste se trata; tocar el mapa (handleMapaClick) crea un vértice libre.
     if (modoFibra && dibujandoFibra) {
       if (!puntoCoords || puntoCoords.lat == null) return;
+      // Aunque se toque justo sobre el poste, el vértice se aparta de las otras fibras
+      const v = ajustarVertice
+        ? ajustarVertice({ lat: puntoCoords.lat, lng: puntoCoords.lng })
+        : { lat: puntoCoords.lat, lng: puntoCoords.lng };
       setPuntosRecorrido(prev => {
         const ult = prev[prev.length - 1];
         if (ult && String(ult.puntoId) === String(puntoId)) return prev; // no repetir
-        return [...prev, { lat: puntoCoords.lat, lng: puntoCoords.lng, puntoId: String(puntoId) }];
+        return [...prev, { ...v, puntoId: String(puntoId) }];
       });
       return;
     }

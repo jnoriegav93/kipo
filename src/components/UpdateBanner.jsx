@@ -1,7 +1,17 @@
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
+// Cada cuánto se le pregunta al servidor si hay versión nueva. Sin esto, el service
+// worker solo comprueba al cargar la página: con la app abierta un rato largo, los
+// despliegues pasaban desapercibidos y el aviso nunca llegaba a salir.
+const CADA_MS = 60 * 1000;
+
 export default function UpdateBanner() {
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
+    onRegisteredSW(_url, registro) {
+      if (!registro) return;
+      setInterval(() => { registro.update().catch(() => {}); }, CADA_MS);
+    },
+  });
 
   if (!needRefresh) return null;
 

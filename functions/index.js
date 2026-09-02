@@ -806,7 +806,13 @@ const generarKMZ = async (proy, puntosProyecto, conexiones, todosPuntos, logoBuf
   let fotosCountBuffer = 0;
 
   // Colores por capacidad de fibra (hex → KML AABBGGRR)
-  const KML_COLORES = { 6:'fff65c8b', 12:'fff6823b', 24:'ff9948ec', 48:'ff1673f9', 96:'ff4444ef', 144:'ff16cc84' };
+  // Escapa texto que va dentro de una etiqueta XML/KML. El nombre del ramal lo
+// escribe el usuario y un solo & dejaría el KMZ ilegible para Google Earth.
+const escXml = (t) => String(t == null ? '' : t)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+const KML_COLORES = { 6:'fff65c8b', 12:'fff6823b', 24:'ff9948ec', 48:'ff1673f9', 96:'ff4444ef', 144:'ff16cc84' };
   const capsUnicas = [...new Set(conexiones.map(c => c.capacidad).filter(Boolean))];
   const estilosLineas = [
     ...capsUnicas.map(cap => `  <Style id="linea_${cap}"><LineStyle><color>${KML_COLORES[cap] || 'fff6823b'}</color><width>3</width></LineStyle></Style>`),
@@ -1002,24 +1008,24 @@ ${estilosLineas}
     let kmlLines = '';
     if (numVol === 1) {
       kmlLines += `</Folder><Folder><name>Líneas</name>`;
-      kmlLines += `<!-- DEBUG: ${conexiones.length} conexiones, todosPuntos: ${todosPuntos.length} -->`;
       conexiones.forEach(c => {
-        // Usar todos los puntos del recorrido (multi-segmento), con fallback a from/to
-        const idsSerie = (Array.isArray(c.puntos) && c.puntos.length >= 2)
-          ? c.puntos
-          : [c.from, c.to].filter(Boolean);
-        const resueltos = idsSerie.map(id => todosPuntos.find(p => p.id === id));
-        const coords = resueltos
-          .filter(p => p && p.coords)
-          .map(p => `${(p.coords.lng || 0).toFixed(6)},${(p.coords.lat || 0).toFixed(6)},0`);
-        const primerIdBuscado = idsSerie[0];
-        const primerPuntoEncontrado = todosPuntos.find(p => p.id === primerIdBuscado);
-        const primerPuntoEncontradoAlt = primerIdBuscado ? todosPuntos.find(p => String(p.id) === String(primerIdBuscado)) : null;
-        kmlLines += `<!-- Linea ${c.id}: ids=${idsSerie.length} resueltos=${resueltos.filter(Boolean).length} coords=${coords.length} cap=${c.capacidad} proyId=${c.proyectoId} diaId=${c.diaId} primerIdBuscado=${primerIdBuscado} encontrado=${primerPuntoEncontrado ? 'SI' : (primerPuntoEncontradoAlt ? 'SI_ALT' : 'NO')} -->`;
+        // La fibra nueva trae su propia geometría. Las viejas solo guardan ids de
+        // poste y su forma se sigue deduciendo de dónde estén esos postes.
+        const coords = (Array.isArray(c.vertices) && c.vertices.length >= 2)
+          ? c.vertices
+              .filter(v => v && v.lat != null && v.lng != null)
+              .map(v => `${(v.lng || 0).toFixed(6)},${(v.lat || 0).toFixed(6)},0`)
+          : ((Array.isArray(c.puntos) && c.puntos.length >= 2) ? c.puntos : [c.from, c.to].filter(Boolean))
+              .map(id => todosPuntos.find(p => String(p.id) === String(id)))
+              .filter(p => p && p.coords)
+              .map(p => `${(p.coords.lng || 0).toFixed(6)},${(p.coords.lat || 0).toFixed(6)},0`);
         if (coords.length < 2) return;
         const cap = c.capacidad;
         const styleId = (cap && KML_COLORES[cap]) ? `linea_${cap}` : 'linea_default';
-        const nombre = cap ? `${cap} hilos` : 'Línea de fibra';
+        // El nombre lo escribe el usuario: hay que escaparlo o un & rompe el KML entero.
+        const nombre = c.nombre
+          ? `${escXml(c.nombre)}${cap ? ` · ${cap} hilos` : ''}`
+          : (cap ? `${cap} hilos` : 'Línea de fibra');
         kmlLines += `<Placemark><name>${nombre}</name><styleUrl>#${styleId}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords.join(' ')}</coordinates></LineString></Placemark>`;
       });
     }
@@ -2264,6 +2270,25 @@ exports.procesarExportacion = onDocumentCreated(
         puntosProyecto = ownerPuntosSnap.docs.map(d => ({ ...d.data(), id: d.id })).filter(p => diasIds.has(p.diaId));
       }
 
+      // RANGO DEL REPORTE: el usuario puede pedir solo un tramo de postes. Las
+      // posiciones llegan 1..N sobre el MISMO orden con el que se arman los reportes
+      // (ordenTendido, y al final por id los que nunca se ordenaron), así lo que se
+      // recorta coincide con lo que se eligió en la lista.
+      const { desde, hasta } = stampConfig;
+      if (desde || hasta) {
+        const ordenados = [...puntosProyecto].sort((x, y) => {
+          const ox = x.datos?.ordenTendido, oy = y.datos?.ordenTendido;
+          if (ox != null && oy != null) return ox - oy;
+          if (ox != null) return -1;
+          if (oy != null) return 1;
+          return parseInt(x.id) - parseInt(y.id);
+        });
+        const ini = Math.max(1, desde || 1);
+        const fin = Math.min(ordenados.length, hasta || ordenados.length);
+        puntosProyecto = ordenados.slice(ini - 1, fin);
+        console.log(`Rango del reporte: ${ini} a ${fin} -> ${puntosProyecto.length} puntos`);
+      }
+
       console.log(`Exportando ${tipo}: ${puntosProyecto.length} puntos`);
 
       // Cargar conexiones (solo para KMZ)
@@ -2293,6 +2318,13 @@ exports.procesarExportacion = onDocumentCreated(
         if (configSnap.exists) {
           ferreteriasVisibles = configSnap.data().catalogoFerreteria || [];
           armadosConfig = configSnap.data().armados || [];
+        }
+        // Los ARMADOS son del proyecto. A los suyos se les suman los del usuario que
+        // el proyecto no fijó: solo sirven para resolver el nombre de los puntos que ya
+        // los tenían asignados, y así el Excel no pierde ninguno durante la migración.
+        if (Array.isArray(proy.armados) && proy.armados.length > 0) {
+          const ids = new Set(proy.armados.map(a => String(a.id)));
+          armadosConfig = [...proy.armados, ...armadosConfig.filter(a => !ids.has(String(a.id)))];
         }
       }
 

@@ -4,19 +4,19 @@ export const useMapState = () => {
   
   const [iconSize, setIconSize] = useState(1);
   const [mapStyle, setMapStyle] = useState('google');
-  const [mostrarEtiquetas, setMostrarEtiquetas] = useState({ item: false, pasivo: false });
+  const [mostrarEtiquetas, setMostrarEtiquetas] = useState({ item: false, pasivo: false, fibra: false });
   const [menuEtiquetasAbierto, setMenuEtiquetasAbierto] = useState(false);
-  const savedEtiquetasRef = useRef({ item: false, pasivo: false });
+  const savedEtiquetasRef = useRef({ item: false, pasivo: false, fibra: false });
 
   const toggleMenuEtiquetas = () => {
     if (menuEtiquetasAbierto) {
       // Cerrar: guardar selección actual y ocultar etiquetas del mapa
       savedEtiquetasRef.current = { ...mostrarEtiquetas };
-      setMostrarEtiquetas({ item: false, pasivo: false });
+      setMostrarEtiquetas(prev => ({ item: false, pasivo: false, fibra: prev.fibra }));
       setMenuEtiquetasAbierto(false);
     } else {
       // Abrir: restaurar selección guardada
-      setMostrarEtiquetas({ ...savedEtiquetasRef.current });
+      setMostrarEtiquetas(prev => ({ ...savedEtiquetasRef.current, fibra: prev.fibra }));
       setMenuEtiquetasAbierto(true);
     }
   };

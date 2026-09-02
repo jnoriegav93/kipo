@@ -40,17 +40,32 @@ const VistaMapa = ({
   setConexionSeleccionada,
   handleConexionClick,
   onGuardarFibra,
-  nombreFibra = '',
-  setNombreFibra,
+  nombreSugeridoFibra = '',
+  onActualizarConexion,
+  modoAjuste = false,
+  setModoAjuste,
+  umbralAjuste = 3,
+  setUmbralAjuste,
+  previewAjuste = [],
+  apoyadosAjuste = [],
+  aplicandoAjuste = false,
+  onAplicarAjuste,
+  hayDeshacerAjuste = false,
+  onDeshacerAjuste,
   onEliminarConexion,
-  onCambiarCapacidad,
   totalFibras,
   nombreProyecto = null,
   totalPuntosProyecto = 0,
   proyectoEsCompartido = false,
   menuEtiquetasAbierto = false,
   setMostrarEtiquetas,
-  mostrarEtiquetas = { item: false, pasivo: false },
+  mostrarEtiquetas = { item: false, pasivo: false, fibra: false },
+  simbologiaActiva = false,
+  simbologiaAbierta = false,
+  coloresArmado = {},
+  onAsignarColorArmado,
+  onToggleSimbologiaActiva,
+  armadosProyecto = [],
   // Panel de días
   menuDiasAbierto = false,
   diasPanelData = [],
@@ -90,6 +105,10 @@ const VistaMapa = ({
   onReiniciarOrden,
   onCancelarOrdenar,
   // Corregir posición (mover varios puntos detrás de otro)
+  prefijoOrden = [],
+  retomarOrden = false,
+  hayPosicionesPrevias = false,
+  onRetomarOrden,
   modoCorregir = null,
   correccionSel = [],
   setCorreccionSel,
@@ -102,8 +121,24 @@ const VistaMapa = ({
 }) => {
   // REINICIAR es contextual. Sin correcciones hechas y sin nada marcado, lo que
   // corresponde es salir del modo corregir, así que se anuncia como VOLVER.
+  // El botón es contextual. Al empezar y con posiciones ya guardadas ofrece RETOMAR;
+  // en cuanto hay algo que borrar vuelve a ser REINICIAR.
   const etiquetaReiniciar = (modoCorregir && correccionSel.length === 0 && !huboCorreccion)
-    ? 'VOLVER' : 'REINICIAR';
+    ? 'VOLVER'
+    : (!modoCorregir && !retomarOrden && ordenSeleccion.length === 0 && hayPosicionesPrevias)
+      ? 'RETOMAR' : 'REINICIAR';
+  const alPulsarReiniciar = () => {
+    if (etiquetaReiniciar === 'RETOMAR') { onRetomarOrden?.(); return; }
+    onReiniciarOrden?.();
+  };
+  // Destino al que llevar el mapa. El contador n permite repetir el mismo punto.
+  // Capacidad que se está probando en el editor de la lista, para pintar la línea
+  // de ese color antes de guardar.
+  const [previewFibra, setPreviewFibra] = useState(null);
+  const [centrarEnCoord, setCentrarEnCoord] = useState(null);
+  // Paleta básica de la app, la misma con la que se colorean los días
+  const coloresSimbologia = coloresDia.length ? coloresDia : ['#f97316', '#3b82f6', '#10b981', '#a855f7', '#ef4444'];
+  const irACoord = (lat, lng) => setCentrarEnCoord(prev => ({ lat, lng, n: (prev?.n || 0) + 1 }));
   const [fotoSeleccionada, setFotoSeleccionada] = useState(null);
   const [panelAsociarVisible, setPanelAsociarVisible] = useState(false);
   const [puntosProximos, setPuntosProximos] = useState([]);
@@ -184,6 +219,8 @@ const VistaMapa = ({
             theme={theme}
             mapStyle={mapStyle}
             handleMapaClick={handleMapaClick}
+            centrarEnCoord={centrarEnCoord}
+            previewFibra={previewFibra}
             puntosVisiblesMapa={puntosVisiblesMapa}
             iconSize={iconSize}
             obtenerColorDia={obtenerColorDia}
@@ -208,6 +245,12 @@ const VistaMapa = ({
             puntosSeleccionadosMover={puntosSeleccionadosMover}
             modoOrdenar={modoOrdenar}
             ordenSeleccion={ordenSeleccion}
+            simbologiaActiva={simbologiaActiva}
+            coloresArmado={coloresArmado}
+            previewAjuste={modoAjuste ? previewAjuste : []}
+            apoyadosAjuste={modoAjuste ? apoyadosAjuste : []}
+            modoAjuste={modoAjuste}
+            prefijoOrden={prefijoOrden}
             modoCorregir={modoCorregir}
             correccionSel={correccionSel}
             ordenTrabajo={ordenTrabajo}
@@ -252,12 +295,37 @@ const VistaMapa = ({
               capacidadFibra={capacidadFibra}
               setCapacidadFibra={setCapacidadFibra}
               puntosRecorrido={puntosRecorrido}
+              setPuntosRecorrido={setPuntosRecorrido}
               onGuardarFibra={onGuardarFibra}
-              nombreFibra={nombreFibra}
-              setNombreFibra={setNombreFibra}
+              nombreSugerido={nombreSugeridoFibra}
+              modoAjuste={modoAjuste}
+              setModoAjuste={setModoAjuste}
+              umbralAjuste={umbralAjuste}
+              setUmbralAjuste={setUmbralAjuste}
+              previewAjuste={previewAjuste}
+              aplicandoAjuste={aplicandoAjuste}
+              onAplicarAjuste={onAplicarAjuste}
+              hayDeshacerAjuste={hayDeshacerAjuste}
+              onDeshacerAjuste={onDeshacerAjuste}
+              onPreviewFibra={setPreviewFibra}
+              onActualizar={onActualizarConexion}
+              onCentrar={(con) => {
+                // Centro del ramal: promedio de sus vértices. En las fibras viejas,
+                // que no tienen geometría propia, se usa el primer poste que resuelva.
+                const vs = Array.isArray(con.vertices) ? con.vertices.filter(v => v?.lat != null) : [];
+                if (vs.length > 0) {
+                  irACoord(vs.reduce((a, v) => a + v.lat, 0) / vs.length,
+                           vs.reduce((a, v) => a + v.lng, 0) / vs.length);
+                  return;
+                }
+                const ids = (con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean);
+                const p = (puntosVisiblesMapa || []).find(x => ids.some(id => String(id) === String(x.id)) && x.coords);
+                if (p) irACoord(p.coords.lat, p.coords.lng);
+              }}
+              conexiones={conexionesVisiblesMapa}
               conexionSeleccionada={conexionSeleccionada}
+              setConexionSeleccionada={setConexionSeleccionada}
               onEliminarConexion={onEliminarConexion}
-              onCambiarCapacidad={onCambiarCapacidad}
               fibrasVisibles={fibrasVisibles}
               setFibrasVisibles={setFibrasVisibles}
               totalFibras={totalFibras}
@@ -266,8 +334,8 @@ const VistaMapa = ({
                 setDibujandoFibra(false);
                 setPuntosRecorrido([]);
                 setConexionSeleccionada(null);
+                setModoAjuste?.(false);
               }}
-              setPuntosRecorrido={setPuntosRecorrido}
             />
           </div>
         )}
@@ -440,6 +508,14 @@ const VistaMapa = ({
               <p className="text-[11px] font-bold text-white leading-tight max-w-[200px] truncate uppercase">{nombreProyecto} · {totalPuntosProyecto} pts</p>
             </div>
 
+            {/* Con la simbología encendida y el panel cerrado, el mapa no se lee por
+                día: conviene avisarlo o los colores se malinterpretan. */}
+            {simbologiaActiva && !simbologiaAbierta && (
+              <div className="rounded-lg px-2 py-0.5 bg-brand-500 pointer-events-none">
+                <p className="text-[10px] font-black text-white leading-tight">Simbología activada</p>
+              </div>
+            )}
+
             {/* Aviso de puntos ocultos (cuando el panel de días está cerrado) */}
             {!menuDiasAbierto && diasPanelData.some(d => d.count > 0 && !diasVisibles.includes(d.id)) && (
               <div className="rounded-lg px-2 py-0.5 bg-amber-500 pointer-events-none">
@@ -462,6 +538,45 @@ const VistaMapa = ({
                 >
                   PASIVO
                 </button>
+                <button
+                  onClick={() => setMostrarEtiquetas(prev => ({ ...prev, fibra: !prev.fibra }))}
+                  className={`w-full py-1.5 rounded-lg text-[11px] font-black tracking-wide border-2 shadow-md transition-all active:scale-95 ${mostrarEtiquetas.fibra ? 'bg-brand-500 text-white border-brand-600' : 'bg-white text-slate-900 border-slate-900'}`}
+                >
+                  FIBRA
+                </button>
+              </div>
+            )}
+
+            {/* SIMBOLOGÍA: un color por armado. Los puntos sin armado, o con un
+                armado sin color, se pintan grises mientras esté encendida. */}
+            {simbologiaAbierta && (
+              <div className={`w-44 max-h-[60vh] overflow-y-auto rounded-xl border-2 ${theme.border} ${theme.card} shadow-xl p-2 space-y-1.5`}>
+                <button
+                  onClick={onToggleSimbologiaActiva}
+                  className={`w-full py-1.5 rounded-lg text-[11px] font-black tracking-widest border-2 transition-all ${simbologiaActiva
+                    ? 'bg-brand-500 text-white border-brand-600'
+                    : `${theme.bg} ${theme.text} ${theme.border}`}`}
+                >
+                  {simbologiaActiva ? 'SIMBOLOGÍA ACTIVADA' : 'ACTIVAR SIMBOLOGÍA'}
+                </button>
+
+                {armadosProyecto.length === 0 ? (
+                  <p className={`text-[10px] font-bold text-center py-2 ${theme.text} opacity-50`}>Este proyecto no tiene armados.</p>
+                ) : armadosProyecto.map(a => (
+                  <div key={a.id} className={`rounded-lg border-2 ${theme.border} p-1.5`}>
+                    <p className={`text-[10px] font-black uppercase truncate mb-1 ${theme.text}`}>{a.nombre}</p>
+                    <div className="flex items-center justify-between">
+                      {coloresSimbologia.map(c => (
+                        <button
+                          key={c}
+                          onClick={() => onAsignarColorArmado?.(a.id, coloresArmado[a.id] === c ? null : c)}
+                          className={`w-6 h-6 rounded-full border-2 shrink-0 transition-transform ${coloresArmado[a.id] === c ? 'border-black scale-110' : 'border-white/60'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -667,10 +782,10 @@ const VistaMapa = ({
       {isDesktop && modoOrdenar && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] flex items-stretch gap-3">
           <div className="bg-white rounded-2xl px-5 py-2 shadow-xl border border-slate-200 flex flex-col items-center justify-center">
-            <span className="font-black text-lg text-blue-600 leading-none">{ordenSeleccion.length}/{totalPuntosProyecto}</span>
+            <span className="font-black text-lg text-blue-600 leading-none">{prefijoOrden.length + ordenSeleccion.length}/{totalPuntosProyecto}</span>
             <span className="text-[9px] font-bold tracking-widest text-slate-500">EN ORDEN</span>
           </div>
-          <button onClick={onReiniciarOrden} className={pill}>
+          <button onClick={alPulsarReiniciar} className={pill}>
             <RefreshCw size={20} strokeWidth={2.5} /> {etiquetaReiniciar}
           </button>
           <button
@@ -694,11 +809,11 @@ const VistaMapa = ({
       {!isDesktop && modoOrdenar && (
         <div className={`h-20 ${theme.bottomBar} border-t-2 border-blue-400 shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-[400] flex overflow-hidden shrink-0`}>
           <div className="flex-1 flex flex-col items-center justify-center px-3">
-            <span className="font-black text-lg text-blue-600">{ordenSeleccion.length}/{totalPuntosProyecto}</span>
+            <span className="font-black text-lg text-blue-600">{prefijoOrden.length + ordenSeleccion.length}/{totalPuntosProyecto}</span>
             <span className={`text-[10px] font-bold tracking-widest ${theme.text} opacity-60`}>EN ORDEN</span>
           </div>
           <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`} />
-          <button onClick={onReiniciarOrden} className={`flex-1 font-black text-sm flex flex-col items-center justify-center gap-0.5 ${theme.text} active:opacity-80 ${theme.card}`}>
+          <button onClick={alPulsarReiniciar} className={`flex-1 font-black text-sm flex flex-col items-center justify-center gap-0.5 ${theme.text} active:opacity-80 ${theme.card}`}>
             <RefreshCw size={20} strokeWidth={2.5} />
             <span className="text-[9px] tracking-widest">{etiquetaReiniciar}</span>
           </button>
@@ -742,7 +857,7 @@ const VistaMapa = ({
             </>
           ) : (
             <>
-              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
+              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(true); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
               {proyectoTipo === 'instalacionPostes' && (
                 <button onClick={() => fotoMapaInputRef.current?.click()} className={pill}><Camera size={20} strokeWidth={2.5} /> FOTO</button>
               )}
@@ -814,7 +929,7 @@ const VistaMapa = ({
               // --- Sin selección: FIBRA / AGREGAR ---
               <>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); }}
+                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(true); }}
                   className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${theme.card} ${theme.text} hover:opacity-80`}
                 >
                   <Cable size={24} strokeWidth={2.5} /> FIBRA

@@ -508,6 +508,7 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
               </div>
               <div className="px-4 py-2">
                 <StatusRow label="Versión app" value={`v${datos.version}`} ok={!datos.sw.waiting} warn={datos.sw.waiting} />
+                <StatusRow label="Compilado el" value={import.meta.env.VITE_BUILD || '—'} ok />
                 <StatusRow label="Service Worker" value={datos.sw.state} ok={datos.sw.state === 'activo'} />
                 <StatusRow label="Modo instalación" value={datos.pwa ? 'PWA instalada' : 'Navegador'} ok={datos.pwa} />
                 <StatusRow label="Conectividad" value={datos.online ? 'En línea' : 'Sin conexión'} ok={datos.online} />

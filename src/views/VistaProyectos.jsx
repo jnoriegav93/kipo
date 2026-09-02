@@ -13,6 +13,9 @@ import { compartirODescargar, perteneceAProyecto } from '../utils/helpers';
 import BloqueoHerramienta from '../components/BloqueoHerramienta';
 import { equiposDePunto } from '../utils/equiposPasivos';
 import RenumerarItems from '../components/RenumerarItems';
+import RuedaSelector from '../components/RuedaSelector';
+import ZoomImage from '../components/ZoomImage';
+import { resumenFibrasEnPoste, getColorFibra } from '../utils/fibraUtils';
 import { descargarFotosZip, handleExportKML } from '../utils/exporters';
 import { crearExportacion, suscribirseAExportacion } from '../services/exportacionService';
 import { COLORES_DIA } from '../data/constantes';
@@ -1706,6 +1709,8 @@ const VistaProyectos = ({
         />
       ) : (
         <ComparativoModal
+          proyectos={proyectos}
+          conexiones={(conexiones || []).filter(c => String(c.proyectoId) === String(proyModal?.id ?? ''))}
           proyecto={proyModal}
           puntos={puntos}
           config={config}
@@ -1846,112 +1851,6 @@ const VistaProyectos = ({
   );
 };
 
-// ─── VISOR DE FOTO CON ZOOM (pellizco + arrastre + botones) ───────────────────
-function ZoomImage({ src, alt = '', heightClass = 'h-96', fallback = null }) {
-  const containerRef = React.useRef(null);
-  const st = React.useRef({ s: 1, x: 0, y: 0 });
-  const [t, setT] = React.useState({ s: 1, x: 0, y: 0 });
-  const [imgSrc, setImgSrc] = React.useState(src); // si falla, cae al fallback (miniatura)
-  const [imgError, setImgError] = React.useState(false);
-  const apply = (next) => { st.current = next; setT(next); };
-
-  React.useEffect(() => { apply({ s: 1, x: 0, y: 0 }); setImgSrc(src); setImgError(false); }, [src]);
-
-  // Zoom manteniendo fijo el punto focal (fx,fy en coords del contenedor)
-  const zoomAt = (factor, fx, fy) => {
-    const prev = st.current;
-    const s = Math.min(6, Math.max(1, prev.s * factor));
-    if (s === 1) return apply({ s: 1, x: 0, y: 0 });
-    const real = s / prev.s;
-    apply({ s, x: fx - real * (fx - prev.x), y: fy - real * (fy - prev.y) });
-  };
-
-  // Gestos táctiles con listeners NATIVOS (passive:false) para poder
-  // preventDefault y evitar que el navegador robe el arrastre/scroll.
-  React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const pts = new Map();
-    let lastPan = null, lastDist = 0;
-    const rel = (cx, cy) => { const r = el.getBoundingClientRect(); return { x: cx - r.left, y: cy - r.top }; };
-    const enCtrl = (target) => target?.closest?.('[data-zoom-ctrl]');
-
-    const down = (e) => {
-      if (enCtrl(e.target)) return;
-      pts.set(e.pointerId, rel(e.clientX, e.clientY));
-      try { el.setPointerCapture(e.pointerId); } catch {}
-      if (pts.size === 1) lastPan = [...pts.values()][0];
-      else if (pts.size === 2) { const [a, b] = [...pts.values()]; lastDist = Math.hypot(a.x - b.x, a.y - b.y); }
-    };
-    const move = (e) => {
-      if (!pts.has(e.pointerId)) return;
-      e.preventDefault();
-      pts.set(e.pointerId, rel(e.clientX, e.clientY));
-      if (pts.size >= 2) {
-        const [a, b] = [...pts.values()];
-        const dist = Math.hypot(a.x - b.x, a.y - b.y);
-        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        if (lastDist > 0) zoomAt(dist / lastDist, mid.x, mid.y);
-        lastDist = dist;
-      } else {
-        const p = [...pts.values()][0];
-        const prev = st.current;
-        if (prev.s > 1 && lastPan) apply({ ...prev, x: prev.x + (p.x - lastPan.x), y: prev.y + (p.y - lastPan.y) });
-        lastPan = p;
-      }
-    };
-    const up = (e) => {
-      pts.delete(e.pointerId);
-      const rest = [...pts.values()];
-      if (rest.length === 1) lastPan = rest[0];
-      if (rest.length === 2) lastDist = Math.hypot(rest[0].x - rest[1].x, rest[0].y - rest[1].y);
-    };
-    const wheel = (e) => { e.preventDefault(); const p = rel(e.clientX, e.clientY); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y); };
-
-    el.addEventListener('pointerdown', down);
-    el.addEventListener('pointermove', move, { passive: false });
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-    el.addEventListener('wheel', wheel, { passive: false });
-    return () => {
-      el.removeEventListener('pointerdown', down);
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', up);
-      el.removeEventListener('wheel', wheel);
-    };
-  }, []);
-
-  const center = () => { const r = containerRef.current.getBoundingClientRect(); return { x: r.width / 2, y: r.height / 2 }; };
-
-  return (
-    <div
-      ref={containerRef}
-      className={`relative ${heightClass} bg-black rounded-xl overflow-hidden select-none`}
-      style={{ touchAction: 'none' }}
-    >
-      <img
-        src={imgSrc} alt={alt} draggable={false}
-        onError={() => { if (fallback && imgSrc !== fallback) setImgSrc(fallback); else setImgError(true); }}
-        className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-        style={{ transform: `translate(${t.x}px, ${t.y}px) scale(${t.s})`, transformOrigin: '0 0', display: imgError ? 'none' : undefined }}
-      />
-      {imgError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500 pointer-events-none px-4 text-center">
-          <ImageIcon size={40} className="opacity-60" />
-          <span className="text-xs font-bold">Imagen no disponible<br/>(la foto no está en la nube)</span>
-        </div>
-      )}
-      <div data-zoom-ctrl className="absolute bottom-2 right-2 flex flex-col gap-1.5">
-        <button onClick={() => { const c = center(); zoomAt(1.4, c.x, c.y); }} className="w-10 h-10 rounded-xl bg-slate-900 text-white border-2 border-white/20 flex items-center justify-center active:scale-90 shadow-lg"><Plus size={18} strokeWidth={3} /></button>
-        <button onClick={() => { const c = center(); zoomAt(1 / 1.4, c.x, c.y); }} className="w-10 h-10 rounded-xl bg-slate-900 text-white border-2 border-white/20 flex items-center justify-center active:scale-90 shadow-lg"><Minus size={18} strokeWidth={3} /></button>
-      </div>
-      {t.s > 1 && (
-        <button data-zoom-ctrl onClick={() => apply({ s: 1, x: 0, y: 0 })} className="absolute bottom-2 left-2 px-3 h-10 rounded-xl bg-slate-900 text-white border-2 border-white/20 text-[11px] font-black active:scale-90 shadow-lg">RESET</button>
-      )}
-    </div>
-  );
-}
 
 // ─── Tablero de elementos (acumulador por posición) ──────────────────────────
 // Recorre los puntos hasta la posición actual y recuerda el último valor de cada
@@ -2021,7 +1920,7 @@ const TableroElementos = ({ tablero, theme, isDark }) => (
 );
 
 // ─── MODAL COMPARATIVO (Control de Ferretería desde el proyecto) ──────────────
-const ComparativoModal = ({ proyecto, puntos, config, user, theme, isDark, setConfirmData, setAlertData, onClose }) => {
+const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], config, user, theme, isDark, setConfirmData, setAlertData, onClose }) => {
   const isDesktop = useIsDesktop();
   const [lista, setLista] = React.useState(undefined); // undefined=cargando, null=sin lista
   const [disponibles, setDisponibles] = React.useState([]);
@@ -2030,6 +1929,106 @@ const ComparativoModal = ({ proyecto, puntos, config, user, theme, isDark, setCo
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
 
   // Pestaña DEFINIR FERRETERÍA
+  // ARMADOS DEL PROYECTO. Viven en el documento del proyecto y solo el dueño los
+  // toca. Mientras el proyecto no tenga los suyos se muestran los del usuario como
+  // respaldo, igual que el formulario, para no perder la vinculación existente.
+  const esDuenoProy = !proyecto?.esCompartido;
+  const armadosProy = React.useMemo(() => (
+    Array.isArray(proyecto?.armados) && proyecto.armados.length > 0
+      ? proyecto.armados
+      : (config?.armados || [])
+  ), [proyecto, config]);
+  const proyectoTieneArmados = Array.isArray(proyecto?.armados) && proyecto.armados.length > 0;
+
+  // Cuántos puntos usan cada armado: sirve para no dejarse fuera ninguno al fijar.
+  const usoPorArmado = React.useMemo(() => {
+    const m = {};
+    (puntos || []).filter(p => perteneceAProyecto(p, proyecto)).forEach(p => {
+      const id = p?.datos?.armadoSeleccionadoId;
+      if (id) m[id] = (m[id] || 0) + 1;
+    });
+    return m;
+  }, [puntos, proyecto]);
+
+  // Los del proyecto primero; después los de Configuración que todavía no se fijaron.
+  const listaArmados = React.useMemo(() => {
+    const enProy = Array.isArray(proyecto?.armados) ? proyecto.armados : [];
+    const ids = new Set(enProy.map(a => String(a.id)));
+    return [
+      ...enProy.map(a => ({ ...a, enProyecto: true })),
+      ...(config?.armados || []).filter(a => !ids.has(String(a.id))).map(a => ({ ...a, enProyecto: false })),
+    ];
+  }, [proyecto, config]);
+
+  // IMPORTAR y CONSERVAR.
+  // 'importar' guía el flujo: primero de dónde, luego qué armados. Los ids se
+  // conservan siempre, que es lo que mantiene viva la asignación de los puntos.
+  const [importar, setImportar] = React.useState(null); // { paso, origen, proyectoId, sel:[] }
+  const [conflicto, setConflicto] = React.useState(null); // { entrante, existente, nombre, cola, destino }
+
+  // Copia un armado del proyecto a la configuración del usuario, para reutilizarlo
+  // en otras obras. Es lo contrario de importar.
+  const conservarArmado = async (a) => {
+    const propios = config?.armados || [];
+    const choque = propios.find(x => String(x.id) !== String(a.id) &&
+      String(x.nombre || "").trim().toLowerCase() === String(a.nombre || "").trim().toLowerCase());
+    if (choque) {
+      setConflicto({ entrante: a, existente: choque, nombre: `${a.nombre} (2)`, cola: [], destino: 'config' });
+      return;
+    }
+    await escribirEnConfig(propios.some(x => String(x.id) === String(a.id))
+      ? propios.map(x => String(x.id) === String(a.id) ? { ...a, visible: true } : x)
+      : [...propios, { ...a, visible: true }]);
+    setAlertData?.({ title: 'Guardado', message: `"${a.nombre}" quedó en tu configuración.` });
+  };
+
+  const escribirEnConfig = async (lista) => {
+    try {
+      await updateDoc(doc(db, 'configuraciones', String(user.uid)), { armados: lista });
+    } catch (e) { console.error('Error guardando en configuración:', e); }
+  };
+
+  // Resuelve los choques de nombre de uno en uno y va aplicando el resto.
+  const procesarCola = async (cola, destino) => {
+    const base = destino === 'config' ? (config?.armados || []) : (Array.isArray(proyecto?.armados) ? proyecto.armados : []);
+    let lista = [...base];
+    for (let i = 0; i < cola.length; i++) {
+      const a = cola[i];
+      const choque = lista.find(x => String(x.id) !== String(a.id) &&
+        String(x.nombre || "").trim().toLowerCase() === String(a.nombre || "").trim().toLowerCase());
+      if (choque) {
+        // Se guarda lo aplicado hasta aquí y se pregunta por este
+        if (destino === 'config') await escribirEnConfig(lista); else await guardarArmados(lista);
+        setConflicto({ entrante: a, existente: choque, nombre: `${a.nombre} (2)`, cola: cola.slice(i + 1), destino });
+        return;
+      }
+      if (!lista.some(x => String(x.id) === String(a.id))) lista.push({ ...a, visible: true });
+    }
+    if (destino === 'config') await escribirEnConfig(lista); else await guardarArmados(lista);
+    setConflicto(null);
+    setImportar(null);
+  };
+
+  const fijarArmado = async (a) => {
+    const base = Array.isArray(proyecto?.armados) ? proyecto.armados : [];
+    if (base.some(x => String(x.id) === String(a.id))) return;
+    await guardarArmados([...base, { id: a.id, nombre: a.nombre, items: a.items || [], visible: true }]);
+  };
+  const [guardandoArmados, setGuardandoArmados] = React.useState(false);
+  const [armadoEdit, setArmadoEdit] = React.useState(null);
+  const [confirmarBorrado, setConfirmarBorrado] = React.useState(null);
+
+  const guardarArmados = async (lista) => {
+    if (!proyecto?.id || guardandoArmados) return;
+    setGuardandoArmados(true);
+    try {
+      await updateDoc(doc(db, 'proyectos', String(proyecto.id)), { armados: lista });
+    } catch (e) {
+      console.error('Error guardando armados del proyecto:', e);
+      setAlertData?.({ title: 'No se pudo guardar', message: 'Solo el dueño del proyecto puede cambiar los armados.' });
+    } finally { setGuardandoArmados(false); }
+  };
+
   const [tab, setTab] = React.useState('comparativo');
   const [idx, setIdx] = React.useState(0);
   const [localDatos, setLocalDatos] = React.useState({});
@@ -2181,9 +2180,339 @@ const ComparativoModal = ({ proyecto, puntos, config, user, theme, isDark, setCo
 
         {/* Pestañas */}
         <div className={`flex border-b-2 ${theme.border} shrink-0`}>
+          <button onClick={() => setTab('armados')} className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider transition-colors ${tab === 'armados' ? 'text-amber-600 border-b-2 border-amber-500' : muted}`}>Armados</button>
           <button onClick={() => setTab('comparativo')} className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider transition-colors ${tab === 'comparativo' ? 'text-amber-600 border-b-2 border-amber-500' : muted}`}>Comparativo</button>
-          <button onClick={() => setTab('definir')} className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider transition-colors ${tab === 'definir' ? 'text-amber-600 border-b-2 border-amber-500' : muted}`}>Definir Ferretería</button>
+          <button onClick={() => setTab('definir')} className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider transition-colors ${tab === 'definir' ? 'text-amber-600 border-b-2 border-amber-500' : muted}`}>Revisión</button>
         </div>
+
+        {tab === 'armados' && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {!proyectoTieneArmados && (
+              <div className="rounded-xl border-2 border-amber-400 bg-amber-50 px-3 py-2">
+                <p className="text-[11px] font-bold text-amber-800 leading-snug">
+                  Este proyecto todavía usa tus armados de Configuración. Fija los que
+                  use esta obra: en cuanto fijes el primero, el proyecto pasa a tener los
+                  suyos y los que no fijes dejarán de aparecer.
+                </p>
+
+              </div>
+            )}
+
+            {esDuenoProy && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setArmadoEdit({ id: `arm_${Date.now()}`, nombre: '', items: [], nuevo: true })}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-amber-500 bg-amber-500 text-white text-xs font-black tracking-widest active:scale-95"
+                >
+                  + NUEVO
+                </button>
+                <button
+                  onClick={() => setImportar({ paso: 'origen', sel: [] })}
+                  className={`flex-1 py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest active:scale-95`}
+                >
+                  IMPORTAR
+                </button>
+              </div>
+            )}
+
+            {listaArmados.length === 0 ? (
+              <p className={`text-xs font-bold text-center py-8 ${muted}`}>Sin armados todavía.</p>
+            ) : listaArmados.map(a => (
+              <div key={a.id} className={`rounded-xl border-2 ${a.enProyecto ? theme.border : 'border-dashed border-amber-400'} p-3`}>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-black uppercase truncate ${theme.text}`}>{a.nombre}</p>
+                    <p className={`text-[10px] font-bold ${muted}`}>
+                      {(a.items || []).length} material{(a.items || []).length === 1 ? '' : 'es'}
+                      {usoPorArmado[a.id] ? ` · en ${usoPorArmado[a.id]} poste${usoPorArmado[a.id] === 1 ? '' : 's'}` : ''}
+                      {!a.enProyecto ? ' · sin fijar' : ''}
+                    </p>
+                  </div>
+                  {esDuenoProy && !a.enProyecto && (
+                    <button
+                      onClick={() => fijarArmado(a)}
+                      disabled={guardandoArmados}
+                      className="shrink-0 px-2 py-1.5 rounded-lg border-2 border-amber-600 bg-amber-500 text-white text-[10px] font-black active:scale-95 disabled:opacity-50"
+                    >
+                      FIJAR
+                    </button>
+                  )}
+                  {esDuenoProy && a.enProyecto && (
+                    <>
+                      <button
+                        onClick={() => setArmadoEdit({ ...a, items: [...(a.items || [])] })}
+                        className={`shrink-0 px-2 py-1.5 rounded-lg border-2 ${theme.border} ${theme.text} text-[10px] font-black active:scale-95`}
+                      >
+                        EDITAR
+                      </button>
+                      <button
+                        onClick={() => conservarArmado(a)}
+                        title="Guardar este armado en tu configuración para reutilizarlo"
+                        className={`shrink-0 px-2 py-1.5 rounded-lg border-2 ${theme.border} ${theme.text} text-[10px] font-black active:scale-95`}
+                      >
+                        CONSERVAR
+                      </button>
+                      <button
+                        onClick={() => setConfirmarBorrado(a)}
+                        className="shrink-0 px-2 py-1.5 rounded-lg border-2 border-red-400 text-red-600 text-[10px] font-black active:scale-95"
+                      >
+                        BORRAR
+                      </button>
+                    </>
+                  )}
+                </div>
+                {(a.items || []).length > 0 && (
+                  <div className={`mt-2 pt-2 border-t ${theme.border} space-y-0.5`}>
+                    {(a.items || []).map((it, i) => {
+                      const mat = (config?.catalogoFerreteria || []).find(f => f.id === it.idRef);
+                      return (
+                        <p key={i} className={`text-[11px] font-bold ${muted}`}>
+                          {it.cant} × {mat?.nombre || 'material no encontrado'}
+                        </p>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Editor de un armado del proyecto: nombre y materiales con cantidad.
+            Los materiales salen del catálogo de ferretería del usuario, que sigue
+            siendo suyo para que un mismo material valga en todos sus proyectos. */}
+        {armadoEdit && (
+          <div className="absolute inset-0 z-[520] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setArmadoEdit(null)}>
+            <div className={`${theme.card} rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl border-2 ${theme.border}`} onClick={e => e.stopPropagation()}>
+              <div className={`shrink-0 p-3 border-b-2 ${theme.border}`}>
+                <input
+                  value={armadoEdit.nombre}
+                  onChange={(e) => setArmadoEdit(p => ({ ...p, nombre: e.target.value }))}
+                  placeholder="NOMBRE DEL ARMADO"
+                  maxLength={40}
+                  className={`w-full px-2 py-2 rounded-lg border-2 ${theme.border} bg-transparent outline-none text-sm font-black uppercase ${theme.text}`}
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                {(config?.catalogoFerreteria || []).length === 0 ? (
+                  <p className={`text-xs font-bold text-center py-6 ${muted}`}>No tienes materiales en tu catálogo de ferretería.</p>
+                ) : (config?.catalogoFerreteria || []).map(mat => {
+                  const item = (armadoEdit.items || []).find(x => x.idRef === mat.id);
+                  const cant = item ? item.cant : 0;
+                  const poner = (v) => setArmadoEdit(p => {
+                    const otros = (p.items || []).filter(x => x.idRef !== mat.id);
+                    return { ...p, items: v > 0 ? [...otros, { idRef: mat.id, cant: v, tipo: item?.tipo || 'primaria' }] : otros };
+                  });
+                  return (
+                    <div key={mat.id} className={`flex items-center gap-2 rounded-lg border-2 ${cant > 0 ? "border-amber-400" : theme.border} px-2 py-1.5`}>
+                      <span className={`flex-1 text-[11px] font-bold truncate ${theme.text}`}>{mat.nombre}</span>
+                      <button onClick={() => poner(Math.max(0, +(cant - 1).toFixed(2)))} className={`w-7 h-7 rounded-lg border-2 ${theme.border} ${theme.text} font-black leading-none`}>−</button>
+                      <span className={`w-8 text-center text-xs font-black ${theme.text}`}>{cant}</span>
+                      <button onClick={() => poner(+(cant + 1).toFixed(2))} className={`w-7 h-7 rounded-lg border-2 ${theme.border} ${theme.text} font-black leading-none`}>+</button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className={`shrink-0 p-3 border-t-2 ${theme.border} flex gap-2`}>
+                <button onClick={() => setArmadoEdit(null)} className={`flex-1 py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest`}>CANCELAR</button>
+                <button
+                  onClick={async () => {
+                    const nombre = (armadoEdit.nombre || "").trim();
+                    if (!nombre) { setAlertData?.({ title: "Falta el nombre", message: "Ponle un nombre al armado." }); return; }
+                    const limpio = { id: armadoEdit.id, nombre, items: armadoEdit.items || [], visible: true };
+                    // Si el proyecto aún no tenía armados propios, se parte de los que
+                    // venían del respaldo: así no se pierde ninguno al crear el primero.
+                    const base = proyectoTieneArmados ? proyecto.armados : armadosProy;
+                    const existe = base.some(x => x.id === limpio.id);
+                    const lista = existe ? base.map(x => x.id === limpio.id ? limpio : x) : [...base, limpio];
+                    await guardarArmados(lista);
+                    setArmadoEdit(null);
+                  }}
+                  disabled={guardandoArmados}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-amber-600 bg-amber-500 text-white text-xs font-black tracking-widest active:scale-95 disabled:opacity-50"
+                >
+                  {guardandoArmados ? "GUARDANDO…" : "GUARDAR"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* IMPORTAR: primero de dónde, después qué armados. Los ids se conservan,
+            que es lo que mantiene la asignación de los puntos. */}
+        {importar && (
+          <div className="absolute inset-0 z-[520] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setImportar(null)}>
+            <div className={`${theme.card} rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl border-2 ${theme.border}`} onClick={e => e.stopPropagation()}>
+              <div className={`shrink-0 p-3 border-b-2 ${theme.border}`}>
+                <p className={`text-sm font-black uppercase ${theme.text}`}>Importar armados</p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                {importar.paso === 'origen' && (
+                  <>
+                    <button onClick={() => setImportar({ paso: 'lista', origen: 'config', sel: [] })}
+                      className={`w-full py-3 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest active:scale-95`}>
+                      DESDE CONFIGURACIÓN
+                    </button>
+                    <button onClick={() => setImportar({ paso: 'proyectos', origen: 'proyecto', sel: [] })}
+                      className={`w-full py-3 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest active:scale-95`}>
+                      DESDE OTRO PROYECTO
+                    </button>
+                  </>
+                )}
+
+                {importar.paso === 'proyectos' && (
+                  (proyectos || []).filter(p => String(p.id) !== String(proyecto?.id) && (p.armados || []).length > 0).length === 0 ? (
+                    <p className={`text-xs font-bold text-center py-6 ${muted}`}>Ningún otro proyecto tiene armados propios todavía.</p>
+                  ) : (proyectos || []).filter(p => String(p.id) !== String(proyecto?.id) && (p.armados || []).length > 0).map(p => (
+                    <button key={p.id} onClick={() => setImportar({ paso: 'lista', origen: 'proyecto', proyectoId: p.id, sel: [] })}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border-2 ${theme.border} active:scale-95`}>
+                      <p className={`text-xs font-black uppercase truncate ${theme.text}`}>{p.nombre}</p>
+                      <p className={`text-[10px] font-bold ${muted}`}>{(p.armados || []).length} armado{(p.armados || []).length === 1 ? '' : 's'}</p>
+                    </button>
+                  ))
+                )}
+
+                {importar.paso === 'lista' && (() => {
+                  const origen = importar.origen === 'config'
+                    ? (config?.armados || [])
+                    : ((proyectos || []).find(p => String(p.id) === String(importar.proyectoId))?.armados || []);
+                  const yaEstan = new Set((Array.isArray(proyecto?.armados) ? proyecto.armados : []).map(x => String(x.id)));
+                  const disponibles = origen.filter(a => !yaEstan.has(String(a.id)));
+                  if (disponibles.length === 0) return <p className={`text-xs font-bold text-center py-6 ${muted}`}>No hay armados nuevos que traer.</p>;
+                  const todos = disponibles.length === importar.sel.length;
+                  return (
+                    <>
+                      <button
+                        onClick={() => setImportar(p => ({ ...p, sel: todos ? [] : disponibles.map(a => a.id) }))}
+                        className={`w-full py-2 rounded-lg border-2 ${theme.border} ${theme.text} text-[11px] font-black tracking-widest`}
+                      >
+                        {todos ? 'QUITAR TODOS' : 'SELECCIONAR TODOS'}
+                      </button>
+                      {disponibles.map(a => {
+                        const marcado = importar.sel.includes(a.id);
+                        return (
+                          <button key={a.id}
+                            onClick={() => setImportar(p => ({ ...p, sel: marcado ? p.sel.filter(x => x !== a.id) : [...p.sel, a.id] }))}
+                            className={`w-full text-left px-3 py-2 rounded-xl border-2 ${marcado ? "border-amber-500 bg-amber-500/10" : theme.border}`}>
+                            <p className={`text-xs font-black uppercase truncate ${theme.text}`}>{a.nombre}</p>
+                            <p className={`text-[10px] font-bold ${muted}`}>{(a.items || []).length} material{(a.items || []).length === 1 ? '' : 'es'}</p>
+                          </button>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className={`shrink-0 p-3 border-t-2 ${theme.border} flex gap-2`}>
+                <button onClick={() => setImportar(null)} className={`flex-1 py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest`}>CERRAR</button>
+                {importar.paso === 'lista' && (
+                  <button
+                    onClick={() => {
+                      const origen = importar.origen === 'config'
+                        ? (config?.armados || [])
+                        : ((proyectos || []).find(p => String(p.id) === String(importar.proyectoId))?.armados || []);
+                      const elegidos = origen.filter(a => importar.sel.includes(a.id))
+                        .map(a => ({ id: a.id, nombre: a.nombre, items: a.items || [], visible: true }));
+                      procesarCola(elegidos, 'proyecto');
+                    }}
+                    disabled={importar.sel.length === 0 || guardandoArmados}
+                    className="flex-1 py-2.5 rounded-xl border-2 border-amber-600 bg-amber-500 text-white text-xs font-black tracking-widest active:scale-95 disabled:opacity-50"
+                  >
+                    IMPORTAR ({importar.sel.length})
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Choque de nombres: se resuelve de uno en uno, viendo los materiales de cada uno */}
+        {conflicto && (
+          <div className="absolute inset-0 z-[530] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3">
+            <div className={`${theme.card} rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl border-2 ${theme.border}`}>
+              <div className={`shrink-0 p-3 border-b-2 ${theme.border}`}>
+                <p className={`text-sm font-black ${theme.text}`}>Ya existe “{conflicto.existente.nombre}”</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2">
+                {[["EL QUE YA ESTÁ", conflicto.existente], ["EL QUE LLEGA", conflicto.entrante]].map(([titulo, arm]) => (
+                  <div key={titulo} className={`rounded-xl border-2 ${theme.border} p-2`}>
+                    <p className={`text-[10px] font-black tracking-widest mb-1 ${muted}`}>{titulo}</p>
+                    {(arm.items || []).length === 0 ? (
+                      <p className={`text-[10px] font-bold ${muted}`}>Sin materiales</p>
+                    ) : (arm.items || []).map((it, k) => {
+                      const mat = (config?.catalogoFerreteria || []).find(f => f.id === it.idRef);
+                      return <p key={k} className={`text-[10px] font-bold ${theme.text}`}>{it.cant} × {mat?.nombre || '—'}</p>;
+                    })}
+                  </div>
+                ))}
+              </div>
+              <div className={`shrink-0 p-3 border-t-2 ${theme.border} space-y-2`}>
+                <input
+                  value={conflicto.nombre}
+                  onChange={(e) => setConflicto(c => ({ ...c, nombre: e.target.value }))}
+                  className={`w-full px-2 py-2 rounded-lg border-2 ${theme.border} bg-transparent outline-none text-xs font-black uppercase ${theme.text}`}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => procesarCola(conflicto.cola, conflicto.destino)}
+                    className={`flex-1 py-2 rounded-xl border-2 ${theme.border} ${theme.text} text-[11px] font-black tracking-widest`}
+                  >
+                    OMITIR
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const base = conflicto.destino === 'config' ? (config?.armados || []) : (Array.isArray(proyecto?.armados) ? proyecto.armados : []);
+                      const lista = base.map(x => String(x.id) === String(conflicto.existente.id) ? { ...conflicto.entrante, visible: true } : x);
+                      if (conflicto.destino === 'config') await escribirEnConfig(lista); else await guardarArmados(lista);
+                      procesarCola(conflicto.cola, conflicto.destino);
+                    }}
+                    className={`flex-1 py-2 rounded-xl border-2 ${theme.border} ${theme.text} text-[11px] font-black tracking-widest`}
+                  >
+                    REEMPLAZAR
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const base = conflicto.destino === 'config' ? (config?.armados || []) : (Array.isArray(proyecto?.armados) ? proyecto.armados : []);
+                      const lista = [...base, { ...conflicto.entrante, nombre: (conflicto.nombre || conflicto.entrante.nombre).trim(), visible: true }];
+                      if (conflicto.destino === 'config') await escribirEnConfig(lista); else await guardarArmados(lista);
+                      procesarCola(conflicto.cola, conflicto.destino);
+                    }}
+                    className="flex-1 py-2 rounded-xl border-2 border-amber-600 bg-amber-500 text-white text-[11px] font-black tracking-widest"
+                  >
+                    LOS DOS
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmación de borrado */}
+        {confirmarBorrado && (
+          <div className="absolute inset-0 z-[520] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmarBorrado(null)}>
+            <div className={`${theme.card} rounded-2xl p-5 max-w-xs w-full shadow-2xl border-2 ${theme.border}`} onClick={e => e.stopPropagation()}>
+              <p className={`text-sm font-black mb-1 ${theme.text}`}>Borrar “{confirmarBorrado.nombre}”</p>
+              <p className={`text-xs font-bold mb-4 ${muted}`}>Los puntos que lo usan se quedarán sin armado asignado.</p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmarBorrado(null)} className={`flex-1 py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest`}>CANCELAR</button>
+                <button
+                  onClick={async () => {
+                    const base = proyectoTieneArmados ? proyecto.armados : armadosProy;
+                    await guardarArmados(base.filter(x => x.id !== confirmarBorrado.id));
+                    setConfirmarBorrado(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-red-600 bg-red-500 text-white text-xs font-black tracking-widest active:scale-95"
+                >
+                  BORRAR
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {tab === 'comparativo' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -2229,6 +2558,11 @@ const ComparativoModal = ({ proyecto, puntos, config, user, theme, isDark, setCo
               { tipo: 'foto', label: 'ZOOM A LA FERRETERÍA', foto: punto?.datos?.fotos?.medioTramo?.zoomFerreteria },
               { tipo: 'mapa', label: 'MAPA' },
             ].filter(s => s.tipo !== 'foto' || hayFoto(s.foto));
+            // Fibras que tocan este poste, dentro de 3 m: cuáles se apoyan y cuáles
+            // terminan aquí. Se calcula al vuelo, no se guarda.
+            const resumenFibras = punto?.coords?.lat != null
+              ? resumenFibrasEnPoste({ lat: punto.coords.lat, lng: punto.coords.lng }, conexiones, 3)
+              : [];
             const slideIdx = Math.min(fotoIdx, slides.length - 1);
             const slideActual = slides[slideIdx];
             const fotoActual = slideActual?.foto;
@@ -2288,6 +2622,20 @@ const ComparativoModal = ({ proyecto, puntos, config, user, theme, isDark, setCo
                     ) : imgSrc ? (
                       <div className={`relative ${isDesktop ? 'flex-1 min-h-0' : ''}`}>
                         <ZoomImage key={`${punto?.id}-${slideIdx}`} src={imgSrc} fallback={typeof fotoActual === 'object' ? fotoActual.thumb : null} heightClass={isDesktop ? 'h-full' : 'h-96'} />
+                        {resumenFibras.length > 0 && (
+                          <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 pointer-events-none">
+                            {resumenFibras.map(f => (
+                              <div key={f.capacidad} className="flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1 backdrop-blur-sm">
+                                <span className="w-2.5 h-2.5 rounded-full border border-white/40 shrink-0" style={{ backgroundColor: getColorFibra(f.capacidad) }} />
+                                <span className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">
+                                  {f.capacidad} FO
+                                  {f.apoyos > 0 && ` — ${f.apoyos} apoyo${f.apoyos === 1 ? '' : 's'}`}
+                                  {f.extremos > 0 && ` — ${f.extremos} extremo${f.extremos === 1 ? '' : 's'}`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {esFotoMiniatura(fotoActual) && (
                           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-red-600/90 text-white text-[11px] font-black uppercase tracking-wide px-3 py-1 rounded-full shadow-lg pointer-events-none">⚠ Solo miniatura — falta la foto real</div>
                         )}
@@ -2961,8 +3309,33 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
       setModalExportStep('empresas');
       return;
     }
+    if (tipo === 'EXCEL') {
+      // Un paso más: desde qué poste y hasta cuál entra en el reporte
+      setExportPendiente({ ...exportPendiente, sinDatos });
+      setRangoExport({ desde: 1, hasta: 0 }); // 0 = hasta el final
+      setReinicioRuedas(n => n + 1);
+      setModalExportStep('rango');
+      return;
+    }
     setModalExportStep(null);
     handleExportarServidor(tipo, proy, limiteCalculado, { ...stampConfig, ...(sinDatos ? { sinDatos: true } : {}), ...(reporte ? { reporte } : {}) });
+    setExportPendiente(null);
+  };
+
+  const lanzarExportRango = () => {
+    if (!exportPendiente) return;
+    const { tipo, proyecto: proy, limiteCalculado, reporte, sinDatos } = exportPendiente;
+    const total = postesDelExport.length;
+    const desde = Math.max(1, Math.min(rangoExport.desde || 1, total));
+    const hasta = Math.min(total, rangoExport.hasta || total);
+    setModalExportStep(null);
+    handleExportarServidor(tipo, proy, limiteCalculado, {
+      ...stampConfig,
+      ...(sinDatos ? { sinDatos: true } : {}),
+      ...(reporte ? { reporte } : {}),
+      // Solo se manda si de verdad recorta: así un reporte completo viaja igual que siempre
+      ...((desde > 1 || hasta < total) ? { desde, hasta } : {})
+    });
     setExportPendiente(null);
   };
   const lanzarExportFerreteria = () => {
@@ -2973,7 +3346,24 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
     handleExportarServidor(tipo, proy, limiteCalculado, { ...stampConfig, ...(sinDatos ? { sinDatos: true } : {}), reporte, empresas: empresasRf });
     setExportPendiente(null);
   };
-  const [modalExportStep, setModalExportStep] = React.useState(null); // null | 'logo' | 'datos' | 'empresas'
+  // RANGO DE POSTES del reporte. Se guarda como POSICIÓN (1..N) en el orden de
+  // tendido, que es el mismo con el que se arman todos los reportes. Se elige de una
+  // lista para no tener que teclear el ITEM ni acertar con su formato.
+  const [rangoExport, setRangoExport] = React.useState({ desde: 1, hasta: 0 });
+  const [reinicioRuedas, setReinicioRuedas] = React.useState(0);
+  const postesDelExport = React.useMemo(() => {
+    const proy = exportPendiente?.proyecto;
+    if (!proy) return [];
+    return (puntos || []).filter(p => perteneceAProyecto(p, proy)).sort((a, b) => {
+      const oa = a.datos?.ordenTendido, ob = b.datos?.ordenTendido;
+      if (oa != null && ob != null) return oa - ob;
+      if (oa != null) return -1;
+      if (ob != null) return 1;
+      return parseInt(a.id) - parseInt(b.id);
+    });
+  }, [exportPendiente, puntos]);
+
+  const [modalExportStep, setModalExportStep] = React.useState(null); // null | 'logo' | 'datos' | 'rango' | 'empresas'
   const pendingLogoRef = React.useRef(false);
   // Siempre se genera UN solo archivo (ya no se divide en volúmenes).
   const [cantidadArchivos] = React.useState(1);
@@ -3720,6 +4110,88 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
       )}
 
       {/* MODAL: ¿IMPRIMIR DATOS EN FOTOS? */}
+      {modalExportStep === 'rango' && (() => {
+        const total = postesDelExport.length;
+        const desde = Math.max(1, Math.min(rangoExport.desde || 1, total));
+        const hasta = Math.min(total, rangoExport.hasta || total);
+        const opcionesPostes = postesDelExport.map((p, i) => ({
+          valor: i + 1,
+          // Solo el ITEM: la posición es interna y al técnico no le dice nada,
+          // reconoce el poste por su item.
+          etiqueta: p?.datos?.numero || 'sin item'
+        }));
+        return (
+          <div className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalExportStep(null)}>
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start gap-3 mb-4">
+                <div className="bg-blue-100 p-2 rounded-full shrink-0">
+                  <ListOrdered size={24} className="text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 mb-1">¿Qué postes entran?</h3>
+                  <p className="text-sm text-slate-600 leading-snug">
+                    En orden de posición. Déjalo como está para incluirlos todos.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-stretch gap-2 mb-4">
+                <div className="flex-1 min-w-0">
+                  <label className="block text-[10px] font-black tracking-widest text-slate-500 mb-1 text-center">DESDE</label>
+                  <RuedaSelector
+                    key={`desde-${reinicioRuedas}`}
+                    items={opcionesPostes}
+                    valor={desde}
+                    onChange={(v) => setRangoExport(r => ({ ...r, desde: v }))}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label className="block text-[10px] font-black tracking-widest text-slate-500 mb-1 text-center">HASTA</label>
+                  <RuedaSelector
+                    key={`hasta-${reinicioRuedas}`}
+                    items={opcionesPostes}
+                    valor={hasta}
+                    onChange={(v) => setRangoExport(r => ({ ...r, hasta: v }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <button
+                  onClick={() => { setRangoExport({ desde: 1, hasta: total }); setReinicioRuedas(n => n + 1); }}
+                  className={`px-3 py-1.5 rounded-lg border-2 text-[11px] font-black tracking-widest transition-all ${desde === 1 && hasta === total
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-slate-300 text-slate-600 active:scale-95'}`}
+                >
+                  TODOS
+                </button>
+                <p className="text-xs font-black text-slate-600">
+                  {hasta >= desde
+                    ? `${hasta - desde + 1} de ${total} postes`
+                    : 'El "hasta" va después del "desde"'}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={lanzarExportRango}
+                  disabled={hasta < desde}
+                  className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform disabled:opacity-40"
+                >
+                  GENERAR
+                </button>
+                <button
+                  onClick={() => setModalExportStep(null)}
+                  className="w-full border-2 border-slate-300 text-slate-700 font-bold py-3 rounded-xl active:scale-95 transition-transform"
+                >
+                  CANCELAR
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {modalExportStep === 'datos' && (
         <div className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalExportStep(null)}>
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>

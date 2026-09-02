@@ -1,6 +1,6 @@
 // src/components/Sidebar.jsx
 import { useState, useEffect } from 'react';
-import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2 } from 'lucide-react';
+import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2, Image } from 'lucide-react';
 
 const ADMIN_UID = 'E8CaZVgP4eZnjnN3OKTVi7bmoJN2';
 
@@ -21,6 +21,8 @@ export default function Sidebar({
   totalNotifProyectos = 0,
   notifEquipos = 0,
   mapStyle,
+  fotoPuntosActivo = false,
+  onToggleFotoPuntos,
   setMapStyle,
   adminReturnEmail = null,
   onVolverAAdmin,
@@ -230,6 +232,17 @@ export default function Sidebar({
                     className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${isDark ? 'border-slate-500 bg-slate-800' : 'border-slate-900 bg-white'}`}
                   >
                     {mapStyle === 'vector' ? <Satellite size={18} strokeWidth={2.5} className={iconColor} /> : <Map size={18} strokeWidth={2.5} className={iconColor} />}
+                  </button>
+                )}
+                {onToggleFotoPuntos && (
+                  <button
+                    onClick={onToggleFotoPuntos}
+                    title="Fotos en el mapa"
+                    className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${fotoPuntosActivo
+                      ? 'border-purple-500 bg-purple-500/20'
+                      : (isDark ? 'border-slate-500 bg-slate-800' : 'border-slate-900 bg-white')}`}
+                  >
+                    <Image size={18} strokeWidth={2.5} className={fotoPuntosActivo ? 'text-purple-500' : iconColor} />
                   </button>
                 )}
               </div>
