@@ -15,7 +15,7 @@ const Login = ({ onLogin, initialBlocked }) => {
   //const [bloqueoDispositivo, setBloqueoDispositivo] = useState(false);
   const [bloqueoDispositivo, setBloqueoDispositivo] = useState(initialBlocked || false);
   
-  // Estado para feedback visual de copiado
+  // Estado para feedback visual de copiado.
   const [copied, setCopied] = useState(false);
 
   const DOMINIO_FIJO = "@kipo.com";
