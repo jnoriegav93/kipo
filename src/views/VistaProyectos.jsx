@@ -14,6 +14,8 @@ import BloqueoHerramienta from '../components/BloqueoHerramienta';
 import { equiposDePunto } from '../utils/equiposPasivos';
 import RenumerarItems from '../components/RenumerarItems';
 import RuedaSelector from '../components/RuedaSelector';
+import EditorArmadoItems from '../components/EditorArmadoItems';
+import { construirItems } from '../utils/armados';
 import ZoomImage from '../components/ZoomImage';
 import { resumenFibrasEnPoste, getColorFibra } from '../utils/fibraUtils';
 import { descargarFotosZip, handleExportKML } from '../utils/exporters';
@@ -155,8 +157,10 @@ const VistaProyectos = ({
       localStorage.setItem(exportPendingKey, JSON.stringify({
         exportId, tipo, reporte: reporteTag, proyectoId: proy.id, timestamp: Date.now()
       }));
+      let vigilante = null;
       const unsubscribe = suscribirseAExportacion(exportId, (exportData) => {
         if (exportData.status === 'listo') {
+          clearTimeout(vigilante);
           unsubscribe();
           localStorage.removeItem(exportPendingKey);
           const ts = Date.now();
@@ -173,12 +177,22 @@ const VistaProyectos = ({
             return [...sinTemp, ...nuevosResultados.filter(r => !ids.has(r.id))];
           });
         } else if (exportData.status === 'error') {
+          clearTimeout(vigilante);
           unsubscribe();
           localStorage.removeItem(exportPendingKey);
           setResultadosExportacion(prev => prev.filter(r => r.id !== tempId));
           setAlertData({ title: 'Error del servidor', message: exportData.error || 'Error procesando la exportación.' });
         }
       });
+      // Si el servidor se cae de golpe, el documento se queda en "procesando" y
+      // nunca llega ni 'listo' ni 'error': la tarjeta giraría para siempre. La
+      // función tiene 9 min de tope, así que a los 11 se da por perdida.
+      vigilante = setTimeout(() => {
+        unsubscribe();
+        localStorage.removeItem(exportPendingKey);
+        setResultadosExportacion(prev => prev.filter(r => r.id !== tempId));
+        setAlertData({ title: 'Sin respuesta del servidor', message: 'La generación no llegó a terminar. Vuelve a intentarlo.' });
+      }, 11 * 60 * 1000);
     } catch (error) {
       console.error('Error iniciando exportación servidor:', error);
       setResultadosExportacion(prev => prev.filter(r => r.id !== tempId));
@@ -204,8 +218,10 @@ const VistaProyectos = ({
       if (prev.some(r => r.id === tempId)) return prev;
       return [...prev, { id: tempId, type: tipo, reporte: reporteTag, proyectoId, name: `Generando ${tipo}...`, cargando: true, downloadUrl: null, blob: { size: 0 }, numPuntos: 0 }];
     });
+    let vigilante = null;
     const unsubscribe = suscribirseAExportacion(exportId, (exportData) => {
       if (exportData.status === 'listo') {
+        clearTimeout(vigilante);
         unsubscribe();
         localStorage.removeItem(exportPendingKey);
         const ts = Date.now();
@@ -223,13 +239,21 @@ const VistaProyectos = ({
         });
         setModalOpen('EXPORTAR_HUB');
       } else if (exportData.status === 'error') {
+        clearTimeout(vigilante);
         unsubscribe();
         localStorage.removeItem(exportPendingKey);
         setResultadosExportacion(prev => prev.filter(r => r.id !== tempId));
         setAlertData({ title: 'Error del servidor', message: exportData.error || 'Error procesando.' });
       }
     });
-    return () => unsubscribe();
+    // Mismo vigilante que al generar: se cuenta desde que arrancó la exportación
+    vigilante = setTimeout(() => {
+      unsubscribe();
+      localStorage.removeItem(exportPendingKey);
+      setResultadosExportacion(prev => prev.filter(r => r.id !== tempId));
+      setAlertData({ title: 'Sin respuesta del servidor', message: 'La generación no llegó a terminar. Vuelve a intentarlo.' });
+    }, Math.max(30 * 1000, 11 * 60 * 1000 - (Date.now() - timestamp)));
+    return () => { clearTimeout(vigilante); unsubscribe(); };
   }, [proyectoActual?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Manejador de Exportación Unificado
@@ -1363,7 +1387,7 @@ const VistaProyectos = ({
                       </button>
                       {!proyModal?.esCompartido && onIniciarMoverPuntos && (
                         <button
-                          onClick={() => { setConfigAbierto(false); setModalLocalOpen(null); onIniciarMoverPuntos(); }}
+                          onClick={() => { setConfigAbierto(false); setModalLocalOpen(null); onIniciarMoverPuntos(proyModal); }}
                           className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-black ${theme.text} hover:bg-slate-500/10 active:scale-95 transition-all`}
                         >
                           <FolderInput size={16} /> Mover puntos a otro proyecto
@@ -1934,11 +1958,8 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
   // respaldo, igual que el formulario, para no perder la vinculación existente.
   const esDuenoProy = !proyecto?.esCompartido;
   const armadosProy = React.useMemo(() => (
-    Array.isArray(proyecto?.armados) && proyecto.armados.length > 0
-      ? proyecto.armados
-      : (config?.armados || [])
-  ), [proyecto, config]);
-  const proyectoTieneArmados = Array.isArray(proyecto?.armados) && proyecto.armados.length > 0;
+    Array.isArray(proyecto?.armados) ? proyecto.armados : []
+  ), [proyecto]);
 
   // Cuántos puntos usan cada armado: sirve para no dejarse fuera ninguno al fijar.
   const usoPorArmado = React.useMemo(() => {
@@ -1968,17 +1989,31 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
 
   // Copia un armado del proyecto a la configuración del usuario, para reutilizarlo
   // en otras obras. Es lo contrario de importar.
+  const mismosMateriales = (x, y) => {
+    const norm = (arm) => (arm.items || []).map(i => `${i.idRef}:${i.cant}`).sort().join('|');
+    return norm(x) === norm(y);
+  };
+
   const conservarArmado = async (a) => {
     const propios = config?.armados || [];
-    const choque = propios.find(x => String(x.id) !== String(a.id) &&
+    // Mismo armado (mismo id): puede estar idéntico o haber cambiado en el proyecto
+    const mismo = propios.find(x => String(x.id) === String(a.id));
+    if (mismo) {
+      if (String(mismo.nombre).trim() === String(a.nombre).trim() && mismosMateriales(mismo, a)) {
+        setAlertData?.({ title: 'Ya lo tenías', message: `"${a.nombre}" ya está en tu configuración, sin cambios.` });
+        return;
+      }
+      setConflicto({ entrante: a, existente: mismo, nombre: `${a.nombre} (2)`, cola: [], destino: 'config' });
+      return;
+    }
+    // Otro armado con el mismo nombre
+    const choque = propios.find(x =>
       String(x.nombre || "").trim().toLowerCase() === String(a.nombre || "").trim().toLowerCase());
     if (choque) {
       setConflicto({ entrante: a, existente: choque, nombre: `${a.nombre} (2)`, cola: [], destino: 'config' });
       return;
     }
-    await escribirEnConfig(propios.some(x => String(x.id) === String(a.id))
-      ? propios.map(x => String(x.id) === String(a.id) ? { ...a, visible: true } : x)
-      : [...propios, { ...a, visible: true }]);
+    await escribirEnConfig([...propios, { ...a, visible: true }]);
     setAlertData?.({ title: 'Guardado', message: `"${a.nombre}" quedó en tu configuración.` });
   };
 
@@ -2015,7 +2050,37 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     await guardarArmados([...base, { id: a.id, nombre: a.nombre, items: a.items || [], visible: true }]);
   };
   const [guardandoArmados, setGuardandoArmados] = React.useState(false);
-  const [armadoEdit, setArmadoEdit] = React.useState(null);
+  const [armadoEdit, setArmadoEdit] = React.useState(null); // tempData del editor
+
+  // Abre el editor con la misma forma de datos que usa Configuración: los materiales
+  // ya puestos primero, en su orden, y detrás el resto del catálogo.
+  const abrirEditorArmado = (arm) => {
+    const catalogo = config?.catalogoFerreteria || [];
+    const itemsSeleccion = {};
+    (arm?.items || []).forEach(it => { itemsSeleccion[it.idRef] = { cant: it.cant, tipo: it.tipo || 'primaria' }; });
+    const puestos = (arm?.items || []).map(it => it.idRef);
+    const listaOrden = [...puestos, ...catalogo.map(f => f.id).filter(id => !puestos.includes(id))];
+    setArmadoEdit({
+      nuevoArmadoId: arm?.id || `arm_${Date.now()}`,
+      nuevoArmadoNombre: arm?.nombre || '',
+      itemsSeleccion, listaOrden,
+      snapshot: JSON.stringify({ itemsSeleccion, listaOrden }),
+      modoEdicion: !!arm,
+    });
+  };
+
+  // Guarda lo que devuelve el editor en los armados del proyecto.
+  const guardarDesdeEditor = async () => {
+    if (!armadoEdit) return;
+    const { nuevoArmadoId, nuevoArmadoNombre, itemsSeleccion = {}, listaOrden } = armadoEdit;
+    const nombre = String(nuevoArmadoNombre || '').trim();
+    if (!nombre) { setAlertData?.({ title: 'Falta el nombre', message: 'Ponle un nombre al armado.' }); return; }
+    const items = construirItems({ itemsSeleccion, listaOrden }, config?.catalogoFerreteria || []);
+    const limpio = { id: nuevoArmadoId, nombre, items, visible: true };
+    const existe = armadosProy.some(x => String(x.id) === String(limpio.id));
+    await guardarArmados(existe ? armadosProy.map(x => String(x.id) === String(limpio.id) ? limpio : x) : [...armadosProy, limpio]);
+    setArmadoEdit(null);
+  };
   const [confirmarBorrado, setConfirmarBorrado] = React.useState(null);
 
   const guardarArmados = async (lista) => {
@@ -2050,11 +2115,15 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
   const puedeEditar = !proyecto?.esCompartido || ['edicion', 'ambos'].includes(proyecto?.permisoActual);
 
   const estadoDe = (p) => estadosOverride[p?.id] ?? p?.datos?.ferrEstado ?? null;
-  const estadoActual = estadoDe(ptsOrd[idx]);
-  const marcarEstado = async (nuevo) => {
+  // Con cambios sin guardar el visto bueno deja de valer: lo revisado ya no es lo que
+  // hay en pantalla. Se apaga en cuanto se toca algo, y al guardar se borra de verdad.
+  const estadoActual = dirty ? null : estadoDe(ptsOrd[idx]);
+  const marcarEstado = async (nuevo, forzar = false) => {
     const p = ptsOrd[idx];
     if (!p || !puedeEditar) return;
-    const final = estadoDe(p) === nuevo ? null : nuevo;
+    // Con forzar, el ✓ aprueba sin alternar: viene de guardar cambios y el estado
+    // anterior ya no vale. Sin forzar mantiene el toggle de siempre.
+    const final = (!forzar && estadoDe(p) === nuevo) ? null : nuevo;
     setEstadosOverride(prev => ({ ...prev, [p.id]: final }));
     try { await updateDoc(doc(db, 'puntos', String(p.id)), { 'datos.ferrEstado': final }); }
     catch (e) { console.error(e); }
@@ -2097,7 +2166,10 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
       await updateDoc(doc(db, 'puntos', String(p.id)), {
         'datos.armadoSeleccionadoId': localDatos.armadoSeleccionadoId || null,
         'datos.ferreteriaFinal': localDatos.ferreteriaFinal || {},
+        // Se guardó un cambio: el visto bueno anterior ya no corresponde a lo que hay.
+        'datos.ferrEstado': null,
       });
+      setEstadosOverride(prev => ({ ...prev, [p.id]: null }));
       setDirty(false);
       ok = true;
       if (!silent) setAlertData?.({ title: 'Actualizado', message: `Ferretería del punto ${p.datos?.numero || ''} guardada.` });
@@ -2108,8 +2180,9 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
 
   // ✓: si hay cambios, guarda y aprueba a la vez
   const aprobar = async () => {
+    const habiaCambios = dirty;
     if (dirty) { const ok = await guardarPuntoFerr(true); if (!ok) return; }
-    marcarEstado('aprobado');
+    marcarEstado('aprobado', habiaCambios);
   };
 
   React.useEffect(() => {
@@ -2187,21 +2260,25 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
 
         {tab === 'armados' && (
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {!proyectoTieneArmados && (
-              <div className="rounded-xl border-2 border-amber-400 bg-amber-50 px-3 py-2">
-                <p className="text-[11px] font-bold text-amber-800 leading-snug">
-                  Este proyecto todavía usa tus armados de Configuración. Fija los que
-                  use esta obra: en cuanto fijes el primero, el proyecto pasa a tener los
-                  suyos y los que no fijes dejarán de aparecer.
-                </p>
-
-              </div>
-            )}
+            {(() => {
+              const enRiesgo = listaArmados.filter(a => !a.enProyecto && usoPorArmado[a.id]);
+              if (enRiesgo.length === 0) return null;
+              const postes = enRiesgo.reduce((t, a) => t + usoPorArmado[a.id], 0);
+              return (
+                <div className="rounded-xl border-2 border-red-400 bg-red-50 px-3 py-2">
+                  <p className="text-[11px] font-bold text-red-800 leading-snug">
+                    {enRiesgo.length} armado{enRiesgo.length === 1 ? '' : 's'} sin fijar se usa
+                    {enRiesgo.length === 1 ? '' : 'n'} en {postes} poste{postes === 1 ? '' : 's'} de este
+                    proyecto. Fíjalo{enRiesgo.length === 1 ? '' : 's'} para no perder esa asignación.
+                  </p>
+                </div>
+              );
+            })()}
 
             {esDuenoProy && (
               <div className="flex gap-2">
                 <button
-                  onClick={() => setArmadoEdit({ id: `arm_${Date.now()}`, nombre: '', items: [], nuevo: true })}
+                  onClick={() => abrirEditorArmado(null)}
                   className="flex-1 py-2.5 rounded-xl border-2 border-amber-500 bg-amber-500 text-white text-xs font-black tracking-widest active:scale-95"
                 >
                   + NUEVO
@@ -2229,18 +2306,27 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                     </p>
                   </div>
                   {esDuenoProy && !a.enProyecto && (
-                    <button
-                      onClick={() => fijarArmado(a)}
-                      disabled={guardandoArmados}
-                      className="shrink-0 px-2 py-1.5 rounded-lg border-2 border-amber-600 bg-amber-500 text-white text-[10px] font-black active:scale-95 disabled:opacity-50"
-                    >
-                      FIJAR
-                    </button>
+                    <>
+                      <button
+                        onClick={() => fijarArmado(a)}
+                        disabled={guardandoArmados}
+                        className="shrink-0 px-2 py-1.5 rounded-lg border-2 border-amber-600 bg-amber-500 text-white text-[10px] font-black active:scale-95 disabled:opacity-50"
+                      >
+                        FIJAR
+                      </button>
+                      <button
+                        onClick={() => setConfirmarBorrado({ ...a, deConfig: true })}
+                        title="Quitarlo de tu configuración"
+                        className="shrink-0 px-2 py-1.5 rounded-lg border-2 border-red-400 text-red-600 text-[10px] font-black active:scale-95"
+                      >
+                        BORRAR
+                      </button>
+                    </>
                   )}
                   {esDuenoProy && a.enProyecto && (
                     <>
                       <button
-                        onClick={() => setArmadoEdit({ ...a, items: [...(a.items || [])] })}
+                        onClick={() => abrirEditorArmado(a)}
                         className={`shrink-0 px-2 py-1.5 rounded-lg border-2 ${theme.border} ${theme.text} text-[10px] font-black active:scale-95`}
                       >
                         EDITAR
@@ -2281,63 +2367,18 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
         {/* Editor de un armado del proyecto: nombre y materiales con cantidad.
             Los materiales salen del catálogo de ferretería del usuario, que sigue
             siendo suyo para que un mismo material valga en todos sus proyectos. */}
+        {/* Mismo editor que Configuración: cantidades, vínculos entre ferreterías
+            que van juntas y reordenado. Un solo componente para los dos sitios. */}
         {armadoEdit && (
-          <div className="absolute inset-0 z-[520] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setArmadoEdit(null)}>
-            <div className={`${theme.card} rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl border-2 ${theme.border}`} onClick={e => e.stopPropagation()}>
-              <div className={`shrink-0 p-3 border-b-2 ${theme.border}`}>
-                <input
-                  value={armadoEdit.nombre}
-                  onChange={(e) => setArmadoEdit(p => ({ ...p, nombre: e.target.value }))}
-                  placeholder="NOMBRE DEL ARMADO"
-                  maxLength={40}
-                  className={`w-full px-2 py-2 rounded-lg border-2 ${theme.border} bg-transparent outline-none text-sm font-black uppercase ${theme.text}`}
-                />
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-                {(config?.catalogoFerreteria || []).length === 0 ? (
-                  <p className={`text-xs font-bold text-center py-6 ${muted}`}>No tienes materiales en tu catálogo de ferretería.</p>
-                ) : (config?.catalogoFerreteria || []).map(mat => {
-                  const item = (armadoEdit.items || []).find(x => x.idRef === mat.id);
-                  const cant = item ? item.cant : 0;
-                  const poner = (v) => setArmadoEdit(p => {
-                    const otros = (p.items || []).filter(x => x.idRef !== mat.id);
-                    return { ...p, items: v > 0 ? [...otros, { idRef: mat.id, cant: v, tipo: item?.tipo || 'primaria' }] : otros };
-                  });
-                  return (
-                    <div key={mat.id} className={`flex items-center gap-2 rounded-lg border-2 ${cant > 0 ? "border-amber-400" : theme.border} px-2 py-1.5`}>
-                      <span className={`flex-1 text-[11px] font-bold truncate ${theme.text}`}>{mat.nombre}</span>
-                      <button onClick={() => poner(Math.max(0, +(cant - 1).toFixed(2)))} className={`w-7 h-7 rounded-lg border-2 ${theme.border} ${theme.text} font-black leading-none`}>−</button>
-                      <span className={`w-8 text-center text-xs font-black ${theme.text}`}>{cant}</span>
-                      <button onClick={() => poner(+(cant + 1).toFixed(2))} className={`w-7 h-7 rounded-lg border-2 ${theme.border} ${theme.text} font-black leading-none`}>+</button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className={`shrink-0 p-3 border-t-2 ${theme.border} flex gap-2`}>
-                <button onClick={() => setArmadoEdit(null)} className={`flex-1 py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest`}>CANCELAR</button>
-                <button
-                  onClick={async () => {
-                    const nombre = (armadoEdit.nombre || "").trim();
-                    if (!nombre) { setAlertData?.({ title: "Falta el nombre", message: "Ponle un nombre al armado." }); return; }
-                    const limpio = { id: armadoEdit.id, nombre, items: armadoEdit.items || [], visible: true };
-                    // Si el proyecto aún no tenía armados propios, se parte de los que
-                    // venían del respaldo: así no se pierde ninguno al crear el primero.
-                    const base = proyectoTieneArmados ? proyecto.armados : armadosProy;
-                    const existe = base.some(x => x.id === limpio.id);
-                    const lista = existe ? base.map(x => x.id === limpio.id ? limpio : x) : [...base, limpio];
-                    await guardarArmados(lista);
-                    setArmadoEdit(null);
-                  }}
-                  disabled={guardandoArmados}
-                  className="flex-1 py-2.5 rounded-xl border-2 border-amber-600 bg-amber-500 text-white text-xs font-black tracking-widest active:scale-95 disabled:opacity-50"
-                >
-                  {guardandoArmados ? "GUARDANDO…" : "GUARDAR"}
-                </button>
-              </div>
-            </div>
-          </div>
+          <EditorArmadoItems
+            tempData={armadoEdit}
+            setTempData={setArmadoEdit}
+            config={config}
+            theme={theme}
+            setConfirmData={setConfirmData}
+            onCerrar={() => setArmadoEdit(null)}
+            onGuardar={guardarDesdeEditor}
+          />
         )}
 
         {/* IMPORTAR: primero de dónde, después qué armados. Los ids se conservan,
@@ -2381,8 +2422,8 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                     : ((proyectos || []).find(p => String(p.id) === String(importar.proyectoId))?.armados || []);
                   const yaEstan = new Set((Array.isArray(proyecto?.armados) ? proyecto.armados : []).map(x => String(x.id)));
                   const disponibles = origen.filter(a => !yaEstan.has(String(a.id)));
-                  if (disponibles.length === 0) return <p className={`text-xs font-bold text-center py-6 ${muted}`}>No hay armados nuevos que traer.</p>;
-                  const todos = disponibles.length === importar.sel.length;
+                  if (origen.length === 0) return <p className={`text-xs font-bold text-center py-6 ${muted}`}>No hay armados en el origen elegido.</p>;
+                  const todos = disponibles.length > 0 && disponibles.length === importar.sel.length;
                   return (
                     <>
                       <button
@@ -2391,14 +2432,19 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                       >
                         {todos ? 'QUITAR TODOS' : 'SELECCIONAR TODOS'}
                       </button>
-                      {disponibles.map(a => {
+                      {origen.map(a => {
+                        const puesto = yaEstan.has(String(a.id));
                         const marcado = importar.sel.includes(a.id);
                         return (
                           <button key={a.id}
+                            disabled={puesto}
                             onClick={() => setImportar(p => ({ ...p, sel: marcado ? p.sel.filter(x => x !== a.id) : [...p.sel, a.id] }))}
-                            className={`w-full text-left px-3 py-2 rounded-xl border-2 ${marcado ? "border-amber-500 bg-amber-500/10" : theme.border}`}>
+                            className={`w-full text-left px-3 py-2 rounded-xl border-2 ${puesto ? `${theme.border} opacity-45` : marcado ? "border-amber-500 bg-amber-500/10" : theme.border}`}>
                             <p className={`text-xs font-black uppercase truncate ${theme.text}`}>{a.nombre}</p>
-                            <p className={`text-[10px] font-bold ${muted}`}>{(a.items || []).length} material{(a.items || []).length === 1 ? '' : 'es'}</p>
+                            <p className={`text-[10px] font-bold ${muted}`}>
+                              {(a.items || []).length} material{(a.items || []).length === 1 ? '' : 'es'}
+                              {puesto ? ' · ya está en el proyecto' : ''}
+                            </p>
                           </button>
                         );
                       })}
@@ -2477,7 +2523,11 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                   <button
                     onClick={async () => {
                       const base = conflicto.destino === 'config' ? (config?.armados || []) : (Array.isArray(proyecto?.armados) ? proyecto.armados : []);
-                      const lista = [...base, { ...conflicto.entrante, nombre: (conflicto.nombre || conflicto.entrante.nombre).trim(), visible: true }];
+                      // Si el id ya está ocupado, la copia se lleva uno nuevo: dos
+                      // armados no pueden compartir id o se pisarían al resolverlos.
+                      const idLibre = base.some(x => String(x.id) === String(conflicto.entrante.id))
+                        ? `arm_${Date.now()}` : conflicto.entrante.id;
+                      const lista = [...base, { ...conflicto.entrante, id: idLibre, nombre: (conflicto.nombre || conflicto.entrante.nombre).trim(), visible: true }];
                       if (conflicto.destino === 'config') await escribirEnConfig(lista); else await guardarArmados(lista);
                       procesarCola(conflicto.cola, conflicto.destino);
                     }}
@@ -2496,13 +2546,23 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
           <div className="absolute inset-0 z-[520] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmarBorrado(null)}>
             <div className={`${theme.card} rounded-2xl p-5 max-w-xs w-full shadow-2xl border-2 ${theme.border}`} onClick={e => e.stopPropagation()}>
               <p className={`text-sm font-black mb-1 ${theme.text}`}>Borrar “{confirmarBorrado.nombre}”</p>
-              <p className={`text-xs font-bold mb-4 ${muted}`}>Los puntos que lo usan se quedarán sin armado asignado.</p>
+              <p className={`text-xs font-bold mb-4 ${muted}`}>
+                {confirmarBorrado.deConfig
+                  ? 'Se quita de tu configuración. No afecta a los proyectos que ya lo fijaron.'
+                  : 'Los puntos que lo usan se quedarán sin armado asignado.'}
+                {usoPorArmado[confirmarBorrado.id]
+                  ? ` Aquí lo usan ${usoPorArmado[confirmarBorrado.id]} poste${usoPorArmado[confirmarBorrado.id] === 1 ? '' : 's'}.`
+                  : ''}
+              </p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmarBorrado(null)} className={`flex-1 py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest`}>CANCELAR</button>
                 <button
                   onClick={async () => {
-                    const base = proyectoTieneArmados ? proyecto.armados : armadosProy;
-                    await guardarArmados(base.filter(x => x.id !== confirmarBorrado.id));
+                    if (confirmarBorrado.deConfig) {
+                      await escribirEnConfig((config?.armados || []).filter(x => String(x.id) !== String(confirmarBorrado.id)));
+                    } else {
+                      await guardarArmados(armadosProy.filter(x => x.id !== confirmarBorrado.id));
+                    }
                     setConfirmarBorrado(null);
                   }}
                   className="flex-1 py-2.5 rounded-xl border-2 border-red-600 bg-red-500 text-white text-xs font-black tracking-widest active:scale-95"
@@ -2647,8 +2707,10 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                   {/* Columna formulario */}
                   <div className={`p-4 space-y-3 ${isDesktop ? 'w-1/2 overflow-y-auto' : ''}`}>
                     {/* Armados + ferretería (igual que el formulario) */}
+                    {/* Los armados salen del PROYECTO, no de la configuración del usuario:
+                        si no, lo que se edita en la pestaña Armados no se veía aquí. */}
                     <BloqueLiquidacion
-                      config={config}
+                      config={{ ...config, armados: armadosProy }}
                       datosFormulario={localDatos}
                       setDatosFormulario={setLocalDatosDirty}
                       theme={theme}
@@ -2745,12 +2807,15 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
 
   const punto = ptsOrd[idx];
   const estadoDe = (p) => estadosOverride[p?.id] ?? p?.datos?.revEstado ?? null;
-  const estadoActual = estadoDe(punto);
+  // Mismo criterio que en ferretería: si hay cambios pendientes, no hay visto bueno.
+  const estadoActual = dirty ? null : estadoDe(punto);
 
-  const marcarEstado = async (nuevo) => {
+  const marcarEstado = async (nuevo, forzar = false) => {
     const p = ptsOrd[idx];
     if (!p || !puedeEditar) return;
-    const final = estadoDe(p) === nuevo ? null : nuevo;
+    // Con forzar, el ✓ aprueba sin alternar: viene de guardar cambios y el estado
+    // anterior ya no vale. Sin forzar mantiene el toggle de siempre.
+    const final = (!forzar && estadoDe(p) === nuevo) ? null : nuevo;
     setEstadosOverride(prev => ({ ...prev, [p.id]: final }));
     try { await updateDoc(doc(db, 'puntos', String(p.id)), { 'datos.revEstado': final }); }
     catch (e) { console.error(e); }
@@ -2870,7 +2935,10 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
         'datos.cables': localDatos.cables || null,
         'datos.extrasSeleccionados': localDatos.extrasSeleccionados || [],
         'datos.tipoElemento': localDatos.tipoElemento || [],
+        // Se guardó un cambio: el visto bueno anterior ya no corresponde a lo que hay.
+        'datos.revEstado': null,
       });
+      setEstadosOverride(prev => ({ ...prev, [p.id]: null }));
       setDirty(false);
       setHeredado(false);
       ok = true;
@@ -2886,8 +2954,9 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
   const aprobar = async () => {
     const errVal = validarPunto(localDatos);
     if (errVal) { setAlertData?.({ title: 'Faltan datos', message: errVal }); return; }
-    if (dirty || heredado) { const ok = await guardarRev(true); if (!ok) return; }
-    marcarEstado('aprobado');
+    const habiaCambios = dirty || heredado;
+    if (habiaCambios) { const ok = await guardarRev(true); if (!ok) return; }
+    marcarEstado('aprobado', habiaCambios);
   };
 
   const saltar = (go) => {
@@ -3169,7 +3238,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
       } else if (Array.isArray(p.datos?.fotos)) fotos = p.datos.fotos.length;
       total += Math.max(fotos, 1);
     });
-    const reporteTag = ['postesPropios', 'postesElectricos', 'tendido', 'ferreteria'].includes(id) ? id : null;
+    const reporteTag = ['postesPropios', 'postesElectricos', 'tendido', 'ferreteria', 'tendidoRamales'].includes(id) ? id : null;
     setExportPendiente({ tipo: 'EXCEL', proyecto, limiteCalculado: total || 1, reporte: reporteTag });
     if (!logoApp) setModalExportStep('logo'); else setModalExportStep('datos');
   };
@@ -3698,7 +3767,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
               const fechaCorta = (ts) => { try { return new Date(ts || Date.now()).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }); } catch { return ''; } };
               const horasRestantes = (ts) => Math.max(0, 48 - Math.floor((Date.now() - (ts || Date.now())) / 3600000));
               // Reportes que se generan en el SERVIDOR (se puede cerrar la app); el resto es client-side.
-              const EN_SERVIDOR = new Set(['detallado', 'postesPropios', 'postesElectricos', 'tendido', 'ferreteria', 'rfEquiposPasivos']);
+              const EN_SERVIDOR = new Set(['detallado', 'postesPropios', 'postesElectricos', 'tendido', 'ferreteria', 'rfEquiposPasivos', 'tendidoRamales']);
               const iconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg border-2 border-white text-white active:scale-95 transition-all disabled:opacity-30 shrink-0';
               const renderFila = (id, label) => {
                 const res = resultadosExportacion.find(r => r.type === 'EXCEL' && (r.reporte || 'detallado') === id);
@@ -3778,8 +3847,9 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
               };
               return (
               <div className="space-y-4">
-                {/* DATOS + FOTOS — fuera de los grupos, primero */}
+                {/* DATOS + FOTOS y REPORTE DE TENDIDO — fuera de los grupos, primero */}
                 {renderFila('detallado', 'DATOS + FOTOS')}
+                {perfilActivo === 'avanzado' && renderFila('tendidoRamales', 'REPORTE DE TENDIDO')}
                 {/* Listados y reportes con plantilla: EXCLUSIVOS del perfil AVANZADO */}
                 {perfilActivo === 'avanzado' ? (
                   <>

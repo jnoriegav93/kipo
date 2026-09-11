@@ -838,8 +838,6 @@ ${estilosLineas}
     for (let ptIdx = 0; ptIdx < listaPuntos.length; ptIdx++) {
       const p = listaPuntos[ptIdx];
       const uid = ptIdx;
-      const lat = ((p.coords && p.coords.lat) || 0).toFixed(6);
-      const lng = ((p.coords && p.coords.lng) || 0).toFixed(6);
       const fotos = (p.datos && p.datos.fotos) || {};
 
       const sections = [];
@@ -1059,7 +1057,334 @@ ${estilosLineas}
 // GENERAR EXCEL
 // ============================================================
 
-const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig = []) => {
+// ─── ASIGNACIÓN DE RAMAL A CADA POSTE ────────────────────────────────────────
+// Espejo de la matemática de src/utils/fibraUtils.js. Está duplicada a propósito:
+// cliente y servidor son paquetes separados y no comparten módulos. Si se cambia
+// una, hay que cambiar la otra.
+
+const distMetros = (a, b) => {
+  const R = 111320;
+  const dLat = (b.lat - a.lat) * R;
+  const dLng = (b.lng - a.lng) * R * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+};
+
+// Perpendicular de un punto sobre un tramo. null si el pie cae fuera del tramo:
+// ahí el punto más cercano es un vértice, que se mide aparte.
+const proyEnSegmento = (p, a, b) => {
+  const mLat = 111320;
+  const mLng = 111320 * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+  const bx = (b.lng - a.lng) * mLng, by = (b.lat - a.lat) * mLat;
+  const px = (p.lng - a.lng) * mLng, py = (p.lat - a.lat) * mLat;
+  const len2 = bx * bx + by * by;
+  if (len2 === 0) return null;
+  const t = (px * bx + py * by) / len2;
+  if (t < 0 || t > 1) return null;
+  const qx = bx * t, qy = by * t;
+  return Math.sqrt((px - qx) * (px - qx) + (py - qy) * (py - qy));
+};
+
+const distAPolilinea = (p, vs) => {
+  let min = Infinity;
+  for (const v of vs) min = Math.min(min, distMetros(p, v));
+  for (let i = 0; i < vs.length - 1; i++) {
+    const d = proyEnSegmento(p, vs[i], vs[i + 1]);
+    if (d != null) min = Math.min(min, d);
+  }
+  return min;
+};
+
+const largoDeFibra = (vs) => {
+  let t = 0;
+  for (let i = 0; i < vs.length - 1; i++) t += distMetros(vs[i], vs[i + 1]);
+  return t;
+};
+
+// Croquis esquemático de un ramal: su recorrido y sus postes en negro, el resto
+// de la red del proyecto al fondo en gris, y una cuadrícula UTM de referencia.
+// Se dibuja al tamaño exacto del recuadro de Excel (por dos, para que no se vea
+// pixelado) y así la imagen no se deforma al insertarla.
+//
+// El encuadre lo manda SOLO el ramal de la hoja: la red de fondo se recorta
+// contra el marco. Si el encuadre abarcara todo el proyecto, el ramal quedaría
+// reducido a una rayita en una esquina.
+const croquisRamal = (vertices, postes, anchoPx, altoPx, otrasFibras = [], otrosPostes = []) => {
+  const ESC = 2;
+  const W = Math.max(240, Math.round(Number(anchoPx)) || 0) * ESC;
+  const H = Math.max(140, Math.round(Number(altoPx)) || 0) * ESC;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, W, H);
+  // El marco va dentro de la imagen: las líneas de celda del borde superior e
+  // izquierdo las tapa la propia imagen al quedar pegada a la esquina.
+  const marco = () => {
+    ctx.strokeStyle = '#808080';
+    ctx.lineWidth = 1 * ESC;
+    ctx.strokeRect(ESC / 2, ESC / 2, W - ESC, H - ESC);
+  };
+  marco();
+
+  const vs = (vertices || []).filter(v => v && v.lat != null);
+  const ps = (postes || []).filter(p => p.coords && p.coords.lat != null);
+  const geo = [...vs, ...ps.map(p => p.coords)];
+  if (geo.length === 0) return canvas.toBuffer('image/png');
+
+  // Proyección plana local: a escala de cientos de metros el error es inapreciable.
+  // El eje Y va invertido (norte arriba) porque la latitud crece hacia el norte.
+  const latRef = geo.reduce((s, v) => s + v.lat, 0) / geo.length;
+  const kx = Math.cos(latRef * Math.PI / 180);
+  const px = (v) => ({ x: v.lng * kx, y: -v.lat });
+  const pts = geo.map(px);
+  const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
+  const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
+  const MARGEN = 22 * ESC;
+  const anchoGeo = maxX - minX, altoGeo = maxY - minY;
+  // Si todo cae en el mismo sitio no hay nada que escalar: se centra y ya
+  let k = 1;
+  if (anchoGeo > 1e-9 || altoGeo > 1e-9) {
+    k = Math.min(
+      anchoGeo > 1e-9 ? (W - 2 * MARGEN) / anchoGeo : Infinity,
+      altoGeo > 1e-9 ? (H - 2 * MARGEN) / altoGeo : Infinity,
+    );
+  }
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const aLienzo = (v) => {
+    const p = px(v);
+    return { x: W / 2 + (p.x - cx) * k, y: H / 2 + (p.y - cy) * k };
+  };
+
+  // ── Cuadrícula UTM ───────────────────────────────────────────────────────
+  // Referencia para ubicar el ramal en campo. Las líneas se trazan rectas: a
+  // esta escala la convergencia de meridianos es de décimas de grado y no se
+  // aprecia. El paso se elige para que quepan pocas líneas y no ensucien.
+  const mPorPx = 111320 / k;
+  if (isFinite(mPorPx) && mPorPx > 0) {
+    const centro = { lat: -(cy), lng: cx / kx };
+    const utm0 = wgs84ToUtm(centro.lat, centro.lng);
+    const anchoM = W * mPorPx;
+    const paso = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]
+      .find(p => anchoM / p <= 6) || 10000;
+    const aE = (x) => utm0.x + (x - W / 2) * mPorPx;
+    const aN = (y) => utm0.y - (y - H / 2) * mPorPx;
+    const xDeE = (E) => W / 2 + (E - utm0.x) / mPorPx;
+    const yDeN = (N) => H / 2 - (N - utm0.y) / mPorPx;
+
+    ctx.save();
+    ctx.strokeStyle = '#E4E4E4';
+    ctx.lineWidth = 1 * ESC;
+    ctx.setLineDash([4 * ESC, 4 * ESC]);
+    ctx.fillStyle = '#9A9A9A';
+    ctx.font = `${6.5 * ESC}px Arial`;
+
+    for (let E = Math.ceil(aE(0) / paso) * paso; E <= aE(W); E += paso) {
+      const x = xDeE(E);
+      ctx.beginPath(); ctx.moveTo(x, ESC); ctx.lineTo(x, H - ESC); ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(String(Math.round(E)), x, 3 * ESC);
+    }
+    for (let N = Math.ceil(aN(H) / paso) * paso; N <= aN(0); N += paso) {
+      const y = yDeN(N);
+      ctx.beginPath(); ctx.moveTo(ESC, y); ctx.lineTo(W - ESC, y); ctx.stroke();
+      ctx.save();
+      ctx.translate(4 * ESC, y);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(String(Math.round(N)), 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Zona UTM: sin ella los números de la cuadrícula no ubican nada
+    ctx.fillStyle = '#9A9A9A';
+    ctx.font = `${6.5 * ESC}px Arial`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`UTM ${utm0.zona}${utm0.hemisferio} · WGS84`, W - 5 * ESC, H - 4 * ESC);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  // ── Resto de la red, al fondo ────────────────────────────────────────────
+  ctx.strokeStyle = '#D2D2D2';
+  ctx.lineWidth = 2 * ESC;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const otra of otrasFibras || []) {
+    const ov = (otra || []).filter(v => v && v.lat != null);
+    if (ov.length < 2) continue;
+    ctx.beginPath();
+    ov.forEach((v, i) => { const q = aLienzo(v); if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); });
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#C8C8C8';
+  for (const c of otrosPostes || []) {
+    if (!c || c.lat == null) continue;
+    const q = aLienzo(c);
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, 2 * ESC, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Recorrido de la fibra
+  if (vs.length >= 2) {
+    ctx.strokeStyle = '#1F4E78';
+    ctx.lineWidth = 3 * ESC;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    vs.forEach((v, i) => { const q = aLienzo(v); if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); });
+    ctx.stroke();
+  }
+
+  // Postes: puntos pequeños con reborde blanco para que no se peguen entre sí.
+  // Se guarda su sitio como obstáculo para que las etiquetas los esquiven.
+  const ocupados = [];
+  const libre = (r) => !ocupados.some(o => r.x1 < o.x2 && r.x2 > o.x1 && r.y1 < o.y2 && r.y2 > o.y1);
+  const RADIO = 3.2 * ESC;
+  const enLienzo = ps.map(p => ({ ...p, q: aLienzo(p.coords) }));
+  for (const p of enLienzo) {
+    ctx.beginPath();
+    ctx.arc(p.q.x, p.q.y, RADIO, 0, Math.PI * 2);
+    ctx.fillStyle = p.medio ? '#FF6600' : '#1A1A1A';
+    ctx.fill();
+    ctx.lineWidth = 1.2 * ESC;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.stroke();
+    ocupados.push({ x1: p.q.x - RADIO, y1: p.q.y - RADIO, x2: p.q.x + RADIO, y2: p.q.y + RADIO });
+  }
+
+  // Etiquetas de poste. Se prueban cuatro posiciones alrededor del punto y se
+  // toma la primera que no pise nada; si ninguna cabe, ese poste va sin rótulo.
+  // Así en tramos apretados se pierden rótulos pero nunca quedan ilegibles.
+  const ALTO_TXT = 8 * ESC;
+  const SEP = 5 * ESC;
+  ctx.font = `bold ${7 * ESC}px Arial`;
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  for (const p of enLienzo) {
+    const txt = String(p.etiqueta || '').trim();
+    if (!txt) continue;
+    const w = ctx.measureText(txt).width;
+    const sitios = [
+      { x: p.q.x + SEP, y: p.q.y - SEP, al: 'left' },
+      { x: p.q.x - SEP - w, y: p.q.y - SEP, al: 'left' },
+      { x: p.q.x + SEP, y: p.q.y + SEP, al: 'left' },
+      { x: p.q.x - SEP - w, y: p.q.y + SEP, al: 'left' },
+    ];
+    const sitio = sitios.find(s => {
+      const r = { x1: s.x - 1 * ESC, y1: s.y - ALTO_TXT / 2, x2: s.x + w + 1 * ESC, y2: s.y + ALTO_TXT / 2 };
+      return r.x1 > 0 && r.x2 < W && r.y1 > 0 && r.y2 < H && libre(r);
+    });
+    if (!sitio) continue;
+    ocupados.push({ x1: sitio.x - 1 * ESC, y1: sitio.y - ALTO_TXT / 2, x2: sitio.x + w + 1 * ESC, y2: sitio.y + ALTO_TXT / 2 });
+    ctx.textAlign = sitio.al;
+    // Contorno blanco: el rótulo se lee aunque caiga encima de la línea de fibra
+    ctx.lineWidth = 2.5 * ESC;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.strokeText(txt, sitio.x, sitio.y);
+    ctx.fillStyle = '#1A1A1A';
+    ctx.fillText(txt, sitio.x, sitio.y);
+  }
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+
+  // Inicio y fin del recorrido
+  if (vs.length >= 2) {
+    [[vs[0], '#16A34A'], [vs[vs.length - 1], '#DC2626']].forEach(([v, color]) => {
+      const q = aLienzo(v);
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 5.5 * ESC, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 1.6 * ESC;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.stroke();
+    });
+  }
+
+  // Escala: se elige un número redondo que ocupe cerca de un quinto del ancho
+  const pxPorMetro = k / 111320;
+  if (pxPorMetro > 0 && isFinite(pxPorMetro)) {
+    const objetivo = (W * 0.2) / pxPorMetro;
+    const mag = Math.pow(10, Math.floor(Math.log10(objetivo)));
+    const metros = [1, 2, 5, 10].map(m => m * mag).find(m => m >= objetivo * 0.6) || mag * 10;
+    const largo = metros * pxPorMetro;
+    const x0 = MARGEN, y0 = H - MARGEN * 0.6;
+    ctx.strokeStyle = '#404040';
+    ctx.lineWidth = 1.5 * ESC;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0); ctx.lineTo(x0 + largo, y0);
+    ctx.moveTo(x0, y0 - 4 * ESC); ctx.lineTo(x0, y0 + 4 * ESC);
+    ctx.moveTo(x0 + largo, y0 - 4 * ESC); ctx.lineTo(x0 + largo, y0 + 4 * ESC);
+    ctx.stroke();
+    ctx.fillStyle = '#404040';
+    ctx.font = `${9 * ESC}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${metros} m`, x0 + largo / 2, y0 - 6 * ESC);
+  }
+
+  // Norte
+  const nx = W - MARGEN, ny = MARGEN;
+  ctx.strokeStyle = '#404040';
+  ctx.fillStyle = '#404040';
+  ctx.lineWidth = 1.5 * ESC;
+  ctx.beginPath();
+  ctx.moveTo(nx, ny + 14 * ESC); ctx.lineTo(nx, ny);
+  ctx.moveTo(nx - 4 * ESC, ny + 5 * ESC); ctx.lineTo(nx, ny); ctx.lineTo(nx + 4 * ESC, ny + 5 * ESC);
+  ctx.stroke();
+  ctx.font = `bold ${9 * ESC}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.fillText('N', nx, ny + 24 * ESC);
+
+  marco();
+  return canvas.toBuffer('image/png');
+};
+
+// Nombre de hoja válido para Excel: sin caracteres prohibidos y máximo 31.
+const nombreHojaSeguro = (txt, alterno) => {
+  const limpio = String(txt || "").replace(/[:\\/?*[\]]/g, "").trim();
+  return (limpio || alterno).slice(0, 31);
+};
+
+// Reparte los puntos entre los ramales. Cada punto va a UNO solo: el de mayor
+// capacidad y, a igualdad, el más largo. El umbral se va ensanchando por pasadas
+// (8, 20, 40 y 60 m) para que no queden postes sueltos en tramos mal dibujados;
+// los que ya tienen ramal no se vuelven a mirar.
+const asignarRamales = (puntos, conexiones) => {
+  const fibras = (conexiones || []).map(c => {
+    const vs = Array.isArray(c.vertices) ? c.vertices.filter(v => v && v.lat != null) : [];
+    if (vs.length < 2) return null;
+    return { id: String(c.id), nombre: c.nombre || "", capacidad: c.capacidad || 12, vertices: vs, largo: largoDeFibra(vs) };
+  }).filter(Boolean);
+
+  const deQuien = {};
+  if (fibras.length === 0) return { deQuien, fibras };
+
+  for (const umbral of [8, 20, 40, 60]) {
+    for (const p of puntos) {
+      if (deQuien[p.id] || p.coords?.lat == null) continue;
+      const pos = { lat: p.coords.lat, lng: p.coords.lng };
+      let gana = null;
+      for (const f of fibras) {
+        if (distAPolilinea(pos, f.vertices) > umbral) continue;
+        const mejor = !gana
+          || f.capacidad > gana.capacidad
+          || (f.capacidad === gana.capacidad && f.largo > gana.largo);
+        if (mejor) gana = f;
+      }
+      if (gana) deQuien[p.id] = gana.id;
+    }
+  }
+  return { deQuien, fibras };
+};
+
+const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig = [], conexiones = [], porRamal = false) => {
+  // Ramal de cada poste, calculado al vuelo: refleja el trazado tal como está hoy.
+  const { deQuien: ramalDe, fibras: fibrasProy } = asignarRamales(puntosProyecto, conexiones);
+  const nombreRamal = (p) => (fibrasProy.find(f => f.id === ramalDe[p.id]) || {}).nombre || '';
   const VOLUMENES = [];
   let volumenActual = 1;
   let puntosBuffer = [];
@@ -1111,6 +1436,7 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       { header: 'EXTRAS', key: 'extras', width: 25 },
       { header: 'CANT. CABLES', key: 'cables', width: 12 },
       { header: 'ARMADO', key: 'arm', width: 20 },
+      { header: 'RAMAL', key: 'ramal', width: 18 },
       ...ferreteriasActivas.map(f => ({
         header: f.nombre.toUpperCase(),
         key: `ferr_${f.id}`,
@@ -1134,8 +1460,271 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       { header: 'OBSERVACIONES', key: 'obs', width: 35 },
     ];
 
+    // Los ramales se agrupan y se les asigna nombre de hoja ANTES de crear nada:
+    // la hoja RESUMEN va primera en el libro y necesita referenciar esas hojas.
+    const usedSheetNames = new Set(porRamal ? ['DATOS', 'RESUMEN'] : ['DATOS']);
+    const gruposRamal = [];
+    const hojaDeRamal = {};
+    const esMedioTramoP = (p) => {
+      const te = p.datos && p.datos.tipoElemento;
+      const arr = Array.isArray(te) ? te : (te ? [te] : []);
+      return arr.includes('medioTramo');
+    };
+    if (porRamal) {
+      fibrasProy.forEach(f => gruposRamal.push({ fibra: f, puntos: [] }));
+      const sinRamal = { fibra: null, puntos: [] };
+      for (const p of listaPuntos) {
+        const g = gruposRamal.find(x => x.fibra.id === ramalDe[p.id]);
+        (g || sinRamal).puntos.push(p);
+      }
+      if (sinRamal.puntos.length) gruposRamal.push(sinRamal);
+      for (const grupo of gruposRamal) {
+        if (grupo.puntos.length === 0) continue;
+        const titulo = grupo.fibra ? (grupo.fibra.nombre || 'RAMAL') : 'SIN RAMAL';
+        let hoja = nombreHojaSeguro(titulo, 'RAMAL');
+        if (usedSheetNames.has(hoja)) { let c = 2; while (usedSheetNames.has(`${hoja}_${c}`)) c++; hoja = `${hoja}_${c}`; }
+        usedSheetNames.add(hoja);
+        hojaDeRamal[grupo.fibra ? grupo.fibra.id : '__sin__'] = hoja;
+      }
+    }
+
+    // ── HOJA RESUMEN ───────────────────────────────────────────────────────
+    // Portada del reporte: arriba, tres tablas en fila (postes, ferretería y
+    // armados); abajo, la sección de fibras con un renglón por ramal y el total
+    // por capacidad. Se crea antes que DATOS para que Excel la deje primera.
+    if (porRamal) {
+      const B = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      const wsRes = workbook.addWorksheet("RESUMEN", { views: [{ showGridLines: false }] });
+      // Rejilla de 13 de ancho: las tres tablas de arriba juntan dos columnas para
+      // su etiqueta y así calzan con las siete columnas de la tabla de fibras.
+      [2, 26, 13, 13, 13, 13, 13, 16, 13].forEach((w, n) => { wsRes.getColumn(n + 1).width = w; });
+
+      wsRes.mergeCells(2, 2, 2, 9);
+      const cT = wsRes.getCell(2, 2);
+      cT.value = "REPORTE FOTOGRÁFICO Y LIQUIDACIÓN DEL PROYECTO";
+      cT.font = { size: 13, bold: true, color: { argb: "FFFFFFFF" } };
+      cT.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } };
+      cT.alignment = { horizontal: "center", vertical: "middle" };
+      wsRes.getRow(2).height = 26;
+
+      wsRes.mergeCells(3, 2, 3, 9);
+      const cN = wsRes.getCell(3, 2);
+      cN.value = (proy.nombre || "PROYECTO").toUpperCase();
+      cN.font = { size: 22, bold: true, color: { argb: "FF1F4E78" } };
+      cN.alignment = { horizontal: "center", vertical: "middle" };
+      wsRes.getRow(3).height = 38;
+
+      wsRes.mergeCells(4, 2, 4, 9);
+      const ahora = new Date();
+      const cF = wsRes.getCell(4, 2);
+      cF.value = `Elaborado el ${ahora.toLocaleDateString("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit", year: "numeric" })}`;
+      cF.font = { size: 9, italic: true, color: { argb: "FF7F7F7F" } };
+      cF.alignment = { horizontal: "center" };
+
+      wsRes.mergeCells(5, 2, 5, 9);
+      wsRes.getCell(5, 2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFCBF26" } };
+      wsRes.getRow(5).height = 5;
+
+      // Totales de todo el proyecto
+      const totFerrP = {};
+      const totArmP = {};
+      let nMediosP = 0, nBT = 0, nMT = 0, nOtros = 0;
+      for (const p of listaPuntos) {
+        if (esMedioTramoP(p)) { nMediosP++; }
+        else {
+          const t = String((p.datos && p.datos.tipo) || "").toUpperCase();
+          if (t === "BT") nBT++; else if (t === "MT") nMT++; else nOtros++;
+        }
+        const cons = getConsolidado(p.datos || {});
+        Object.entries(cons).forEach(([id, c]) => { if (c) totFerrP[id] = (totFerrP[id] || 0) + c; });
+        const aId = p.datos && p.datos.armadoSeleccionadoId;
+        if (aId) {
+          const nom = (armadosConfig.find(a => a.id === aId) || {}).nombre || aId;
+          totArmP[nom] = (totArmP[nom] || 0) + 1;
+        }
+      }
+      const nomF = (id) => (ferreteriasVisibles.find(x => x.id === id) || {}).nombre || id;
+
+      // Tabla concepto/cantidad. "ancho" es cuántas columnas ocupa la etiqueta,
+      // para que tablas de distinto sitio queden alineadas en la misma rejilla.
+      const tabla = (fila, col, ancho, titulo, color, pares, etiquetaTotal) => {
+        const colVal = col + ancho;
+        wsRes.mergeCells(fila, col, fila, colVal);
+        const cT = wsRes.getCell(fila, col);
+        cT.value = titulo;
+        cT.font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
+        cT.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+        cT.alignment = { horizontal: "center", vertical: "middle" };
+        cT.border = B;
+        wsRes.getRow(fila).height = 22;
+        let r = fila + 1;
+        const pinta = (k, v, fondo, negrita) => {
+          if (ancho > 1) wsRes.mergeCells(r, col, r, colVal - 1);
+          const c1 = wsRes.getCell(r, col); c1.value = k;
+          c1.font = { size: 9, bold: !!negrita }; c1.border = B; if (fondo) c1.fill = fondo;
+          const c2 = wsRes.getCell(r, colVal); c2.value = v;
+          c2.font = { bold: true, size: negrita ? 10 : 9 };
+          c2.alignment = { horizontal: "center" }; c2.border = B; if (fondo) c2.fill = fondo;
+          r++;
+        };
+        pares.forEach(([k, v], n) => {
+          pinta(k, v, n % 2 === 1 ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } } : null, false);
+        });
+        if (etiquetaTotal) {
+          const total = pares.reduce((t, x) => t + (Number(x[1]) || 0), 0);
+          pinta(etiquetaTotal, total, { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8E8E8" } }, true);
+        }
+        return r;
+      };
+
+      // Título de sección, a todo lo ancho del bloque
+      const banda = (fila, texto) => {
+        wsRes.mergeCells(fila, 2, fila, 9);
+        const c = wsRes.getCell(fila, 2);
+        c.value = texto;
+        c.font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } };
+        c.alignment = { horizontal: "center", vertical: "middle" };
+        wsRes.getRow(fila).height = 22;
+        return fila + 1;
+      };
+
+      // ── Sección 1: postes, ferretería y armados, una tabla al lado de otra ──
+      const filaTablas = banda(7, "POSTES Y FERRETERÍA");
+      const paresPostes = [["BAJA TENSIÓN (BT)", nBT], ["MEDIA TENSIÓN (MT)", nMT]];
+      if (nOtros) paresPostes.push(["SIN TIPO DE RED", nOtros]);
+      const paresF = Object.entries(totFerrP).map(([id, c]) => [nomF(id), c]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      const paresA = Object.entries(totArmP).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+
+      const finPostes = tabla(filaTablas, 2, 1, "POSTES", "FF404040", paresPostes, "TOTAL DE POSTES");
+      // Los medios tramos van aparte: no son postes y sumarlos falsearía el total
+      const cMT1 = wsRes.getCell(finPostes, 2); cMT1.value = "MEDIOS TRAMOS";
+      cMT1.font = { bold: true, size: 9 }; cMT1.border = B;
+      const cMT2 = wsRes.getCell(finPostes, 3); cMT2.value = nMediosP;
+      cMT2.font = { bold: true, size: 10 }; cMT2.alignment = { horizontal: "center" }; cMT2.border = B;
+
+      const finFerr = tabla(filaTablas, 4, 2, "FERRETERÍA UTILIZADA", "FF1F4E78", paresF, "TOTAL DE PIEZAS");
+      const finArm = tabla(filaTablas, 7, 2, "ARMADOS UTILIZADOS", "FFB45309", paresA, "TOTAL DE ARMADOS");
+
+      // ── Sección 2: fibra óptica ────────────────────────────────────────────
+      // Primero el consolidado por capacidad y debajo el detalle ramal por ramal.
+      let fr = Math.max(finPostes + 1, finFerr, finArm) + 2;
+      fr = banda(fr, "FIBRA ÓPTICA");
+
+      const porCap = {};
+      fibrasProy.forEach(f => { porCap[f.capacidad] = (porCap[f.capacidad] || 0) + f.largo; });
+      const paresCap = Object.entries(porCap)
+        .sort((a, b) => Number(b[0]) - Number(a[0]))
+        .map(([cap, m]) => [`${cap} FO`, Math.round(m)]);
+      fr = tabla(fr, 2, 1, "METROS POR CAPACIDAD", "FF1F4E78", paresCap, "TOTAL DE METROS") + 2;
+
+      ["RAMAL", "CAPACIDAD", "LONGITUD (m)", "ABSCISA INICIAL", "ABSCISA FINAL", "LONGITUD REAL", "LONGITUD CALCULADA"].forEach((h, n) => {
+        const c = wsRes.getCell(fr, n + 2);
+        c.value = h;
+        c.font = { bold: true, size: 9, color: { argb: "FFFFFFFF" } };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+        c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        c.border = B;
+      });
+      wsRes.getRow(fr).height = 28;
+      fr++;
+
+      // Un renglón por ramal. Abscisas y longitud real quedan vacías para llenarlas
+      // a mano; longitud calculada apunta a la celda B4 de la hoja del ramal, así que
+      // se actualiza sola cuando allá se anote el dato.
+      const filaIniFibras = fr;
+      fibrasProy.forEach((f, n) => {
+        const fondo = n % 2 === 1 ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } } : null;
+        const hoja = hojaDeRamal[f.id];
+        for (let k = 0; k < 7; k++) {
+          const c = wsRes.getCell(fr, k + 2);
+          if (k === 0) c.value = f.nombre || "-";
+          else if (k === 1) c.value = `${f.capacidad} FO`;
+          else if (k === 2) c.value = Math.round(f.largo);
+          c.font = { size: 9, bold: k === 0 };
+          c.alignment = { horizontal: k === 0 ? "left" : "center" };
+          c.border = B;
+          if (fondo) c.fill = fondo;
+        }
+        if (hoja) wsRes.getCell(fr, 8).value = { formula: `'${hoja.replace(/'/g, "''")}'!B4` };
+        fr++;
+      });
+
+      // Fila de totales. Va con fórmulas para que las columnas que se llenan a
+      // mano (longitud real) sumen solas conforme se vayan completando.
+      if (fibrasProy.length) {
+        wsRes.mergeCells(fr, 2, fr, 3);
+        for (let k = 0; k < 7; k++) {
+          const c = wsRes.getCell(fr, k + 2);
+          c.font = { bold: true, size: 10 };
+          c.alignment = { horizontal: k === 0 ? "left" : "center" };
+          c.border = B;
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8E8E8" } };
+        }
+        wsRes.getCell(fr, 2).value = "TOTAL";
+        [["D", 4], ["G", 7], ["H", 8]].forEach(([letra, col]) => {
+          wsRes.getCell(fr, col).value = { formula: `SUM(${letra}${filaIniFibras}:${letra}${fr - 1})` };
+        });
+      }
+    }
+
+    // Valores de una fila de la hoja DATOS. Se usa dos veces: en una pasada previa
+    // para saber qué columnas quedan vacías, y al escribir cada fila.
+    const valoresDeFila = (p, correlativo) => {
+      const valNum = (p.datos && p.datos.numero) || "-";
+      const lat = ((p.coords && p.coords.lat) || 0).toFixed(6);
+      const lng = ((p.coords && p.coords.lng) || 0).toFixed(6);
+      const utm = (p.coords && p.coords.lat && p.coords.lng) ? wgs84ToUtm(p.coords.lat, p.coords.lng) : null;
+      const totals = getConsolidado(p.datos || {});
+      const ferrValues = {};
+      ferreteriasActivas.forEach(f => { ferrValues[`ferr_${f.id}`] = totals[f.id] || 0; });
+      const armNombre = (p.datos && p.datos.armadosSeleccionados && p.datos.armadosSeleccionados.length > 0)
+        ? p.datos.armadosSeleccionados.map(a => a.nombre).join(", ")
+        : (p.datos && p.datos.armadoSeleccionadoId
+          ? (armadosConfig.find(a => a.id === p.datos.armadoSeleccionadoId) || {}).nombre || "-"
+          : "-");
+      const fechaFormateada = (p.datos && p.datos.fecha)
+        ? new Date(p.datos.fecha).toLocaleDateString("es-PE") : "-";
+      return {
+        correlativo, numero: valNum,
+        pasivo: (p.datos && p.datos.pasivo) || "-",
+        codPoste: (p.datos && p.datos.codigo) || "-",
+        sum: (p.datos && p.datos.suministro) || "-",
+        alt: (p.datos && p.datos.altura) || "-",
+        mat: (p.datos && p.datos.material) || "-",
+        fuerza: (p.datos && p.datos.fuerza) || "-",
+        tipo: (p.datos && p.datos.tipo) || "-",
+        extras: Array.isArray(p.datos && p.datos.extrasSeleccionados) ? (p.datos.extrasSeleccionados.join(", ") || "-") : "-",
+        cables: (p.datos && p.datos.cables) || "-",
+        arm: armNombre,
+        ramal: nombreRamal(p),
+        ...ferrValues,
+        abscisaInicial: (p.datos && p.datos.absIn) || "-",
+        abscisaFinal: (p.datos && p.datos.absOut) || "-",
+        fecha: fechaFormateada,
+        hora: (p.datos && p.datos.hora) || "-",
+        dir: (p.datos && p.datos.direccion) || "-",
+        ubic: (p.datos && p.datos.ubicacion) || "-",
+        lat: Number(lat), lng: Number(lng),
+        utmX: utm ? utm.x : "-", utmY: utm ? utm.y : "-",
+        utmZona: utm ? utm.zona : "-", utmHemisferio: utm ? utm.hemisferio : "-",
+        gps: `${lat}, ${lng}`,
+        obs: (p.datos && p.datos.observaciones) || "-"
+      };
+    };
+
+    // Pasada previa: con los valores de todas las filas ya se sabe qué columnas
+    // no aportan nada. Las que identifican el punto no se quitan nunca.
+    const filasDatos = listaPuntos.map((p, i) => valoresDeFila(p, String(i + 1).padStart(3, "0")));
+
+    // Columnas sin ningún dato en todo el volumen: fuera. Nunca se quitan las que
+    // identifican el punto, aunque vayan vacías, porque son la referencia del reporte.
+    const SIEMPRE = new Set(['correlativo', 'numero']);
+    const tieneDato = (v) => v !== undefined && v !== null && v !== '' && v !== '-' && v !== 0;
+    const colsUsadas = colsDef.filter(c => SIEMPRE.has(c.key) || filasDatos.some(f => tieneDato(f[c.key])));
+
     const wsDatos = workbook.addWorksheet('DATOS', { views: [{ state: 'frozen', ySplit: 2 }] });
-    wsDatos.columns = colsDef;
+    wsDatos.columns = colsUsadas;
     wsDatos.insertRow(1, []);
     wsDatos.mergeCells(1, 1, 1, 8);
     const cellTitulo = wsDatos.getCell('A1');
@@ -1153,8 +1742,8 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     });
 
-    const armColPos = colsDef.findIndex(c => c.key === 'arm');
-    const ferrColStart = colsDef.findIndex(c => c.key.startsWith('ferr_'));
+    const armColPos = colsUsadas.findIndex(c => c.key === 'arm');
+    const ferrColStart = colsUsadas.findIndex(c => c.key.startsWith('ferr_'));
     if (armColPos >= 0) {
       headerRow.getCell(armColPos + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCBF26' } };
       headerRow.getCell(armColPos + 1).font = { bold: true, color: { argb: 'FF000000' } };
@@ -1166,16 +1755,176 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       }
     }
 
-    const usedSheetNames = new Set(['DATOS']);
+
+    // ── HOJAS POR RAMAL ────────────────────────────────────────────────────
+    // Solo en el reporte de tendido. Las tablas del ramal ocupan A y B; los bloques
+    // de fotos empiezan en C (elemento), D (ferretería) y de E en adelante, así que
+    // no se pisan con las tablas.
+    if (porRamal) {
+      const SECCIONES_TENDIDO = ["poste", "medioTramo"];
+      const nombreFerr = (id) => (ferreteriasVisibles.find(f => f.id === id) || {}).nombre || id;
+      const BORDE = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+
+      // Tabla de dos columnas (etiqueta A–C, cantidad en D). Devuelve la fila libre
+      // siguiente para poder apilar tablas sin llevar la cuenta a mano.
+      const tablaAB = (ws, fila, titulo, pares, colorTitulo, resaltar) => {
+        if (titulo) {
+          ws.mergeCells(fila, 1, fila, 2);
+          const c = ws.getCell(fila, 1);
+          c.value = titulo;
+          c.font = { bold: true, size: 10, color: { argb: "FFFFFFFF" } };
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: colorTitulo || "FF1F4E78" } };
+          c.alignment = { horizontal: "center", vertical: "middle" };
+          c.border = BORDE;
+          fila++;
+        }
+        pares.forEach(([k, v]) => {
+          const c1 = ws.getCell(fila, 1); c1.value = k;
+          c1.font = { size: 9 }; c1.alignment = { vertical: "middle" }; c1.border = BORDE;
+          if (resaltar) {
+            c1.font = { size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+            c1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A1A1A" } };
+          }
+          const c2 = ws.getCell(fila, 2); c2.value = v;
+          c2.font = { bold: true, size: 9 }; c2.alignment = { horizontal: "center", vertical: "middle" }; c2.border = BORDE;
+          fila++;
+        });
+        return fila;
+      };
+
+      for (const grupo of gruposRamal) {
+        if (grupo.puntos.length === 0) continue;
+        const titulo = grupo.fibra ? (grupo.fibra.nombre || "RAMAL") : "SIN RAMAL";
+        const ws = workbook.addWorksheet(hojaDeRamal[grupo.fibra ? grupo.fibra.id : "__sin__"], { views: [{ showGridLines: false }] });
+        [30, 14, 14, 26, PHOTO_COL_WIDTH, PHOTO_COL_WIDTH].forEach((w, n) => { ws.getColumn(n + 1).width = w; });
+
+        // Franja de título a todo el ancho útil de la hoja
+        ws.mergeCells(1, 1, 1, 6);
+        const cTit = ws.getCell("A1");
+        cTit.value = titulo.toUpperCase();
+        cTit.font = { size: 22, bold: true, color: { argb: "FFFFFFFF" } };
+        cTit.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } };
+        cTit.alignment = { horizontal: "center", vertical: "middle" };
+        ws.getRow(1).height = 40;
+
+        const nMedios = grupo.puntos.filter(esMedioTramoP).length;
+        const totFerr = {};
+        const totArm = {};
+        for (const p of grupo.puntos) {
+          const t = getConsolidado(p.datos || {});
+          Object.entries(t).forEach(([id, c]) => { if (c) totFerr[id] = (totFerr[id] || 0) + c; });
+          const aId = p.datos && p.datos.armadoSeleccionadoId;
+          if (aId) {
+            const nom = (armadosConfig.find(a => a.id === aId) || {}).nombre || aId;
+            totArm[nom] = (totArm[nom] || 0) + 1;
+          }
+        }
+
+        // Las tablas ocupan solo A y B. B4 (LONGITUD CALCULADA) se deja en blanco
+        // a propósito: se anota a mano y el RESUMEN la trae con una fórmula.
+        let f = tablaAB(ws, 3, null, [
+          ["LONGITUD LINEAL (M)", grupo.fibra ? Math.round(grupo.fibra.largo) : "-"],
+          ["LONGITUD CALCULADA", null],
+          ["CAPACIDAD (HILOS)", grupo.fibra ? grupo.fibra.capacidad : "-"],
+          ["POSTES", grupo.puntos.length - nMedios],
+          ["MEDIOS TRAMOS", nMedios],
+        ], null, true);
+        f++;
+        const paresFerr = Object.entries(totFerr).map(([id, c]) => [nombreFerr(id), c]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+        const paresArm = Object.entries(totArm).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+        f = tablaAB(ws, f, "FERRETERÍA DEL RAMAL", paresFerr);
+        f++;
+        f = tablaAB(ws, f, "ARMADOS DEL RAMAL", paresArm, "FFB45309");
+
+        const idsDelGrupo = new Set(grupo.puntos.map(p => p.id));
+
+        // ── Croquis del ramal ────────────────────────────────────────────────
+        // Ocupa E–F desde la fila 3 hasta donde termine la tercera tabla. Con
+        // tablas cortas se le da un alto mínimo para que no quede una franja.
+        const filaFinCroquis = Math.max(f - 1, 16);
+        ws.mergeCells(3, 4, filaFinCroquis, 6);
+        // El lienzo se pide del tamaño exacto del recuadro (ancho de las columnas
+        // que abarca y alto de sus filas) para que la imagen no se estire.
+        const pngCroquis = croquisRamal(
+          grupo.fibra ? grupo.fibra.vertices : [],
+          grupo.puntos.map(p => ({
+            coords: p.coords,
+            medio: esMedioTramoP(p),
+            etiqueta: (p.datos && p.datos.numero) || "",
+          })),
+          [4, 5, 6].reduce((s, c) => s + ((ws.getColumn(c).width || 8.43) * 7 + 5), 0),
+          (filaFinCroquis - 2) * 20,
+          // Resto de la red, para situar el ramal dentro del proyecto
+          fibrasProy.filter(f => !grupo.fibra || f.id !== grupo.fibra.id).map(f => f.vertices),
+          listaPuntos.filter(p => !idsDelGrupo.has(p.id)).map(p => p.coords),
+        );
+        ws.addImage(workbook.addImage({ buffer: pngCroquis, extension: "png" }), {
+          tl: { col: 3, row: 2 }, br: { col: 6, row: filaFinCroquis },
+        });
+
+        let curRow = Math.max(f, filaFinCroquis + 1) + 2;
+        const trabajos = [];
+
+        for (const p of grupo.puntos) {
+          const items = [];
+          for (const tabId of SECCIONES_TENDIDO) {
+            if (!TABS_CONFIG[tabId]) continue;
+            items.push(...collectSectionPhotos(p, tabId));
+          }
+          if (items.length === 0) continue;
+
+          const imgRowIdx = curRow;
+          const lblRowIdx = curRow + 1;
+          ws.getRow(imgRowIdx).height = PHOTO_ROW_HEIGHT;
+          ws.getRow(lblRowIdx).height = LABEL_ROW_HEIGHT;
+
+          ws.mergeCells(imgRowIdx, 3, lblRowIdx, 3);
+          const cId = ws.getCell(imgRowIdx, 3);
+          cId.value = `${(p.datos && p.datos.numero) || "-"}\n${esMedioTramoP(p) ? "MEDIO TRAMO" : "POSTE"}`;
+          cId.font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
+          cId.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A1A1A" } };
+          cId.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+          cId.border = BORDE;
+
+          ws.mergeCells(imgRowIdx, 4, lblRowIdx, 4);
+          const cFerr = ws.getCell(imgRowIdx, 4);
+          const tp = getConsolidado(p.datos || {});
+          const lineas = Object.entries(tp).filter(([, c]) => c).map(([id, c]) => `${c} × ${nombreFerr(id)}`);
+          cFerr.value = lineas.join("\n") || "-";
+          cFerr.font = { size: 8 };
+          cFerr.alignment = { vertical: "middle", horizontal: "left", wrapText: true, indent: 1 };
+          cFerr.border = BORDE;
+
+          const datosEst = makeDatosEstampado(p, proy);
+          for (let j = 0; j < items.length; j++) {
+            const colIdx = j + 5;
+            const col = ws.getColumn(colIdx);
+            if (!col.width || col.width < PHOTO_COL_WIDTH) col.width = PHOTO_COL_WIDTH;
+            const cellLbl = ws.getCell(lblRowIdx, colIdx);
+            cellLbl.value = items[j].label;
+            cellLbl.alignment = { horizontal: "center", vertical: "middle" };
+            cellLbl.font = { bold: true, size: 9 };
+            cellLbl.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFCBF26" } };
+            cellLbl.border = BORDE;
+            trabajos.push({ url: items[j].url, thumb: items[j].thumb, colIdx, imgRowIdx, datosEst, fechaCaptura: items[j].fechaCaptura, horaCaptura: items[j].horaCaptura });
+          }
+          curRow += 3;
+        }
+
+        const bufs = await runParallel(trabajos, async (job) => procesarFotoExport(job, job.datosEst, logoBuffer, stampConfig));
+        for (let k = 0; k < trabajos.length; k++) {
+          if (!bufs[k]) continue;
+          const { colIdx, imgRowIdx } = trabajos[k];
+          const imgId = workbook.addImage({ buffer: bufs[k], extension: "jpeg" });
+          ws.addImage(imgId, { tl: { col: colIdx - 1, row: imgRowIdx - 1 }, br: { col: colIdx, row: imgRowIdx } });
+        }
+      }
+    }
 
     for (let i = 0; i < listaPuntos.length; i++) {
       const p = listaPuntos[i];
       const correlativo = String(i + 1).padStart(3, '0');
-      const valNum = (p.datos && p.datos.numero) || '-';
       const valFat = normFat((p.datos && p.datos.codFat) || '');
-      const lat = ((p.coords && p.coords.lat) || 0).toFixed(6);
-      const lng = ((p.coords && p.coords.lng) || 0).toFixed(6);
-      const utm = (p.coords && p.coords.lat && p.coords.lng) ? wgs84ToUtm(p.coords.lat, p.coords.lng) : null;
 
       let sheetName = correlativo;
       if (usedSheetNames.has(sheetName)) {
@@ -1185,53 +1934,20 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       }
       usedSheetNames.add(sheetName);
 
-      const totals = getConsolidado(p.datos || {});
-      const ferrValues = {};
-      ferreteriasActivas.forEach(f => { ferrValues[`ferr_${f.id}`] = totals[f.id] || 0; });
-
-      const armNombre = (p.datos && p.datos.armadosSeleccionados && p.datos.armadosSeleccionados.length > 0)
-        ? p.datos.armadosSeleccionados.map(a => a.nombre).join(', ')
-        : (p.datos && p.datos.armadoSeleccionadoId
-          ? (armadosConfig.find(a => a.id === p.datos.armadoSeleccionadoId) || {}).nombre || '-'
-          : '-');
-
-      const fechaFormateada = (p.datos && p.datos.fecha)
-        ? new Date(p.datos.fecha).toLocaleDateString('es-PE') : '-';
-
       const row = wsDatos.getRow(i + 3);
-      row.values = {
-        correlativo, numero: valNum,
-        pasivo: (p.datos && p.datos.pasivo) || '-',
-        codPoste: (p.datos && p.datos.codigo) || '-',
-        sum: (p.datos && p.datos.suministro) || '-',
-        alt: (p.datos && p.datos.altura) || '-',
-        mat: (p.datos && p.datos.material) || '-',
-        fuerza: (p.datos && p.datos.fuerza) || '-',
-        tipo: (p.datos && p.datos.tipo) || '-',
-        extras: Array.isArray(p.datos && p.datos.extrasSeleccionados) ? (p.datos.extrasSeleccionados.join(', ') || '-') : '-',
-        cables: (p.datos && p.datos.cables) || '-',
-        arm: armNombre,
-        ...ferrValues,
-        abscisaInicial: (p.datos && p.datos.absIn) || '-',
-        abscisaFinal: (p.datos && p.datos.absOut) || '-',
-        fecha: fechaFormateada,
-        hora: (p.datos && p.datos.hora) || '-',
-        dir: (p.datos && p.datos.direccion) || '-',
-        ubic: (p.datos && p.datos.ubicacion) || '-',
-        lat: Number(lat), lng: Number(lng),
-        utmX: utm ? utm.x : '-', utmY: utm ? utm.y : '-',
-        utmZona: utm ? utm.zona : '-', utmHemisferio: utm ? utm.hemisferio : '-',
-        gps: `${lat}, ${lng}`,
-        obs: (p.datos && p.datos.observaciones) || '-'
-      };
+      row.values = filasDatos[i];
       row.eachCell({ includeEmpty: true }, (cell) => {
         cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
       });
+
+      // En el reporte por ramal no hay hoja por poste: la fila de DATOS ya quedó
+      // escrita arriba y las fotos van en la hoja de su ramal.
+      if (porRamal) continue;
+
       const cellCorr = row.getCell('correlativo');
       cellCorr.value = { text: correlativo, hyperlink: `#'${sheetName}'!A1` };
       cellCorr.font = { color: { argb: 'FF0000FF' }, underline: true, bold: true };
-
       const wsPoint = workbook.addWorksheet(sheetName);
       wsPoint.getColumn(1).width = SEC_COL_WIDTH;
       let curRow = 1;
@@ -2291,14 +3007,15 @@ exports.procesarExportacion = onDocumentCreated(
 
       console.log(`Exportando ${tipo}: ${puntosProyecto.length} puntos`);
 
-      // Cargar conexiones (solo para KMZ)
+      // Cargar conexiones: el KMZ las dibuja y el EXCEL las necesita para saber a
+      // qué ramal pertenece cada poste.
       let conexiones = [];
-      if (tipo === 'KMZ') {
+      if (tipo === 'KMZ' || tipo === 'EXCEL') {
         try {
           const conexSnap = await db.collection('conexiones').where('proyectoId', '==', proyectoId).get();
           conexiones = conexSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e) { console.error('Error consultando conexiones por proyectoId:', e.message); }
-        console.log(`KMZ conexiones: ${conexiones.length} proyectoId=${proyectoId}`);
+        console.log(`Conexiones cargadas: ${conexiones.length} proyectoId=${proyectoId}`);
       }
 
       // Cargar logo
@@ -2317,15 +3034,9 @@ exports.procesarExportacion = onDocumentCreated(
         const configSnap = await db.collection('configuraciones').doc(userId).get();
         if (configSnap.exists) {
           ferreteriasVisibles = configSnap.data().catalogoFerreteria || [];
-          armadosConfig = configSnap.data().armados || [];
         }
-        // Los ARMADOS son del proyecto. A los suyos se les suman los del usuario que
-        // el proyecto no fijó: solo sirven para resolver el nombre de los puntos que ya
-        // los tenían asignados, y así el Excel no pierde ninguno durante la migración.
-        if (Array.isArray(proy.armados) && proy.armados.length > 0) {
-          const ids = new Set(proy.armados.map(a => String(a.id)));
-          armadosConfig = [...proy.armados, ...armadosConfig.filter(a => !ids.has(String(a.id)))];
-        }
+        // Los ARMADOS son del proyecto.
+        armadosConfig = Array.isArray(proy.armados) ? proy.armados : [];
       }
 
       // Generar archivo(s)
@@ -2346,7 +3057,9 @@ exports.procesarExportacion = onDocumentCreated(
         } else if (stampConfig.reporte === 'rfEquiposPasivos') {
           volumenes = await generarReporteRfEquiposPasivos(proy, puntosProyecto, logoBuffer, stampConfig);
         } else {
-          volumenes = await generarExcel(proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig);
+          // El reporte de tendido es el mismo generador: misma hoja DATOS, pero con
+          // una hoja por ramal en vez de una por poste.
+          volumenes = await generarExcel(proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig, conexiones, stampConfig.reporte === 'tendidoRamales');
         }
       } else {
         throw new Error(`Tipo no soportado: ${tipo}`);

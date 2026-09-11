@@ -3,6 +3,8 @@ import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X, RotateCcw, Chec
 import { Modal, ThemedInput } from './UI';
 import { DATA_INICIAL, FERRETERIA_BASE_DEFAULT, VINCULOS_FERRETERIA } from '../data/constantes';
 import { useFerreteriaBase } from '../hooks/useFerreteriaBase';
+import EditorArmadoItems from './EditorArmadoItems';
+import { construirItems } from '../utils/armados';
 
 // --- CONFIGURADOR (FINAL: Textos Blancos en Modo Oscuro) ---
 export default function Configurador({ config, saveConfig, volver, modalState = {}, theme, tab, setTab, seccionAbierta, setSeccionAbierta, perfilActivo = 'avanzado' }) {
@@ -15,7 +17,6 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
   }, [tab, perfilActivo]);
   const { ferreteriaBase } = useFerreteriaBase();
   const [ferrYaExiste, setFerrYaExiste] = useState(null); // nombre encontrado en el buscador
-  const [buscaArmado, setBuscaArmado] = useState(''); // buscador dentro del armado
 
   // Importar / restaurar la lista base: pone TODOS los ítems de la base (con su MISMO id,
   // así no se rompe el vínculo con proyectos) y quita las que el usuario creó (id 'f_').
@@ -86,19 +87,12 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       listaOrden: defaultOrden,
       snapshot: JSON.stringify({ itemsSeleccion: {}, listaOrden: defaultOrden }),
     });
-    setBuscaArmado(''); setModalOpen('SELECCIONAR_ITEMS_ARMADO');
+    setModalOpen('SELECCIONAR_ITEMS_ARMADO');
   };
 
   const guardarArmadoConItems = () => {
     const { nuevoArmadoId, nuevoArmadoNombre, itemsSeleccion = {}, modoEdicion, listaOrden } = tempData;
-    const orden = listaOrden || config.catalogoFerreteria.map(f => f.id);
-    const items = orden
-      .filter(id => {
-        const s = itemsSeleccion[id];
-        if (!s) return false;
-        return (s.cant || 0) > 0 || (s.tipo && s.tipo !== 'none');
-      })
-      .map(id => ({ idRef: id, cant: itemsSeleccion[id].cant || 0, tipo: itemsSeleccion[id].tipo || 'primaria' }));
+    const items = construirItems({ itemsSeleccion, listaOrden }, config.catalogoFerreteria);
     if (modoEdicion) {
       const nuevosArmados = config.armados.map(a => a.id === nuevoArmadoId ? { ...a, items } : a);
       saveConfig({ ...config, armados: nuevosArmados });
@@ -411,7 +405,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                                               const restIds = config.catalogoFerreteria.filter(f => !savedIds.includes(f.id)).map(f => f.id);
                                               const listaOrden = [...savedIds, ...restIds];
                                               setTempData({ nuevoArmadoId: arm.id, nuevoArmadoNombre: arm.nombre, itemsSeleccion, listaOrden, snapshot: JSON.stringify({ itemsSeleccion, listaOrden }), modoEdicion: true });
-                                              setBuscaArmado(''); setModalOpen('SELECCIONAR_ITEMS_ARMADO');
+                                              setModalOpen('SELECCIONAR_ITEMS_ARMADO');
                                             }}
                                             className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-black text-slate-800 transition-colors opacity-60 hover:opacity-100"
                                         >
@@ -652,168 +646,17 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       </Modal>
 
       {/* PANTALLA COMPLETA: Selección de ferreterías para armado */}
-      {modalOpen === 'SELECCIONAR_ITEMS_ARMADO' && (() => {
-        const itemsSeleccion = tempData.itemsSeleccion || {};
-        const listaOrden = tempData.listaOrden || config.catalogoFerreteria.map(f => f.id);
-        let listaDisplay = listaOrden.map(id => config.catalogoFerreteria.find(f => f.id === id)).filter(Boolean);
-
-        // VÍNCULOS "van juntas": al ponerle cantidad a una del grupo, las demás se JUNTAN a
-        // su lado (aunque estén en 0) y salen resaltadas como SUGERENCIA (no obliga cantidad).
-        const normV = (s) => String(s || '').trim().toLowerCase();
-        const vinculoDe = {};
-        VINCULOS_FERRETERIA.forEach((grupo, gi) => {
-          listaDisplay.forEach(f => { if (grupo.includes(normV(f.nombre))) vinculoDe[f.id] = `vg${gi}`; });
-        });
-        const gruposActivos = new Set(listaDisplay.filter(f => (itemsSeleccion[f.id]?.cant || 0) > 0 && vinculoDe[f.id]).map(f => vinculoDe[f.id]));
-        if (gruposActivos.size) {
-          const res = []; const done = new Set();
-          for (const f of listaDisplay) {
-            if (done.has(f.id)) continue;
-            const vid = vinculoDe[f.id];
-            if (vid && gruposActivos.has(vid)) {
-              listaDisplay.filter(x => vinculoDe[x.id] === vid && !done.has(x.id)).forEach(m => { res.push(m); done.add(m.id); });
-            } else { res.push(f); done.add(f.id); }
-          }
-          listaDisplay = res;
-        }
-        const esSugerida = (id) => vinculoDe[id] && gruposActivos.has(vinculoDe[id]) && (itemsSeleccion[id]?.cant || 0) === 0;
-
-        // Buscador dentro del armado (filtra por nombre)
-        if (buscaArmado.trim()) {
-          const q = normV(buscaArmado);
-          listaDisplay = listaDisplay.filter(f => normV(f.nombre).includes(q));
-        }
-
-        // Regla simple: con cantidad (>0) SIEMPRE es primaria; en cero puede ser secundaria
-        // (o blanco). Al bajar a cero, una primaria queda en blanco (none).
-        const updateCant = (ferrId, delta) => {
-          const current = itemsSeleccion[ferrId] || { cant: 0, tipo: 'none' };
-          const newCant = Math.max(0, (current.cant || 0) + delta);
-          const tipo = newCant > 0 ? 'primaria' : (current.tipo === 'secundaria' ? 'secundaria' : 'none');
-          setTempData({ ...tempData, itemsSeleccion: { ...itemsSeleccion, [ferrId]: { ...current, cant: newCant, tipo } } });
-        };
-        // El botón P/S solo actúa cuando la cantidad es CERO: alterna blanco ↔ secundaria.
-        // Con cantidad es primaria fija (no se toca).
-        const toggleTipo = (ferrId) => {
-          const current = itemsSeleccion[ferrId] || { cant: 0, tipo: 'none' };
-          if ((current.cant || 0) > 0) return; // con cantidad = primaria, no cambia
-          const nextTipo = current.tipo === 'secundaria' ? 'none' : 'secundaria';
-          setTempData({ ...tempData, itemsSeleccion: { ...itemsSeleccion, [ferrId]: { ...current, tipo: nextTipo } } });
-        };
-        const aplicarOrden = () => {
-          const primarias   = config.catalogoFerreteria.filter(f => itemsSeleccion[f.id]?.tipo === 'primaria');
-          const secundarias = config.catalogoFerreteria.filter(f => itemsSeleccion[f.id]?.tipo === 'secundaria');
-          const sinTipo     = config.catalogoFerreteria.filter(f => { const t = itemsSeleccion[f.id]?.tipo; return !t || t === 'none'; });
-          setTempData({ ...tempData, listaOrden: [...primarias, ...secundarias, ...sinTipo].map(f => f.id) });
-        };
-        const handleVolver = () => {
-          const currentSnap = JSON.stringify({ itemsSeleccion, listaOrden });
-          if (currentSnap !== tempData.snapshot) {
-            setConfirmData({
-              title: 'Cambios sin guardar',
-              message: '¿Deseas guardar los cambios realizados en el armado?',
-              actionText: 'SÍ, GUARDAR',
-              theme,
-              onClose: () => { setConfirmData(null); setModalOpen(null); },
-              onConfirm: () => { setConfirmData(null); guardarArmadoConItems(); },
-            });
-          } else {
-            setModalOpen(null);
-          }
-        };
-
-        return (
-          <div className={`absolute inset-0 z-50 flex flex-col ${theme.bg}`}>
-            {/* Header */}
-            <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
-              <button onClick={handleVolver}>
-                <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
-              </button>
-              <span className={`font-black ${theme.text} text-base uppercase truncate mx-2`}>{tempData.nuevoArmadoNombre}</span>
-              <button
-                onClick={aplicarOrden}
-                className="text-[11px] font-black px-3 py-1.5 rounded-lg border-2 border-black bg-slate-900 text-white transition-all shrink-0 active:scale-95"
-              >
-                ORDENAR
-              </button>
-            </div>
-
-            {/* Buscador */}
-            <div className={`px-3 pt-3 shrink-0 ${theme.bg}`}>
-              <input
-                type="text"
-                placeholder="Buscar ferretería…"
-                value={buscaArmado}
-                onChange={e => setBuscaArmado(e.target.value)}
-                className={`w-full px-4 py-2.5 rounded-lg border-2 ${theme.border} ${theme.bg} ${theme.text} font-bold placeholder-slate-400 focus:border-blue-500 focus:outline-none text-sm`}
-              />
-            </div>
-
-            {/* Lista de ferreterías */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-px">
-              {listaDisplay.length === 0 ? (
-                <div className="flex items-center justify-center h-full opacity-40 text-xs">No hay ferreterías creadas</div>
-              ) : listaDisplay.map(f => {
-                const sel = itemsSeleccion[f.id] || { cant: 0, tipo: 'none' };
-                const tieneCant = (sel.cant || 0) > 0;
-                const tipo = sel.tipo || 'none';
-                const esPrimaria = tipo === 'primaria';
-                const esSecundaria = tipo === 'secundaria';
-                const tieneSelTipo = esPrimaria || esSecundaria;
-                const sugerida = esSugerida(f.id);
-                // Color de fondo de fila
-                const filaBg = sugerida
-                  ? 'bg-purple-50/40 border border-dashed border-purple-400'
-                  : tieneCant
-                    ? (esPrimaria ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200')
-                    : tieneSelTipo
-                      ? (esPrimaria ? 'bg-green-50/40 border border-green-100' : 'bg-orange-50/40 border border-orange-100')
-                      : `${theme.card} border border-transparent`;
-                // Botón P/S: P verde (con cantidad) · S naranja (secundaria) · S gris tenue (blanco)
-                const btnLetra = esPrimaria ? 'P' : 'S';
-                const btnCls = esPrimaria
-                  ? 'border-green-500 text-green-600'
-                  : esSecundaria
-                    ? 'border-orange-500 text-orange-600'
-                    : 'border-slate-300 text-slate-300';
-                return (
-                  <div key={f.id} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors ${filaBg}`}>
-                    <span className={`flex-1 font-bold text-sm ${theme.text} truncate flex items-center gap-1.5`}>
-                      {f.nombre}
-                      {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">sugerida</span>}
-                    </span>
-                    {/* Toggle P/S — siempre clickeable */}
-                    <button
-                      onClick={() => toggleTipo(f.id)}
-                      className={`w-8 h-8 rounded-lg text-[11px] font-black border-2 bg-transparent transition-all shrink-0 ${btnCls} ${tieneCant ? 'opacity-60' : ''}`}
-                    >
-                      {btnLetra}
-                    </button>
-                    {/* Contador */}
-                    <div className={`flex items-center border-2 ${theme.border} rounded-lg overflow-hidden shrink-0`}>
-                      <button onClick={() => updateCant(f.id, -1)} className={`w-8 h-8 flex items-center justify-center ${theme.bg} ${theme.text} font-black text-lg active:bg-black/10 select-none`}>−</button>
-                      <span className={`w-8 text-center text-sm font-black text-black self-stretch flex items-center justify-center ${
-                        !tieneCant ? 'bg-black/[0.06]' : esPrimaria ? 'bg-green-200' : 'bg-orange-200'
-                      }`}>{sel.cant}</span>
-                      <button onClick={() => updateCant(f.id, 1)} className={`w-8 h-8 flex items-center justify-center ${theme.bg} ${theme.text} font-black text-lg active:bg-black/10 select-none`}>+</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Botón guardar */}
-            <div className={`shrink-0 border-t-2 ${theme.border} p-3`} style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}>
-              <button
-                onClick={guardarArmadoConItems}
-                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-lg"
-              >
-                GUARDAR ARMADO
-              </button>
-            </div>
-          </div>
-        );
-      })()}
+      {modalOpen === 'SELECCIONAR_ITEMS_ARMADO' && (
+        <EditorArmadoItems
+          tempData={tempData}
+          setTempData={setTempData}
+          config={config}
+          theme={theme}
+          setConfirmData={setConfirmData}
+          onCerrar={() => setModalOpen(null)}
+          onGuardar={guardarArmadoConItems}
+        />
+      )}
 
     </div>
   );

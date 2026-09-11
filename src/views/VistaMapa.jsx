@@ -135,6 +135,11 @@ const VistaMapa = ({
   // Capacidad que se está probando en el editor de la lista, para pintar la línea
   // de ese color antes de guardar.
   const [previewFibra, setPreviewFibra] = useState(null);
+  // Armado con la paleta desplegada en la simbología. Solo uno a la vez: la
+  // paleta tapa el nombre, así que dos abiertas dejarían la lista ilegible.
+  const [paletaArmado, setPaletaArmado] = useState(null);
+  // Al cerrar el panel se recoge la paleta, o al reabrirlo aparecería desplegada
+  if (!simbologiaAbierta && paletaArmado !== null) setPaletaArmado(null);
   const [centrarEnCoord, setCentrarEnCoord] = useState(null);
   // Paleta básica de la app, la misma con la que se colorean los días
   const coloresSimbologia = coloresDia.length ? coloresDia : ['#f97316', '#3b82f6', '#10b981', '#a855f7', '#ef4444'];
@@ -550,33 +555,61 @@ const VistaMapa = ({
             {/* SIMBOLOGÍA: un color por armado. Los puntos sin armado, o con un
                 armado sin color, se pintan grises mientras esté encendida. */}
             {simbologiaAbierta && (
-              <div className={`w-44 max-h-[60vh] overflow-y-auto rounded-xl border-2 ${theme.border} ${theme.card} shadow-xl p-2 space-y-1.5`}>
+              <div className={`w-52 max-h-[60vh] overflow-y-auto rounded-xl border-2 ${theme.border} ${theme.card} shadow-xl p-2 space-y-1.5`}>
                 <button
                   onClick={onToggleSimbologiaActiva}
                   className={`w-full py-1.5 rounded-lg text-[11px] font-black tracking-widest border-2 transition-all ${simbologiaActiva
                     ? 'bg-brand-500 text-white border-brand-600'
-                    : `${theme.bg} ${theme.text} ${theme.border}`}`}
+                    : 'bg-slate-900 text-white border-slate-900'}`}
                 >
                   {simbologiaActiva ? 'SIMBOLOGÍA ACTIVADA' : 'ACTIVAR SIMBOLOGÍA'}
                 </button>
 
                 {armadosProyecto.length === 0 ? (
                   <p className={`text-[10px] font-bold text-center py-2 ${theme.text} opacity-50`}>Este proyecto no tiene armados.</p>
-                ) : armadosProyecto.map(a => (
-                  <div key={a.id} className={`rounded-lg border-2 ${theme.border} p-1.5`}>
-                    <p className={`text-[10px] font-black uppercase truncate mb-1 ${theme.text}`}>{a.nombre}</p>
-                    <div className="flex items-center justify-between">
-                      {coloresSimbologia.map(c => (
-                        <button
-                          key={c}
-                          onClick={() => onAsignarColorArmado?.(a.id, coloresArmado[a.id] === c ? null : c)}
-                          className={`w-6 h-6 rounded-full border-2 shrink-0 transition-transform ${coloresArmado[a.id] === c ? 'border-black scale-110' : 'border-white/60'}`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
+                ) : armadosProyecto.map(a => {
+                  const abierto = paletaArmado === a.id;
+                  const sel = coloresArmado[a.id] || null;
+                  // El color elegido va SIEMPRE al final: cerrada la fila, la paleta
+                  // se recoge hacia la derecha y solo asoma ese último círculo.
+                  // 'null' es la opción "sin color" y ocupa el último sitio cuando
+                  // el armado no tiene ninguno asignado.
+                  const opciones = sel
+                    ? [null, ...coloresSimbologia.filter(c => c !== sel), sel]
+                    : [...coloresSimbologia, null];
+                  const ANCHO = 28; // círculo (24) + separación (4)
+                  return (
+                    <div key={a.id} className={`relative h-9 rounded-lg border-2 ${theme.border} overflow-hidden flex items-center`}>
+                      <p className={`flex-1 min-w-0 px-2 text-[10px] font-black uppercase truncate ${theme.text} transition-opacity duration-200 ${abierto ? 'opacity-0' : 'opacity-100'}`}>
+                        {a.nombre}
+                      </p>
+                      {/* Ventana anclada a la derecha: al abrirse crece hacia la
+                          izquierda y los círculos van saliendo sobre el nombre. */}
+                      <div
+                        className="absolute inset-y-0 right-1 overflow-hidden transition-all duration-200"
+                        style={{ width: (abierto ? opciones.length : 1) * ANCHO + 6 }}
+                      >
+                        <div className="absolute right-[3px] inset-y-0 flex items-center justify-end gap-1" style={{ width: opciones.length * ANCHO }}>
+                          {opciones.map(c => (
+                            <button
+                              key={c || 'sin'}
+                              onClick={() => {
+                                // Cerrada solo se ve un círculo: tocarlo despliega.
+                                if (!abierto) { setPaletaArmado(a.id); return; }
+                                onAsignarColorArmado?.(a.id, c);
+                                setPaletaArmado(null);
+                              }}
+                              className={`w-6 h-6 rounded-full shrink-0 transition-transform active:scale-90 ${c
+                                ? `border-2 ${sel === c ? 'border-black scale-110' : 'border-white/60'}`
+                                : `border-2 border-dashed ${sel ? 'border-slate-400' : 'border-black scale-110'}`}`}
+                              style={c ? { backgroundColor: c } : undefined}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

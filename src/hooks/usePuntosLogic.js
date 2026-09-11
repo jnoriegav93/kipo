@@ -248,7 +248,13 @@ export const usePuntosLogic = ({
       walk(datosFormulario.fotos);
       quitarCandidatasPorUrls(urls);
     })();
+    // Al guardar cambios se cae el visto bueno de lo que se tocó: lo revisado ya no
+    // es lo que hay. Los datos y la ferretería tienen su propio check; una foto
+    // afecta a los dos, porque las dos revisiones se apoyan en ellas.
+    const { datos: camDatos, ferreteria: camFerr, fotos: camFotos } = analizarCambios();
     const datosPreliminares = { ...datosFormulario, estado: 'confirmado' };
+    if (camDatos || camFotos) datosPreliminares.revEstado = null;
+    if (camFerr || camFotos) datosPreliminares.ferrEstado = null;
 
     // Día: en edición se conserva el del punto; en creación se asigna por fecha de hoy (auto-días)
     const puntoExistente = (modoEdicion && puntoSeleccionado) ? puntos.find(p => p.id === puntoSeleccionado) : null;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, RefreshCw, Trash2, CheckCircle, AlertTriangle, XCircle, Loader2, Cpu, HardDrive, Wifi, Smartphone, Share2, Camera, Zap, X, Check } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Trash2, CheckCircle, AlertTriangle, XCircle, Loader2, Cpu, HardDrive, Wifi, Smartphone, Share2, Camera, Zap, X, Check, MapPin } from 'lucide-react';
 import { getAllUploadsPending, getRespaldosSubidos, liberarRespaldos } from '../utils/photoDB';
 
 const APP_VERSION = '1.2.0';
@@ -258,6 +258,7 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
   const [mensajeAccion, setMensajeAccion] = useState(null);
   const [testCamara, setTestCamara] = useState(null);
   const [testWorker, setTestWorker] = useState(null);
+  const [testGps, setTestGps] = useState(null);
 
   const cargarDatos = useCallback(async () => {
     setCargando(true);
@@ -309,6 +310,15 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
         cameraPermission = perm.state; // 'granted' | 'denied' | 'prompt'
       } catch (_) {}
 
+      // Permiso de ubicación. 'prompt' significa que aún se puede lanzar el
+      // diálogo del navegador; 'denied' ya no: hay que reactivarlo a mano.
+      const tieneGPS = 'geolocation' in navigator;
+      let gpsPermission = 'desconocido';
+      try {
+        const perm = await navigator.permissions.query({ name: 'geolocation' });
+        gpsPermission = perm.state;
+      } catch { /* Safari no expone el estado de este permiso */ }
+
       // Heap JS (Chrome/Android)
       const heapInfo = performance.memory ? {
         used: performance.memory.usedJSHeapSize,
@@ -324,7 +334,7 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
         sw: { state: swState, waiting: swWaiting },
         version: APP_VERSION,
         ua: navigator.userAgent,
-        caps: { tieneWasm, tieneIDB, tieneCamera, ram, cores, screenRes, pixelRatio, cameraPermission, heapInfo },
+        caps: { tieneWasm, tieneIDB, tieneCamera, ram, cores, screenRes, pixelRatio, cameraPermission, tieneGPS, gpsPermission, heapInfo },
         online: navigator.onLine,
         pwa: window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
       });
@@ -398,6 +408,38 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
     }
   };
 
+  // Pide la ubicación. Si el permiso está en 'prompt', esta llamada es lo que
+  // hace salir el aviso nativo del navegador: no hay forma de invocarlo aparte.
+  // Si ya está denegado, el navegador rechaza sin preguntar y toca ir a ajustes.
+  const probarGps = () => {
+    if (!('geolocation' in navigator)) {
+      setTestGps({ ok: false, error: 'Este navegador no permite acceder a la ubicación.' });
+      return;
+    }
+    setTestGps('testing');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setTestGps({
+          ok: true,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          precision: Math.round(pos.coords.accuracy),
+        });
+        cargarDatos();
+      },
+      (err) => {
+        const porCodigo = {
+          1: 'Permiso denegado. El navegador ya no volverá a preguntar: hay que reactivar la ubicación para este sitio desde los ajustes del navegador (candado junto a la dirección → Ubicación → Permitir).',
+          2: 'El equipo no pudo obtener la posición. Revisa que el GPS del dispositivo esté encendido.',
+          3: 'Se agotó el tiempo de espera. Sal a un lugar despejado y vuelve a intentarlo.',
+        };
+        setTestGps({ ok: false, error: porCodigo[err.code] || err.message, denegado: err.code === 1 });
+        cargarDatos();
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
   const probarWorker = () => {
     setTestWorker('testing');
     try {
@@ -443,6 +485,11 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
       `Permiso: ${permLabel[datos.caps.cameraPermission] || datos.caps.cameraPermission}`,
       testCamara && testCamara !== 'testing' ? `Test activo: ${testCamara.ok ? '✅ OK' : '❌ ' + testCamara.error}` : null,
       testWorker && testWorker !== 'testing' ? `Test Worker: ${testWorker.ok ? '✅ OK' : '❌ ' + testWorker.error}` : null,
+      ``,
+      `📍 UBICACIÓN`,
+      `API disponible: ${datos.caps.tieneGPS ? 'Sí' : 'No'}`,
+      `Permiso: ${permLabel[datos.caps.gpsPermission] || datos.caps.gpsPermission}`,
+      testGps && testGps !== 'testing' ? `Test activo: ${testGps.ok ? `✅ ±${testGps.precision} m` : '❌ ' + testGps.error}` : null,
       ``,
       `💾 ALMACENAMIENTO`,
       `Usado por la app: ${fmt(datos.storageUsed)}`,
@@ -585,6 +632,21 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
                   const ok = p === 'granted' ? true : p === 'denied' ? false : null;
                   return <StatusRow label="Permiso de cámara" value={label} ok={ok} sub={p === 'denied' ? 'El usuario bloqueó la cámara — revisar configuración del navegador' : p === 'prompt' ? 'Se pedirá permiso la primera vez que se use' : null} />;
                 })()}
+                <StatusRow
+                  label="Acceso a ubicación (GPS)"
+                  value={datos.caps.tieneGPS ? 'Disponible' : 'No disponible'}
+                  ok={datos.caps.tieneGPS}
+                />
+                {(() => {
+                  const p = datos.caps.gpsPermission;
+                  const label = { granted: 'Compartiendo', denied: 'Bloqueado', prompt: 'Sin decidir', desconocido: 'Desconocido' }[p] || p;
+                  const ok = p === 'granted' ? true : p === 'denied' ? false : null;
+                  const sub = p === 'granted' ? 'El equipo está compartiendo su ubicación con la app'
+                    : p === 'denied' ? 'Bloqueado para este sitio — reactivar desde el candado junto a la dirección'
+                    : p === 'prompt' ? 'Aún no se ha dado permiso — usa el botón de abajo para pedirlo'
+                    : 'Este navegador no informa el estado; usa el botón de abajo para comprobarlo';
+                  return <StatusRow label="Permiso de ubicación" value={label} ok={ok} sub={sub} />;
+                })()}
                 <StatusRow label="Service Worker" value={datos.sw.state !== 'no-soportado' ? 'Soportado' : 'No soportado'}
                   ok={datos.sw.state !== 'no-soportado'} sub="Necesario para funcionamiento como PWA" />
                 {datos.caps.heapInfo && (
@@ -619,6 +681,25 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
                   {testCamara && testCamara !== 'testing' && (
                     <div className={`mt-1.5 px-3 py-2 rounded-xl text-[10px] font-bold ${testCamara.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                       {testCamara.ok ? '✓ Cámara funcionando correctamente' : `✗ ${testCamara.error}`}
+                    </div>
+                  )}
+                </div>
+
+                {/* Test / solicitud de GPS */}
+                <div>
+                  <button
+                    onClick={probarGps}
+                    disabled={testGps === 'testing'}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-black text-xs uppercase tracking-widest active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {testGps === 'testing' ? <Loader2 size={13} className="animate-spin" /> : <MapPin size={13} />}
+                    {datos.caps.gpsPermission === 'granted' ? 'PROBAR UBICACIÓN (GPS)' : 'ACTIVAR / SOLICITAR UBICACIÓN'}
+                  </button>
+                  {testGps && testGps !== 'testing' && (
+                    <div className={`mt-1.5 px-3 py-2 rounded-xl text-[10px] font-bold ${testGps.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                      {testGps.ok
+                        ? `✓ Ubicación compartida · ${testGps.lat.toFixed(6)}, ${testGps.lng.toFixed(6)} · precisión ±${testGps.precision} m`
+                        : `✗ ${testGps.error}`}
                     </div>
                   )}
                 </div>

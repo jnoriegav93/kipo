@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, ZoomOut, ZoomIn, Map, Image, CalendarDays, Palette } from 'lucide-react';
+import { Menu, RefreshCw, Cloud, CloudOff, Navigation, Tag, ZoomOut, ZoomIn, Map, Image, CalendarDays, Shapes } from 'lucide-react';
 
 export default function Header({
   theme,
@@ -113,7 +113,7 @@ export default function Header({
               className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${simbologiaAbierta || simbologiaActiva ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
               title="Simbología por armado"
             >
-              <Palette size={20} />
+              <Shapes size={20} />
             </button>
           )}
 

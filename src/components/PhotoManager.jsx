@@ -312,6 +312,10 @@ const dimensionesJPEG = async (blob) => {
   return null;
 };
 
+// Tomar o borrar una foto invalida las dos revisiones del punto: tanto la de datos
+// como la de ferretería se apoyan en las fotos para dar el visto bueno.
+const SIN_REVISAR = { 'datos.revEstado': null, 'datos.ferrEstado': null };
+
 const DEFAULT_STAMP_CONFIG = { logoPosition: 'right', mostrarNroPoste: true, mostrarCodFat: false, fondoSello: 'white' };
 
 export default function PhotoManager({ onClose, datos, setDatos, proyectoActual, puntoTemporal, initialTab = 'napMec', puntoId, logoApp, onFotoSubida, modoInstalacion = false, onGuardar, forzarTab, isDesktop = false, onAsegurarPunto, onEncolarFoto, perfilActivo = 'claro', setAlertData }) {
@@ -900,7 +904,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
             : null;
           setSlot(fotoData);
           if (puntoId) {
-            updateDoc(doc(db, 'puntos', String(puntoId)), { [`datos.fotos.${section}.${item}`]: fotoData })
+            updateDoc(doc(db, 'puntos', String(puntoId)), { [`datos.fotos.${section}.${item}`]: fotoData, ...SIN_REVISAR })
               .then(() => { if (candId) quitarCandidata(candId); }).catch(() => {});
           }
         };
@@ -972,7 +976,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
               });
               if (puntoId) {
                 updateDoc(doc(db, 'puntos', puntoId), {
-                  [`datos.fotos.${section}.${item}`]: fotoDataHD
+                  [`datos.fotos.${section}.${item}`]: fotoDataHD, ...SIN_REVISAR
                 }).then(() => { if (candIdHD) quitarCandidata(candIdHD); }).catch(() => {});
               }
             } catch (err) {
@@ -1128,7 +1132,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
       return prevDatos;
     });
     if (puntoId) {
-      updateDoc(doc(db, 'puntos', String(puntoId)), { [`datos.fotos.${section}.${item}`]: deleteField() }).catch(() => {});
+      updateDoc(doc(db, 'puntos', String(puntoId)), { [`datos.fotos.${section}.${item}`]: deleteField(), ...SIN_REVISAR }).catch(() => {});
     }
     setViewingPhoto(null);
   };

@@ -465,9 +465,17 @@ function App() {
   const [modoMover, setModoMover] = React.useState(false);
   const [pendingCoords, setPendingCoords] = React.useState(null);
 
-  // Modo reasignación de puntos a otro proyecto
+  // Modo reasignación de puntos a otro proyecto.
+  // moverProyId = proyecto de la LISTA desde la que se entró. No vale asumir
+  // proyectoActual: el mapa puede tener varios proyectos encendidos a la vez, y
+  // se entra a migrar desde la lista de cualquiera de ellos.
   const [modoMoverPuntos, setModoMoverPuntos] = React.useState(false);
+  const [moverProyId, setMoverProyId] = React.useState(null);
   const [puntosSeleccionadosMover, setPuntosSeleccionadosMover] = React.useState([]);
+  const proyMover = React.useMemo(
+    () => todosLosProyectos.find(p => String(p.id) === String(moverProyId)) || proyectoActual,
+    [todosLosProyectos, moverProyId, proyectoActual]
+  );
 
   // Modo ORDENAR (editar posición): seleccionar puntos en el mapa en orden de tendido.
   // ordenarProyId = proyecto de la LISTA desde la que se inició (NO asumir proyectoActual:
@@ -600,13 +608,13 @@ function App() {
   const ejecutarCopiarCortar = React.useCallback(async (proyectoDestinoArg, modo) => {
     const idsSet = new Set(puntosSeleccionadosMover);
     const puntosSel = todosLosPuntos.filter(p => idsSet.has(p.id));
-    if (puntosSel.length === 0) { setModoMoverPuntos(false); setPuntosSeleccionadosMover([]); return; }
+    if (puntosSel.length === 0) { setModoMoverPuntos(false); setMoverProyId(null); setPuntosSeleccionadosMover([]); return; }
     const conexionesSel = conexiones.filter(c => {
       const ids = c.puntos?.length >= 2 ? c.puntos : [c.from, c.to].filter(Boolean);
       return ids.length >= 2 && ids.every(id => idsSet.has(id));
     });
 
-    const origen = proyectoActual;
+    const origen = proyMover;
     const fechaDeDia = (diaId) => (origen?.dias || []).find(d => d.id === diaId)?.fecha || new Date().toLocaleDateString();
 
     // Crear proyecto nuevo si corresponde (mismas características del origen, nombre "nuevo")
@@ -716,7 +724,8 @@ function App() {
 
     setModoMoverPuntos(false);
     setPuntosSeleccionadosMover([]);
-  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, proyectoActual, user, config, setPuntos, setConexiones, setProyectos, setProyectoActual, agregarTarea, setAlertData]);
+    setMoverProyId(null);
+  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, proyMover, user, config, setPuntos, setConexiones, setProyectos, setProyectoActual, agregarTarea, setAlertData]);
 
   // Resetear modoMover y pendingCoords al deseleccionar punto
   React.useEffect(() => {
@@ -1406,8 +1415,12 @@ function App() {
     }
   }, [setAlertData]);
 
-  // Filtros de visibilidad
-  const puntosVisiblesMapa = filtrosVisibilidad.getPuntosVisibles(todosLosPuntos, diasVisibles, proyectosActivos);
+  // Filtros de visibilidad. Al migrar puntos se acota la vista al proyecto de
+  // origen: con varios proyectos encendidos era fácil arrastrar por error puntos
+  // ajenos, y además sus fechas se resuelven contra los días de ese proyecto.
+  const puntosVisiblesMapa = (modoMoverPuntos && proyMover)
+    ? todosLosPuntos.filter(p => perteneceAProyecto(p, proyMover))
+    : filtrosVisibilidad.getPuntosVisibles(todosLosPuntos, diasVisibles, proyectosActivos);
   const totalPuntosProyecto = proyectoActual ? todosLosPuntos.filter(p => String(p.proyectoId) === String(proyectoActual.id)).length : 0;
   const totalPuntosOrdenar = (modoOrdenar && proyOrdenar) ? todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar)).length : 0;
 
@@ -1518,24 +1531,11 @@ function App() {
     return () => { vivo = false; };
   }, [proyectoActual?.ownerId, proyectoActual?.id, mapaSupervision, user?.uid]);
 
-  // ARMADOS DEL PROYECTO.
-  // Los armados dejaron de ser del usuario y pasaron a vivir en el proyecto, porque
-  // cada obra usa los suyos. Mientras un proyecto todavía no tenga los propios, se
-  // usan TODOS los del dueño —sin filtrar por el ojito— para que los puntos ya
-  // asignados no se queden sin su armado. Ese respaldo se puede quitar cuando todos
-  // los proyectos estén migrados.
+  // ARMADOS DEL PROYECTO. Cada obra usa los suyos, guardados en su documento.
   const armadosDelProyecto = React.useMemo(() => {
     const proy = mapaSupervision ? mapaSupervision.proyecto : proyectoActual;
-    const delDueno = configPropietario?.armados || config?.armados || [];
-    const propios = Array.isArray(proy?.armados) ? proy.armados : [];
-    if (propios.length === 0) return delDueno;
-    // Los que el proyecto no fijó se conservan SOLO para poder resolver el nombre de
-    // los puntos que ya los tenían asignados. Van con visible:false, que es el filtro
-    // que usa el selector, así que no se ofrecen al asignar pero sí se encuentran.
-    const ids = new Set(propios.map(a => String(a.id)));
-    const heredados = delDueno.filter(a => !ids.has(String(a.id))).map(a => ({ ...a, visible: false }));
-    return [...propios, ...heredados];
-  }, [proyectoActual, mapaSupervision, configPropietario, config]);
+    return Array.isArray(proy?.armados) ? proy.armados : [];
+  }, [proyectoActual, mapaSupervision]);
 
   // Configuración con la que se pintan formulario y detalle: la propia, con el
   // catálogo de ferretería del dueño (los ids de material son suyos) y los armados
@@ -1946,8 +1946,8 @@ function App() {
           puntosSeleccionadosMover={puntosSeleccionadosMover}
           setPuntosSeleccionadosMover={setPuntosSeleccionadosMover}
           onEjecutarCopiarCortar={ejecutarCopiarCortar}
-          onCancelarMoverPuntos={() => { setModoMoverPuntos(false); setPuntosSeleccionadosMover([]); setModalPendiente(`LISTA_PUNTOS_${proyectoActual?.id}`); setVista('proyectos'); }}
-          proyectosDestino={proyectos.filter(p => p.id !== proyectoActual?.id)}
+          onCancelarMoverPuntos={() => { const volverA = proyMover?.id ?? proyectoActual?.id; setModoMoverPuntos(false); setMoverProyId(null); setPuntosSeleccionadosMover([]); setModalPendiente(`LISTA_PUNTOS_${volverA}`); setVista('proyectos'); }}
+          proyectosDestino={proyectos.filter(p => String(p.id) !== String(proyMover?.id))}
           modoOrdenar={modoOrdenar}
           ordenSeleccion={ordenSeleccion}
           setOrdenSeleccion={setOrdenSeleccion}
@@ -2030,9 +2030,10 @@ function App() {
           notificacionesProyectos={{ ...notifProyectos, ...notifEditor }}
           marcarChatLeido={marcarChatLeido}
           conexiones={conexiones}
-          onIniciarMoverPuntos={() => {
+          onIniciarMoverPuntos={(proy) => {
             setPuntoSeleccionado(null);
             setPuntosSeleccionadosMover([]);
+            setMoverProyId(proy?.id ?? null);
             setModoMoverPuntos(true);
             setVista('mapa');
           }}
