@@ -1,0 +1,159 @@
+# Contexto de trabajo — dónde va todo
+
+Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
+cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
+`CLAUDE.md`; esto es el **estado**.
+
+Última actualización: 11 de septiembre de 2026.
+
+---
+
+## En qué estamos: el modo DISEÑO
+
+Kipo cubre hoy **levantamiento en campo**, **tendido** y **liquidación**. Falta el
+eslabón del medio: el **diseño** de la red, que hoy se hace en un proyecto aparte
+(`C:\Users\USER\App_Design`, "GPON Design": JavaScript puro, sin build, PWA local
+con IndexedDB). Ese proyecto no está en uso todavía — no hay datos que migrar, y
+por eso podemos rehacerlo sobre un modelo mejor en vez de portarlo tal cual.
+
+El puente manual que queremos eliminar: hoy se exporta un KMZ de Kipo para
+importarlo en el paso 2 de App_Design.
+
+### Documentos de referencia (artifacts, en la cuenta de claude.ai)
+
+- **Modo Diseño en Kipo** — plan por fases, modelo de datos y qué se porta de
+  cada archivo: https://claude.ai/code/artifact/652fdd02-5eee-468f-8485-122cc843e94d
+- **Funciones del Catastro** — inventario completo del paso 1 de App_Design,
+  leído del código: https://claude.ai/code/artifact/5442bbca-ecc1-4084-8806-3f0138ac966d
+- **Simbología de Postes Kipo** — las tres formas de marcador y sus estados:
+  https://claude.ai/code/artifact/b2e32a8d-2d6e-4a33-9395-6d31f84ec0ff
+
+---
+
+## Decisiones cerradas
+
+No volver a discutirlas al construir. Si algo cambia, cambia aquí primero.
+
+**Dónde vive.** Modo dentro del **mismo proyecto** de Kipo, no un entorno con
+proyectos aparte. Los postes del diseño son los del levantamiento, en vivo. Si el
+diseño viviera aparte habría que migrar puntos cada vez que campo corrige uno.
+
+**Aspecto.** Oscuro y sobrio, porque el diseño se hace en interior con
+computadora, no al sol. Pero con **las formas de control de Kipo** (botones
+`rounded-xl` con borde de 2, versalitas negras, naranja de marca) para que no
+parezca otra aplicación. Paleta en `PALETA` dentro de `VistaDiseno.jsx`.
+
+**Origen del poste.** `levantado` · `importado` · `proyectado`. Un solo modelo de
+postes para toda la app. Se lee con respaldo (`origenDePunto()` en `helpers.js`),
+**sin migración**: los puntos viejos se comportan como levantados y no se escribe
+nada sobre lo que la cuadrilla está guardando.
+
+**Estados.** Solo `proyectado` e `instalado`. Lo anulado se borra.
+
+**Fibra: un registro, dos geometrías.** `vertices` (lo real, lo que Kipo ya edita)
+y `proyeccion` (congelada al aprobar el diseño). Nunca dos objetos vivos que haya
+que sincronizar. Los tres casos de la liquidación salen solos: ambas geometrías →
+se comparan; `proyeccion: null` → adicional; `instalado: false` → no ejecutado.
+
+**Quién edita qué lo decide el modo**, no el usuario: en Diseño se toca
+`proyeccion`, en Kipo normal se tocan los `vertices`. Desde campo **no hay forma
+de tocar la proyección**.
+
+**Permisos.** Escribe solo el dueño del proyecto. Las capas de catastro las ven
+todos. Queda aparcada la idea de entregar el proyecto al cliente transfiriendo la
+propiedad.
+
+**Poste movido.** Pasados **8 m** en liquidación se pregunta si es el mismo poste.
+Solo rompe el diseño si el poste nuevo queda **fuera de la ruta proyectada**;
+dentro de **5 m** de la ruta se ajusta solo a la línea, y eso únicamente al
+liquidar.
+
+**Versiones.** Reaprobar saca v2, v3… y **solo toca fibras no instaladas**. Lo ya
+tendido conserva la proyección con la que se construyó.
+
+**Sin diseño, nada cambia.** Un proyecto sin diseño funciona exactamente como hoy.
+
+### Decisiones del catastro
+
+**Nada de OSM.** Todo manual. Los postes de Kipo sí se muestran de fondo como
+referencia al trazar.
+
+**Las calles son el esfuerzo principal.** Dibujar las manzanas a partir de las
+calles es el camino; el reparto en lotes viene después, sobre los rectángulos ya
+obtenidos.
+
+**Se traza el borde, no el eje.** El borde de la manzana es una línea visible en
+el satélite; el eje hay que adivinarlo y la mano falla. Y justo por eso **el ancho
+tiene que poder variar a lo largo de la calle**: el ancho de arranque solo sirve
+para generar el segundo borde, después cada borde se mueve por su cuenta.
+
+**Frontis en lotes de esquina — regla nueva.** Un lote de esquina toca dos lados
+de la manzana. Se cuenta cuántos **lotes intermedios** tienen su frontis en cada
+uno de esos dos lados y el de esquina **se suma al lado que tenga más**. Empate →
+gana el lado donde el lote tiene el frente más largo. (En App_Design se tomaban
+los dos lados como frontis; eso cambia.)
+
+**Precisión.** Los lotes deben salir lo más precisos posible, pero eso depende del
+técnico que dibuja: nuestro trabajo es darle herramientas rápidas y exactas.
+
+**Idea abierta, no decidida:** guardar la *receta* (manzana + configuración) en vez
+de los 594 polígonos de lote, y recalcular al abrir, con las excepciones
+(familias propias, fusiones, divisores) guardadas aparte. Reduce mucho lo que se
+escribe en cada cambio. Pendiente de confirmar con el usuario.
+
+**Geometría:** `polygon-clipping` (~30 KB) solo para unir, cortar y restar
+polígonos, en vez de Turf entero (~500 KB). El resto escrito a mano en
+`disenoGeo.js`. **Todavía no está instalado.**
+
+---
+
+## Qué está construido
+
+| Pieza | Estado |
+|---|---|
+| Entrada DISEÑO en el menú, tras `esAdmin` | hecho |
+| Vista con stepper de 6 pasos, carga diferida | hecho |
+| Elegir proyecto y ver sus postes reales | hecho |
+| Colección `proyectos/{id}/diseno` + reglas | hecho |
+| Guardado diferido de 600 ms, en vivo | hecho |
+| Cuadra rectangular (3 clics) y cuadra irregular | hecho |
+| Áreas especiales (polígono y círculo) con sus tipos | hecho |
+| Marcadores y etiquetas con sus tipos | hecho |
+| Panel de capas con conteos | hecho |
+| **Calles:** trazar borde A, imán a vértices, imán de ángulo 90°, medida en vivo, ancho de arranque, cambiar lado, confirmar | hecho |
+
+Archivos: `src/views/VistaDiseno.jsx`, `src/components/DisenoCatastro.jsx`,
+`src/components/DisenoCalles.jsx`, `src/services/disenoService.js`,
+`src/utils/disenoGeo.js`.
+
+## Qué sigue, en orden
+
+1. **Editar calle**: arrastrar vértices de ambos bordes con imán, mostrando el
+   ancho local en metros. Aquí es donde el ancho se vuelve variable de verdad.
+2. **Agregar vértice** y **cortar calle en dos clics**.
+3. **Cerrar esquinas**: prolongar cada extremo hasta 10 m y pegarlo al borde de
+   otra calle si choca.
+4. **Generar manzanas desde calles**, con candidatas revisables (naranja = entra,
+   gris = no). Necesita `polygon-clipping`.
+5. **Subdividir en lotes** con la regla nueva de frontis.
+6. Divisores, familias por lote, selección múltiple y fusión.
+7. Bloque de cuadras (baja prioridad: con las calles funcionando pierde sentido).
+8. Exportar GeoJSON.
+
+Después del catastro vienen las fases 2 a 5 del plan: tramos (grafo de vanos),
+NAPs, rutas y aprobación, y reconciliación con la liquidación.
+
+---
+
+## Pendientes fuera del diseño
+
+- **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
+  solo trozo: cualquier cambio obliga a rebajar 2,4 MB en cada actualización, y
+  en campo con poca señal se siente. Candidatos: sacar ExcelJS a su propio trozo
+  y revisar `jszip`, que sigue en `package.json` pero ya no se usa en `src/`.
+- **La credencial del remoto de git va en la URL en texto plano.** Conviene
+  quitarla y autenticar por el gestor de credenciales de Windows o `gh auth login`.
+- Ferretería automática (cálculo de materiales), pausado.
+- Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
+- El aviso de actualización recarga la página: conviene que no aparezca mientras
+  hay un formulario o una captura de foto abiertos.

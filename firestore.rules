@@ -60,6 +60,15 @@ service cloud.firestore {
       );
     }
 
+    // ── DISEÑO ────────────────────────────────────────────────────────────
+    // Capas de la proyección de la red (catastro, red, meta). Las ve cualquiera
+    // que pueda ver el proyecto, pero solo las escribe el dueño: el diseño es el
+    // compromiso contra el que después se liquida la obra.
+    match /proyectos/{proyectoId}/diseno/{capaId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && esDuenoDelProyecto(proyectoId, request.auth.uid);
+    }
+
     // ── PUNTOS ────────────────────────────────────────────────────────────
     match /puntos/{puntoId} {
       allow read: if request.auth != null;

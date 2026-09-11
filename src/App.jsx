@@ -52,6 +52,8 @@ import VistaDatosUsuario from './views/VistaDatosUsuario';
 import VistaAdmin from './views/VistaAdmin';
 import VistaDiagnostico from './views/VistaDiagnostico';
 import VistaPapelera from './views/VistaPapelera';
+// Carga diferida: el módulo de diseño no entra en el arranque de la app.
+const VistaDiseno = React.lazy(() => import('./views/VistaDiseno'));
 
 // Hooks personalizados
 import { useAuth, ADMIN_UID } from './hooks/useAuth';
@@ -1693,6 +1695,7 @@ function App() {
         setMapStyle={setMapStyle}
         adminReturnEmail={adminReturnEmail}
         onVolverAAdmin={volverAAdmin}
+        esAdmin={esAdmin}
       />
 
       {vista === 'mapa' && (
@@ -2123,6 +2126,18 @@ function App() {
             setVista('mapa');
           }}
         />
+      )}
+
+      {vista === 'diseno' && (
+        <React.Suspense fallback={null}>
+          <VistaDiseno
+            theme={theme}
+            isDark={isDark}
+            onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
+            proyectos={proyectos}
+            puntos={todosLosPuntos}
+          />
+        </React.Suspense>
       )}
 
       {vista === 'diagnostico' && (

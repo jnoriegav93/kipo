@@ -535,6 +535,11 @@ export const estamparMetadatos = async (imagenSource, datos, logoBase64, stampCo
 // texto: hay ids numéricos viejos). Registros legacy SIN proyectoId caen al filtro
 // por día. NUNCA filtrar solo por diaId: proyectos copiados comparten ids de día y
 // se mezclaban puntos de otros proyectos en exportaciones y contadores.
+/* Procedencia de un punto para el modo Diseño. Los puntos anteriores a esta
+   función no llevan el campo, así que se leen como levantados: no hace falta
+   migrar nada ni escribir sobre lo que la cuadrilla está guardando. */
+export const origenDePunto = (p) => p?.datos?.origen || 'levantado';
+
 export const perteneceAProyecto = (item, proy) => {
   if (!proy) return false;
   const pid = item?.proyectoId;

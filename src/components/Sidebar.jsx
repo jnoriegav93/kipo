@@ -1,6 +1,6 @@
 // src/components/Sidebar.jsx
 import { useState, useEffect } from 'react';
-import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2, Image } from 'lucide-react';
+import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2, Image, DraftingCompass } from 'lucide-react';
 
 const ADMIN_UID = 'E8CaZVgP4eZnjnN3OKTVi7bmoJN2';
 
@@ -26,6 +26,7 @@ export default function Sidebar({
   setMapStyle,
   adminReturnEmail = null,
   onVolverAAdmin,
+  esAdmin = false,
 }) {
   const [mostrarPasswordAdmin, setMostrarPasswordAdmin] = useState(false);
   const [passwordAdmin, setPasswordAdmin] = useState('');
@@ -208,6 +209,9 @@ export default function Sidebar({
               )}
             </div>
           </button>
+          {/* DISEÑO — en construcción: por ahora solo lo ve el admin, así que el
+              código puede subirse a producción sin que exista para nadie más. */}
+          {esAdmin && <NavItem icon={DraftingCompass} label="Diseño" vistaKey="diseno" />}
           <NavItem icon={Settings} label="Configuración"  vistaKey="config" />
           <NavItem icon={ClipboardList} label="Control Ferretería" vistaKey="controlFerreteria" />
           <NavItem icon={Users}   label="Equipos"        vistaKey="equipos"      notif={notifEquipos} />
