@@ -6,7 +6,7 @@ import { generarHuellaDigital } from './security';
 import { Eye, EyeOff, Copy, Check, MessageCircle, ShieldAlert, MapPin, ChevronRight, Lock } from 'lucide-react'; // Agregamos 'Check'
 
 const Login = ({ onLogin, initialBlocked }) => {
-  const [emailInput, setEmailInput] = useState('');
+  const [emailInput, setEmailInput] = useState(''); 
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [deviceCode, setDeviceCode] = useState('');
