@@ -447,7 +447,8 @@ function App() {
     irUbicacionProyecto,
     aprobarSupervisor,
     rechazarSupervisor,
-    eliminarSupervisor
+    eliminarSupervisor,
+    crearProyectoDiseno
   } = useProjectLogic({
     user,
     proyectos, setProyectos,
@@ -2136,6 +2137,7 @@ function App() {
             onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
             proyectos={proyectos}
             puntos={todosLosPuntos}
+            onCrearProyecto={crearProyectoDiseno}
           />
         </React.Suspense>
       )}

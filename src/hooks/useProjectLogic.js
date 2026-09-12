@@ -42,20 +42,12 @@ const irUbicacionProyecto = (e, proyId) => {
 };
 
 // --- PROYECTOS ---
-const confirmarCrearProyecto = async () => {
-    if(!tempData.nombre) return;
-    
-    
-    // 2. Preparar datos
-    const tipo = tempData.tipo || 'levantamiento';
+// Estructura de un proyecto nuevo: la misma si nace del modal de Kipo o del modo Diseño
+const armarProyectoNuevo = ({ nombre, tipo = 'levantamiento', modoFotos = 'comprimido' }) => {
     const diaUno = { id: `d_${Date.now()}`, nombre: 'Día 1', fecha: new Date().toLocaleDateString(), color: colorDiaAleatorio() };
-    const idProyecto = String(Date.now());
-
-    const modoFotos = tempData.modoFotos || 'comprimido';
-
     const nuevo = {
-        id: idProyecto,
-        nombre: tempData.nombre,
+        id: String(Date.now()),
+        nombre,
         tipo,
         modoFotos,
         dias: [diaUno],
@@ -67,6 +59,37 @@ const confirmarCrearProyecto = async () => {
         solicitudesPendientes: [],
         createdAt: new Date().toISOString()
     };
+    return { nuevo, diaUno };
+};
+
+/* Proyecto creado desde el modo Diseño. Nace sin postes —el diseño puede ir antes
+   que el levantamiento— pero es un proyecto normal de Kipo, con su Día 1, para que
+   después la cuadrilla levante sobre él. No cambia el proyecto activo del mapa.
+   Devuelve el id cuando Firestore confirma; si falla, lo quita de la lista. */
+const crearProyectoDiseno = async (nombre) => {
+    const { nuevo } = armarProyectoNuevo({ nombre });
+    nuevo.creadoDesde = 'diseno';
+    setProyectos(prev => (prev.some(p => p.id === nuevo.id) ? prev : [...prev, nuevo]));
+    try {
+        await setDoc(doc(db, "proyectos", nuevo.id), nuevo);
+    } catch (error) {
+        setProyectos(prev => prev.filter(p => p.id !== nuevo.id));
+        throw error;
+    }
+    return nuevo.id;
+};
+
+const confirmarCrearProyecto = async () => {
+    if(!tempData.nombre) return;
+
+
+    // 2. Preparar datos
+    const { nuevo, diaUno } = armarProyectoNuevo({
+        nombre: tempData.nombre,
+        tipo: tempData.tipo || 'levantamiento',
+        modoFotos: tempData.modoFotos || 'comprimido',
+    });
+    const idProyecto = nuevo.id;
 
     // 3. Actualizar visualmente
     setProyectos([...proyectos, nuevo]);
@@ -466,6 +489,7 @@ const eliminarSupervisor = async (proyectoId, supervisorUid) => {
         irUbicacionProyecto,
         aprobarSupervisor,
         rechazarSupervisor,
-        eliminarSupervisor
+        eliminarSupervisor,
+        crearProyectoDiseno
     };
 };

@@ -5,11 +5,12 @@ import {
   ArrowLeft, Folder, Layers, Waypoints, Boxes, Route, Cable, FileDown, Lock,
   ZoomIn, ZoomOut, Square, PenTool, Undo2, Check, X, Trash2, Loader2,
   Circle as CircleIcon, MapPin, Type, PanelLeftClose, PanelLeft, ChevronDown,
-  Spline, Minus, Plus, FlipHorizontal, Scissors, PenLine,
+  Spline, Minus, Plus, FlipHorizontal, Scissors, PenLine, FolderPlus,
 } from 'lucide-react';
 import { perteneceAProyecto } from '../utils/helpers';
 import DisenoCatastro from '../components/DisenoCatastro';
 import DisenoCalles from '../components/DisenoCalles';
+import DisenoBuscador from '../components/DisenoBuscador';
 import { suscribirCatastro, crearGuardadoDiferido, CAPAS } from '../services/disenoService';
 import {
   areaM2, paralela, largoPolilinea, proyectarEnPolilinea, insertarVertice, cortarCalle, anchosCalle,
@@ -66,15 +67,16 @@ const siguienteId = (lista, prefijo) => {
   return `${prefijo}_${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`;
 };
 
-/* Encuadra el mapa sobre los puntos del proyecto al abrirlo. */
-function Encuadrar({ puntos }) {
+/* Encuadra el mapa al abrir el proyecto: sobre sus postes y, si todavía no tiene,
+   sobre lo ya dibujado. Solo cuando cambia `clave` (otro proyecto, fin de la carga,
+   primeros postes): encuadrar a cada cambio movería el mapa mientras se dibuja. Un
+   proyecto sin nada deja el mapa donde está, para buscar la ubicación. */
+function Encuadrar({ clave, coords }) {
   const map = useMap();
-  const clave = puntos.length ? `${puntos.length}_${puntos[0].id}` : 'vacio';
-  useMemo(() => {
-    const coords = puntos.filter(p => p.coords?.lat != null).map(p => [p.coords.lat, p.coords.lng]);
+  useEffect(() => {
     if (coords.length === 0) return;
     if (coords.length === 1) map.setView(coords[0], 18);
-    else map.fitBounds(coords, { padding: [40, 40] });
+    else map.fitBounds(coords, { padding: [40, 40], maxZoom: 19 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave]);
   return null;
@@ -135,8 +137,12 @@ const EstadoGuardado = ({ cargando, estado, error }) => {
   return <span className={clase}>Guardado</span>;
 };
 
-export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
+export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onCrearProyecto }) {
   const [proyectoId, setProyectoId] = useState(null);
+  const [mapa, setMapa] = useState(null);              // el mapa de Leaflet, para el buscador
+  const [nuevoNombre, setNuevoNombre] = useState(null); // null: formulario de proyecto nuevo cerrado
+  const [creando, setCreando] = useState(false);
+  const [errorCrear, setErrorCrear] = useState(null);
   const [lupa, setLupa] = useState(0.8);
   const [paso, setPaso] = useState('catastro');
   const [panelAbierto, setPanelAbierto] = useState(true);
@@ -184,6 +190,37 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
   const marcadores = catastro?.marcadores || [];
   const etiquetas  = catastro?.etiquetas  || [];
   const calles     = catastro?.calles     || [];
+
+  // Dónde encuadrar al abrir: los postes y, si no hay, lo ya dibujado
+  const coordsEncuadre = puntosProy.length
+    ? puntosProy.map(p => [p.coords.lat, p.coords.lng])
+    : [
+      ...calles.flatMap(c => [...(c.A || []), ...(c.B || [])]),
+      ...manzanas.flatMap(m => m.latlngs || []),
+      ...areas.flatMap(a => a.latlngs || (a.center ? [a.center] : [])),
+      ...marcadores.map(m => m.latlng),
+      ...etiquetas.map(e => e.latlng),
+    ];
+  const claveEncuadre = `${proyectoId}:${cargando ? 'cargando' : 'listo'}:${puntosProy.length > 0}`;
+  const proyectoVacio = !cargando && coordsEncuadre.length === 0;
+
+  /* Proyecto nuevo desde Diseño: nace sin postes y se abre en el acto. */
+  const crearProyecto = async () => {
+    const nombre = (nuevoNombre || '').trim();
+    if (!nombre || creando || !onCrearProyecto) return;
+    setCreando(true);
+    setErrorCrear(null);
+    try {
+      const id = await onCrearProyecto(nombre);
+      setNuevoNombre(null);
+      setProyectoId(id);
+    } catch (e) {
+      console.error('No se pudo crear el proyecto', e);
+      setErrorCrear('No se pudo crear el proyecto. Revisa la conexión.');
+    } finally {
+      setCreando(false);
+    }
+  };
 
   const guardar = (parche) => {
     const datos = { ...(catastro || {}), ...parche };
@@ -364,6 +401,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
             {proyecto ? proyecto.nombre : 'Elige un proyecto para empezar'}
           </p>
         </div>
+        {proyecto && <DisenoBuscador mapa={mapa} />}
         {proyecto && (
           <button onClick={() => { cancelarDibujo(); setProyectoId(null); }} className={btnBase}>
             Cambiar
@@ -398,9 +436,46 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
 
       {!proyecto ? (
         <div className="flex-1 overflow-y-auto p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest mb-2 text-[var(--d-suave)]">
-            Proyectos disponibles
-          </p>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">
+              Proyectos disponibles
+            </p>
+            {onCrearProyecto && nuevoNombre === null && (
+              <button onClick={() => setNuevoNombre('')} className={`${btn} bg-brand-500 border-brand-600 text-white`}>
+                <FolderPlus size={14} strokeWidth={2.5} /> Nuevo proyecto
+              </button>
+            )}
+          </div>
+
+          {/* Un proyecto de diseño puede nacer sin postes: la cuadrilla levanta
+              después sobre este mismo proyecto. */}
+          {nuevoNombre !== null && (
+            <div className="mb-4 p-3 rounded-xl border-2 border-brand-600 bg-[var(--d-panel)] space-y-2.5">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">Nuevo proyecto de diseño</p>
+              <input
+                autoFocus
+                value={nuevoNombre}
+                onChange={(e) => setNuevoNombre(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') crearProyecto(); if (e.key === 'Escape') setNuevoNombre(null); }}
+                placeholder="Nombre del proyecto"
+                className="w-full h-10 px-3 rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] text-sm font-bold outline-none focus:border-brand-500"
+              />
+              <p className="text-[10px] font-bold text-[var(--d-suave)] leading-snug">
+                Nace sin postes. Se diseña primero y la cuadrilla puede levantar después sobre este mismo proyecto.
+              </p>
+              {errorCrear && <p className="text-[11px] font-black text-red-400">{errorCrear}</p>}
+              <div className="flex gap-2">
+                <button onClick={crearProyecto} disabled={!nuevoNombre.trim() || creando}
+                  className={`${btn} flex-1 bg-brand-500 border-brand-600 text-white disabled:opacity-30`}>
+                  {creando ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Crear
+                </button>
+                <button onClick={() => { setNuevoNombre(null); setErrorCrear(null); }} title="Cancelar"
+                  className={`${btnBase} w-10 px-0`}>
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          )}
           {proyectos.length === 0 ? (
             <p className="text-xs font-bold py-8 text-center text-[var(--d-suave)]">No tienes proyectos propios.</p>
           ) : (
@@ -490,6 +565,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
           {/* Mapa */}
           <div className="flex-1 relative min-w-0">
             <MapContainer
+              ref={setMapa}
               center={[-16.409, -71.537]}
               zoom={17}
               maxZoom={22}
@@ -503,7 +579,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
                 subdomains="abcd" maxZoom={22} maxNativeZoom={20} opacity={0.85}
               />
-              <Encuadrar puntos={puntosProy} />
+              <Encuadrar clave={claveEncuadre} coords={coordsEncuadre} />
 
               <DisenoCalles
                 calles={calles}
@@ -557,6 +633,16 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
                 <ZoomOut size={17} strokeWidth={2.5} />
               </button>
             </div>
+
+            {/* Proyecto sin postes ni catastro: no hay nada que encuadrar todavía */}
+            {proyectoVacio && !herramienta && !borrador && !edicion && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[500] w-[min(92%,26rem)] rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] px-4 py-3 shadow-xl text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-brand-500">Proyecto sin postes</p>
+                <p className="mt-1 text-[11px] font-bold text-[var(--d-suave)] leading-snug">
+                  Busca la ciudad o localidad arriba y empieza por las calles. Los postes pueden venir después, del levantamiento.
+                </p>
+              </div>
+            )}
 
             {/* Calle en curso: medida en vivo y cierre del trazo */}
             {herramienta === 'calle' && (

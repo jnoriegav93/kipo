@@ -43,6 +43,12 @@ No volver a discutirlas al construir. Si algo cambia, cambia aquí primero.
 proyectos aparte. Los postes del diseño son los del levantamiento, en vivo. Si el
 diseño viviera aparte habría que migrar puntos cada vez que campo corrige uno.
 
+**Un proyecto puede nacer en Diseño, sin postes.** El diseño puede ir antes que el
+levantamiento. Se crea desde la lista de Diseño y es un proyecto normal de Kipo
+(tipo levantamiento, con su Día 1, marcado `creadoDesde: 'diseno'`), para que la
+cuadrilla levante después sobre él. La estructura sale de `armarProyectoNuevo()`
+en `useProjectLogic.js`, la misma que usa el modal de Kipo.
+
 **Aspecto.** Oscuro y sobrio, porque el diseño se hace en interior con
 computadora, no al sol. Pero con **las formas de control de Kipo** (botones
 `rounded-xl` con borde de 2, versalitas negras, naranja de marca) para que no
@@ -86,8 +92,11 @@ el diseño trabaja con pares `[lat, lng]`; al guardar, `aFirestore()` los pasa a
 
 ### Decisiones del catastro
 
-**Nada de OSM.** Todo manual. Los postes de Kipo sí se muestran de fondo como
-referencia al trazar.
+**Nada de OSM para dibujar.** Todo manual. Los postes de Kipo sí se muestran de
+fondo como referencia al trazar. El **buscador de lugares** usa Nominatim (el
+geocodificador de OpenStreetMap, el mismo que Kipo usa para poner dirección a los
+puntos), pero solo mueve el mapa: no trae nada al diseño. Sus reglas no permiten
+buscar a cada tecla, así que se busca con Enter o la lupa.
 
 **Las calles son el esfuerzo principal.** Dibujar las manzanas a partir de las
 calles es el camino; el reparto en lotes viene después, sobre los rectángulos ya
@@ -130,6 +139,9 @@ polígonos, en vez de Turf entero (~500 KB). El resto escrito a mano en
 | Entrada DISEÑO en el menú, tras `esAdmin` | hecho |
 | Vista con stepper de 6 pasos, carga diferida | hecho |
 | Elegir proyecto y ver sus postes reales | hecho |
+| **Nuevo proyecto** desde la lista de Diseño, sin postes | hecho |
+| **Buscador de lugares** en la cabecera (ciudad, distrito, calle) | hecho |
+| Encuadre al abrir: los postes o, si no hay, lo dibujado; aviso en proyecto vacío | hecho |
 | Colección `proyectos/{id}/diseno` + reglas | hecho — **sin confirmar que las reglas estén desplegadas** |
 | Guardado diferido de 600 ms, con su estado en la barra | hecho — **hasta el 12/09 no guardaba nada** (arrays anidados) |
 | Cuadra rectangular (3 clics) y cuadra irregular | hecho |
@@ -141,16 +153,19 @@ polígonos, en vez de Turf entero (~500 KB). El resto escrito a mano en
 | **Agregar vértice** tocando un borde y **cortar calle** con un clic en cada borde | hecho |
 
 Archivos: `src/views/VistaDiseno.jsx`, `src/components/DisenoCatastro.jsx`,
-`src/components/DisenoCalles.jsx`, `src/services/disenoService.js`,
-`src/utils/disenoGeo.js`.
+`src/components/DisenoCalles.jsx`, `src/components/DisenoBuscador.jsx`,
+`src/services/disenoService.js`, `src/utils/disenoGeo.js`, y
+`crearProyectoDiseno()` en `src/hooks/useProjectLogic.js`.
 
-Lo del 12/09 (guardado y edición de calles) está probado en Chrome con la página
-de prueba de abajo, pero **todavía no con el usuario admin en la app real**.
+Lo del 12/09 (guardado, edición de calles, proyecto nuevo y buscador) está probado
+en Chrome con la página de prueba de abajo, pero **todavía no con el usuario admin
+en la app real**.
 
 ## Qué sigue, en orden
 
-1. **Probar en localhost con el admin** el guardado y la edición de calles. Si la
-   barra dice "sin permiso de escritura", faltan desplegar las reglas de `diseno`.
+1. **Probar en localhost con el admin**: crear un proyecto desde Diseño, buscar la
+   ubicación, dibujar y editar calles, recargar y ver que siguen ahí. Si la barra
+   dice "sin permiso de escritura", faltan desplegar las reglas de `diseno`.
 2. **Cerrar esquinas**: prolongar cada extremo hasta 10 m y pegarlo al borde de
    otra calle si choca.
 3. **Generar manzanas desde calles**, con candidatas revisables (naranja = entra,
@@ -167,11 +182,12 @@ NAPs, rutas y aprobación, y reconciliación con la liquidación.
 
 Claude no puede entrar con el usuario admin. En la laptop hay una página de
 prueba local **fuera de git** (`harness-diseno/`, excluida en `.git/info/exclude`):
-monta `VistaDiseno` con un proyecto falso y cambia `firebaseConfig.js` por un
+monta `VistaDiseno` con proyectos falsos y cambia `firebaseConfig.js` por un
 Firestore que apunta a un emulador inexistente, así que nunca toca producción
 pero las escrituras pasan por el SDK real. Se levanta con
 `npx vite --config harness-diseno/vite.config.js` (puerto 5199) y se recorre con
-`puppeteer-core` y el Chrome instalado.
+`puppeteer-core` y el Chrome instalado; las búsquedas de Nominatim se responden
+con datos falsos interceptando la petición.
 
 ---
 
