@@ -141,3 +141,28 @@ export const anchoLocal = (otro, p) => {
   const pr = proyectarEnPolilinea(otro, p);
   return pr ? Math.round(pr.dist * 10) / 10 : null;
 };
+
+/* ── Formato de guardado ──────────────────────────────────────────────────
+   Firestore no acepta un array directamente dentro de otro, y la geometría del
+   diseño son listas de pares [lat, lng]: con una sola manzana o calle, la capa
+   entera se rechazaba. Al guardar, cada par que va dentro de una lista pasa a
+   {lat, lng} —el formato de los vértices de fibra— y al leer se deshace. Un par
+   suelto (centro de un círculo, posición de un marcador) no está anidado y viaja
+   tal cual. En memoria el diseño trabaja siempre con pares. */
+
+const esPar = (v) => Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number';
+const esLatLng = (v) => v != null && typeof v === 'object' && !Array.isArray(v)
+  && Object.keys(v).length === 2 && typeof v.lat === 'number' && typeof v.lng === 'number';
+const esObjetoPlano = (v) => v != null && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype;
+
+export const aFirestore = (v) => {
+  if (Array.isArray(v)) return v.map(e => (esPar(e) ? { lat: e[0], lng: e[1] } : aFirestore(e)));
+  if (esObjetoPlano(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, aFirestore(x)]));
+  return v;
+};
+
+export const desdeFirestore = (v) => {
+  if (Array.isArray(v)) return v.map(e => (esLatLng(e) ? [e.lat, e.lng] : desdeFirestore(e)));
+  if (esObjetoPlano(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, desdeFirestore(x)]));
+  return v;
+};

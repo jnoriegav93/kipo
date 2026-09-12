@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -120,6 +120,19 @@ const Interruptor = ({ label, valor, onClick, cuenta }) => (
   </button>
 );
 
+/* Lo que dice la barra de estado sobre el guardado. Antes decía "Guardado"
+   siempre, aunque Firestore rechazara la escritura: el error quedaba en la consola. */
+const EstadoGuardado = ({ cargando, estado, error }) => {
+  const clase = 'ml-auto normal-case tracking-normal font-bold';
+  if (cargando) return <span className={clase}>Cargando…</span>;
+  if (estado === 'error') {
+    const motivo = error?.code === 'permission-denied' ? 'sin permiso de escritura' : (error?.code || 'error desconocido');
+    return <span className={`${clase} text-red-400`} title={error?.message}>No se guardó · {motivo}</span>;
+  }
+  if (estado === 'pendiente' || estado === 'guardando') return <span className={clase}>Guardando…</span>;
+  return <span className={clase}>Guardado</span>;
+};
+
 export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
   const [proyectoId, setProyectoId] = useState(null);
   const [lupa, setLupa] = useState(0.8);
@@ -138,7 +151,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
   const [borrador, setBorrador] = useState(null);   // calle a la espera de ancho y lado
   const [medida, setMedida] = useState(null);       // longitud del tramo en curso
   const [anchoDefecto, setAnchoDefecto] = useState(8);
-  const guardado = useRef(crearGuardadoDiferido());
+  const [estadoGuardado, setEstadoGuardado] = useState({ estado: 'guardado' });
+  const [guardado] = useState(() => crearGuardadoDiferido(600, setEstadoGuardado));
 
   const proyecto = useMemo(
     () => proyectos.find(p => String(p.id) === String(proyectoId)) || null,
@@ -156,10 +170,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
     return () => cortar();
   }, [proyectoId]);
 
-  useEffect(() => {
-    const g = guardado.current;
-    return () => { g.forzar().catch(() => {}); };
-  }, []);
+  // Al cerrar la vista se escribe lo que quede pendiente, sin esperar el retardo
+  useEffect(() => () => { guardado.forzar().catch(() => {}); }, [guardado]);
 
   const cargando = !catastroDoc || String(catastroDoc.proyectoId) !== String(proyectoId);
   const catastro = cargando ? null : catastroDoc.datos;
@@ -173,7 +185,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
   const guardar = (parche) => {
     const datos = { ...(catastro || {}), ...parche };
     setCatastroDoc({ proyectoId, datos }); // se pinta ya, sin esperar a Firestore
-    guardado.current.encolar(proyectoId, CAPAS.CATASTRO, datos);
+    guardado.encolar(proyectoId, CAPAS.CATASTRO, datos);
   };
 
   /* Las herramientas con tipo o texto no guardan al primer clic: dejan el
@@ -662,9 +674,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
           <span>{manzanas.length} manzanas</span>
           <span>{areas.length} áreas</span>
           <span>{marcadores.length + etiquetas.length} puntuales</span>
-          <span className="ml-auto normal-case tracking-normal font-bold">
-            {cargando ? 'Cargando…' : 'Guardado'}
-          </span>
+          <EstadoGuardado cargando={cargando} {...estadoGuardado} />
         </div>
       )}
     </div>
