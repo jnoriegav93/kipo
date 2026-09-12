@@ -1,40 +1,71 @@
 export const mapInteractions = {
   handleMapaClick(params) {
     const {
-      e, menuAbierto, modoFibra, puntoSeleccionado, vista, diaActual,
-      diasVisibles, proyectos,
-      setPuntoSeleccionado, setPuntoTemporal, setVista, setAlertData
+      e, menuAbierto, modoFibra, dibujandoFibra, setPuntosRecorrido, ajustarVertice,
+      puntoSeleccionado, vista, diaActual,
+      diasVisibles, proyectos, proyectoActual, theme,
+      setPuntoSeleccionado, setPuntoTemporal, setVista, setAlertData,
+      setConfirmData, onEncenderDia
     } = params;
 
     if(menuAbierto) return;
+    // Dibujando fibra: un toque en el mapa (fuera de cualquier poste) agrega un
+    // VÉRTICE LIBRE. La fibra tiene geometría propia, así que no necesita un poste
+    // debajo para doblar.
+    if (modoFibra && dibujandoFibra && e?.latlng) {
+      const bruto = { lat: e.latlng.lat, lng: e.latlng.lng };
+      setPuntosRecorrido?.(prev => [...prev, ajustarVertice ? ajustarVertice(bruto) : bruto]);
+      return;
+    }
     if (modoFibra) { return; }
     if (puntoSeleccionado) { setPuntoSeleccionado(null); return; }
 
     if(vista === 'mapa') {
-      if(!diaActual) {
+      if(!proyectoActual) {
         if (proyectos.length === 0) setVista('proyectos');
-        else setAlertData({title: "Atención", message: "Selecciona un DÍA de trabajo para empezar."});
+        else setAlertData({title: "Atención", message: "Selecciona un proyecto para empezar."});
         return;
       }
-      if(!diasVisibles.includes(diaActual)) {
-        setAlertData({title: "Capa Oculta", message: "El día seleccionado está oculto. Enciéndelo para ver los puntos nuevos."});
+
+      // Día de HOY: el punto nuevo se asigna automáticamente a la fecha actual.
+      const hoy = new Date().toLocaleDateString();
+      const diaHoy = (proyectoActual.dias || []).find(d => d.fecha === hoy);
+
+      // Solo avisar si el día de HOY ya existe y está oculto (sus puntos no se verán).
+      if (diaHoy && !diasVisibles.includes(diaHoy.id)) {
+        if (setConfirmData) {
+          setConfirmData({
+            title: "Capa Oculta",
+            message: "Los puntos del día de hoy están ocultos. ¿Encender la capa para ver el punto nuevo?",
+            actionText: "ENCENDER DÍA",
+            theme,
+            onConfirm: () => { if (onEncenderDia) onEncenderDia(diaHoy.id); setConfirmData(null); }
+          });
+        } else {
+          setAlertData({title: "Capa Oculta", message: "Los puntos del día de hoy están ocultos."});
+        }
       }
 
+      const diaTemp = diaHoy ? diaHoy.id : diaActual;
+      // ID globalmente único (timestamp + aleatorio): permite crear el punto con
+      // setDoc y que el id local sea el id definitivo en la base (sin colisión
+      // entre dispositivos). El prefijo de tiempo conserva el orden por parseInt(id).
+      const nuevoId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       if (e.latlng) {
-          setPuntoTemporal({ lat: e.latlng.lat, lng: e.latlng.lng, id: Date.now(), diaId: diaActual });
+          setPuntoTemporal({ lat: e.latlng.lat, lng: e.latlng.lng, id: nuevoId, diaId: diaTemp });
       } else {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        setPuntoTemporal({ x, y, id: Date.now(), diaId: diaActual });
+        setPuntoTemporal({ x, y, id: nuevoId, diaId: diaTemp });
       }
     }
   },
 
   handlePuntoClick(params) {
     const {
-      e, puntoId, modoFibra, dibujandoFibra, setPuntosRecorrido,
-      setPuntoSeleccionado, setPuntoTemporal
+      e, puntoId, puntoCoords, modoFibra, dibujandoFibra, setPuntosRecorrido,
+      ajustarVertice, setPuntoSeleccionado, setPuntoTemporal
     } = params;
 
     if (e && typeof e.stopPropagation === 'function') {
@@ -43,11 +74,19 @@ export const mapInteractions = {
       e.originalEvent.stopPropagation();
     }
 
-    // En modo fibra, solo agregar puntos si está dibujando
+    // En modo fibra, solo agregar vértices si está dibujando.
+    // Tocar un poste clava el vértice EXACTAMENTE en su coordenada y deja anotado
+    // de qué poste se trata; tocar el mapa (handleMapaClick) crea un vértice libre.
     if (modoFibra && dibujandoFibra) {
+      if (!puntoCoords || puntoCoords.lat == null) return;
+      // Aunque se toque justo sobre el poste, el vértice se aparta de las otras fibras
+      const v = ajustarVertice
+        ? ajustarVertice({ lat: puntoCoords.lat, lng: puntoCoords.lng })
+        : { lat: puntoCoords.lat, lng: puntoCoords.lng };
       setPuntosRecorrido(prev => {
-        if (prev.length > 0 && prev[prev.length - 1] === puntoId) return prev;
-        return [...prev, puntoId];
+        const ult = prev[prev.length - 1];
+        if (ult && String(ult.puntoId) === String(puntoId)) return prev; // no repetir
+        return [...prev, { ...v, puntoId: String(puntoId) }];
       });
       return;
     }

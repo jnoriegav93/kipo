@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { ChevronDown, Eye, Plus, Trash2, Clock, MessageCircle, X, MapPin, ArrowLeft, Loader, Image as ImageIcon } from 'lucide-react';
+import { ChevronDown, Eye, LogOut, MessageCircle, X, MapPin, ArrowLeft, Loader, Image as ImageIcon, Info } from 'lucide-react';
 import ChatBitacora from '../components/ChatBitacora';
 import VerDetalle from '../components/VerDetalle';
 
@@ -28,6 +28,26 @@ const VistaSupervision = ({
   const [cargandoPuntos, setCargandoPuntos] = useState(false);
   const [filtroPunto, setFiltroPunto] = useState('');
   const [puntoDetalle, setPuntoDetalle] = useState(null);
+  const [configPropietario, setConfigPropietario] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ field: null, dir: 'asc' });
+
+  const toggleSort = (field) => {
+    setSortConfig(prev => ({
+      field,
+      dir: prev.field === field && prev.dir === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const aplicarSort = (lista) => {
+    const base = [...lista].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+    if (!sortConfig.field) return base;
+    return base.sort((a, b) => {
+      const valA = (sortConfig.field === 'item' ? a.datos?.numero : a.datos?.pasivo) || '';
+      const valB = (sortConfig.field === 'item' ? b.datos?.numero : b.datos?.pasivo) || '';
+      const cmp = valA.localeCompare(valB, 'es', { numeric: true });
+      return sortConfig.dir === 'asc' ? cmp : -cmp;
+    });
+  };
 
   const abrirChat = (proy) => {
     setChatAbierto(proy);
@@ -53,8 +73,17 @@ const VistaSupervision = ({
     setCargandoPuntos(true);
     setFiltroPunto('');
     setPuntoDetalle(null);
+    setConfigPropietario(null);
     try {
-      const pts = await cargarPuntos(proy);
+      const [pts] = await Promise.all([
+        cargarPuntos(proy),
+        // Cargar catálogo del propietario para mostrar nombres de ferretería
+        proy.ownerId
+          ? getDoc(doc(db, "configuraciones", proy.ownerId))
+              .then(snap => { if (snap.exists()) setConfigPropietario(snap.data()); })
+              .catch(() => {})
+          : Promise.resolve()
+      ]);
       setPuntosSupervisados(pts);
     } catch (error) {
       console.error("Error cargando puntos supervisados:", error);
@@ -85,6 +114,7 @@ const VistaSupervision = ({
     setViendoProyecto(null);
     setPuntosSupervisados([]);
     setPuntoDetalle(null);
+    setConfigPropietario(null);
   };
 
   // Si estamos viendo detalle de un punto
@@ -93,7 +123,7 @@ const VistaSupervision = ({
       <VerDetalle
         datos={puntoDetalle.datos}
         proyectoActual={viendoProyecto}
-        config={config}
+        config={configPropietario || config}
         theme={theme}
         readOnly={true}
         esSupervision={true}
@@ -108,14 +138,16 @@ const VistaSupervision = ({
 
   // Si estamos viendo la lista de puntos de un proyecto
   if (viendoProyecto) {
-    const puntosFiltrados = puntosSupervisados.filter(p => {
-      if (!filtroPunto) return true;
-      const busqueda = filtroPunto.toLowerCase();
-      const fat = (p.datos?.codFat || '').toLowerCase();
-      const numero = (p.datos?.numero || '').toLowerCase();
-      const pasivo = (p.datos?.pasivo || '').toLowerCase();
-      return fat.includes(busqueda) || numero.includes(busqueda) || pasivo.includes(busqueda);
-    });
+    const puntosFiltrados = aplicarSort(
+      puntosSupervisados.filter(p => {
+        if (!filtroPunto) return true;
+        const busqueda = filtroPunto.toLowerCase();
+        const fat = (p.datos?.codFat || '').toLowerCase();
+        const numero = (p.datos?.numero || '').toLowerCase();
+        const pasivo = (p.datos?.pasivo || '').toLowerCase();
+        return fat.includes(busqueda) || numero.includes(busqueda) || pasivo.includes(busqueda);
+      })
+    );
 
     return (
       <div className={`flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
@@ -151,6 +183,16 @@ const VistaSupervision = ({
               onChange={(e) => setFiltroPunto(e.target.value)}
               className={`w-full px-4 py-3 rounded-lg border-2 ${theme.border} ${theme.bg} ${theme.text} font-bold placeholder-slate-400 focus:border-blue-500 focus:outline-none transition-colors text-base`}
             />
+          </div>
+
+          {/* Barra de ordenamiento */}
+          <div className="flex overflow-x-auto gap-1.5 shrink-0 pb-0.5">
+            <button onClick={() => toggleSort('item')} className={`px-3 py-1.5 rounded-lg border-2 text-[10px] font-black transition-all active:scale-95 shrink-0 ${sortConfig.field === 'item' ? 'bg-slate-900 border-slate-900 text-white' : `${theme.border} ${theme.text}`}`}>
+              ITEM {sortConfig.field === 'item' ? (sortConfig.dir === 'asc' ? '↑' : '↓') : '↑↓'}
+            </button>
+            <button onClick={() => toggleSort('pasivo')} className={`px-3 py-1.5 rounded-lg border-2 text-[10px] font-black transition-all active:scale-95 shrink-0 ${sortConfig.field === 'pasivo' ? 'bg-slate-900 border-slate-900 text-white' : `${theme.border} ${theme.text}`}`}>
+              PASIVO {sortConfig.field === 'pasivo' ? (sortConfig.dir === 'asc' ? '↑' : '↓') : '↑↓'}
+            </button>
           </div>
 
           {/* Lista */}
@@ -194,7 +236,7 @@ const VistaSupervision = ({
                       </div>
                       <div className={`w-px h-3 bg-current ${theme.textSec} opacity-30 shrink-0`}></div>
                       <div className="flex items-center gap-1 min-w-0 flex-1">
-                        <span className={`text-[10px] font-normal ${theme.textSec} shrink-0`}>Pasivo:</span>
+                        <span className={`text-[10px] font-normal ${theme.textSec} shrink-0`}>PASIVO:</span>
                         <span className={`text-xs font-black ${theme.text} truncate`}>{datos.pasivo || '-'}</span>
                       </div>
                       <div className={`flex items-center gap-1.5 px-2.5 p-1.5 rounded-lg text-xs font-black shrink-0 shadow-md text-white ${totalFotos > 0 ? 'bg-green-600' : 'bg-red-600'}`}>
@@ -203,9 +245,9 @@ const VistaSupervision = ({
                       </div>
                       <button
                         onClick={() => setPuntoDetalle(punto)}
-                        className="p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:scale-95 transition-all shadow-md shrink-0"
+                        className="p-1.5 rounded-lg border-2 border-slate-900 bg-white text-slate-900 active:scale-95 transition-all shrink-0"
                       >
-                        <Eye size={14} />
+                        <Info size={14} />
                       </button>
                       <button
                         onClick={() => gpsPunto(punto)}
@@ -237,17 +279,6 @@ const VistaSupervision = ({
         <div className="w-6"></div>
       </div>
 
-      {/* BOTÓN AGREGAR - Solo si hay items */}
-      {hayItems && (
-        <div className={`${theme.header} shrink-0 p-2 z-10 shadow-sm`}>
-          <button
-            onClick={() => setModalCodigoAbierto(true)}
-            className={`w-full py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:border-brand-500 hover:text-brand-500 transition-colors active:scale-95`}
-          >
-            <Plus size={18} /> AGREGAR PROYECTO A SUPERVISAR
-          </button>
-        </div>
-      )}
 
       {/* CONTENIDO */}
       <div className="flex-1 overflow-y-auto p-4">
@@ -258,13 +289,7 @@ const VistaSupervision = ({
           <div className={`flex flex-col items-center justify-center h-full ${theme.textSec} p-4`}>
             <Eye size={64} className="mb-4 opacity-30"/>
             <p className="mb-2 font-bold text-center">No estás supervisando ningún proyecto</p>
-            <p className="text-xs text-center mb-4">Solicita acceso ingresando un código de proyecto</p>
-            <button
-              onClick={() => setModalCodigoAbierto(true)}
-              className="bg-brand-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"
-            >
-              <Plus size={20} /> AGREGAR CÓDIGO
-            </button>
+            <p className="text-xs text-center">Ingresá un código en la sección Permisos para solicitar acceso</p>
           </div>
 
         ) : (
@@ -331,10 +356,10 @@ const VistaSupervision = ({
                       </button>
                       <button
                         onClick={() => verProyecto(proy)}
-                        className="bg-blue-600 text-white p-2.5 rounded-lg hover:bg-blue-700 active:scale-95 transition-all shadow-md"
+                        className={`p-2.5 rounded-lg border-2 border-slate-900 ${theme.bg} text-slate-900 active:scale-95 transition-all shadow-md`}
                         title="Ver lista de puntos"
                       >
-                        <Eye size={16} />
+                        <Info size={16} />
                       </button>
                       <button
                         onClick={() => gpsProyecto(proy)}
@@ -348,7 +373,7 @@ const VistaSupervision = ({
                         className="bg-red-600 text-white p-2.5 rounded-lg hover:bg-red-700 active:scale-95 transition-all shadow-md"
                         title="Dejar de supervisar"
                       >
-                        <Trash2 size={16} />
+                        <LogOut size={16} />
                       </button>
                     </div>
                   </div>

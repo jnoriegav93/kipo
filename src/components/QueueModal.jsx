@@ -1,16 +1,29 @@
 import React from 'react';
-import { X, RefreshCw, Trash2, Upload, Edit3, Move, CloudOff, Wifi, Cloud } from 'lucide-react';
+import { X, RefreshCw, Trash2, Upload, Edit3, Move, CloudOff, Wifi, Cloud, AlertTriangle, FilePlus, Camera } from 'lucide-react';
+
+const SECTION_TITLES = {
+  site1: 'SITE 1', site2: 'SITE 2',
+  napMec: 'NAP MEC.', mufaTroncal: 'MUFA TRONCAL',
+  xbox: 'XBOX', hbox: 'HBOX', fat: 'FAT'
+};
 
 const getInfoTarea = (tarea) => {
   if (tarea.tipo === 'guardar_punto') {
     const modo = tarea.datos?.modo;
     const numero = tarea.datos?.datos?.datos?.numero;
     const label = modo === 'crear' ? 'Crear punto' : 'Editar punto';
-    return { label: numero ? `${label} #${numero}` : label, Icon: modo === 'crear' ? Upload : Edit3 };
+    return { label: numero ? `${label} #${numero}` : label, Icon: modo === 'crear' ? Upload : Edit3, esEdicion: modo !== 'crear' };
   }
-  if (tarea.tipo === 'mover_punto') return { label: 'Mover punto', Icon: Move };
-  if (tarea.tipo === 'borrar_punto') return { label: 'Borrar punto', Icon: Trash2 };
-  return { label: tarea.tipo, Icon: Cloud };
+  if (tarea.tipo === 'mover_punto') return { label: 'Mover punto', Icon: Move, esEdicion: true };
+  if (tarea.tipo === 'reasignar_punto') return { label: 'Reasignar punto', Icon: Move, esEdicion: true };
+  if (tarea.tipo === 'borrar_punto') return { label: 'Borrar punto', Icon: Trash2, esEdicion: false };
+  if (tarea.tipo === 'subir_foto') {
+    const { section, item } = tarea.datos || {};
+    const secTitle = SECTION_TITLES[section] || section || '';
+    const sublabel = secTitle && item ? `${secTitle} · ${item}` : (secTitle || item || null);
+    return { label: 'Subir foto', sublabel, Icon: Camera, esEdicion: false };
+  }
+  return { label: tarea.tipo, Icon: Cloud, esEdicion: false };
 };
 
 const formatTiempo = (timestamp) => {
@@ -23,11 +36,12 @@ const formatTiempo = (timestamp) => {
   return `hace ${Math.floor(h / 24)}d`;
 };
 
-export default function QueueModal({ isOpen, onClose, cola, erroresTareas, procesando, isOnline, eliminarTarea, reintentarTarea, theme }) {
+export default function QueueModal({ isOpen, onClose, cola, erroresTareas, procesando, isOnline, eliminarTarea, reintentarTarea, guardarComoNuevo, theme }) {
   if (!isOpen) return null;
 
-  const primeraActivaIdx = cola.findIndex(t => (erroresTareas[t.id]?.intentos || 0) < 3);
-  const tareasConError = cola.filter(t => (erroresTareas[t.id]?.intentos || 0) >= 3);
+  const activas = cola.filter(t => !t.fallido);
+  const primeraActivaIdx = cola.findIndex(t => !t.fallido && (erroresTareas[t.id]?.intentos || 0) < 3);
+  const tareasConError = activas.filter(t => (erroresTareas[t.id]?.intentos || 0) >= 3);
 
   return (
     <div className="fixed inset-0 z-[500] flex flex-col justify-end">
@@ -70,36 +84,48 @@ export default function QueueModal({ isOpen, onClose, cola, erroresTareas, proce
             </div>
           ) : (
             cola.map((tarea, idx) => {
-              const { label, Icon } = getInfoTarea(tarea);
+              const { label, sublabel, Icon, esEdicion } = getInfoTarea(tarea);
               const error = erroresTareas[tarea.id];
               const intentos = error?.intentos || 0;
-              const bloqueada = intentos >= 3;
+              const bloqueada = !tarea.fallido && intentos >= 3;
               const subiendo = procesando && idx === primeraActivaIdx;
+              const fallido = !!tarea.fallido;
 
               return (
-                <div key={tarea.id} className={`flex items-start gap-3 px-4 py-3 border-b ${theme.border} last:border-0`}>
+                <div key={tarea.id} className={`flex items-start gap-3 px-4 py-3 border-b ${theme.border} last:border-0 ${fallido ? 'opacity-80' : ''}`}>
 
                   {/* Ícono tipo */}
                   <div className={`mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    fallido  ? 'bg-orange-100 text-orange-500' :
                     bloqueada ? 'bg-red-100 text-red-500' :
-                    subiendo ? 'bg-yellow-100 text-yellow-600' :
+                    subiendo  ? 'bg-yellow-100 text-yellow-600' :
                     'bg-slate-100 text-slate-500'
                   }`}>
-                    {subiendo ? <RefreshCw size={16} className="animate-spin" /> : <Icon size={16} />}
+                    {fallido   ? <AlertTriangle size={16} /> :
+                     subiendo  ? <RefreshCw size={16} className="animate-spin" /> :
+                     <Icon size={16} />}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm font-bold ${theme.text}`}>{label}</div>
+                    {sublabel && <div className={`text-xs font-mono ${theme.subtext} leading-tight`}>{sublabel}</div>}
                     <div className={`text-xs ${theme.subtext} mt-0.5`}>{formatTiempo(tarea.timestamp)}</div>
-                    {error?.mensaje && (
+                    {fallido && (
+                      <div className="text-xs text-orange-500 mt-1 leading-tight">
+                        El punto ya no existe en el servidor. Podés guardarlo como nuevo punto.
+                      </div>
+                    )}
+                    {!fallido && error?.mensaje && (
                       <div className="text-xs text-red-500 mt-1 break-all leading-tight">{error.mensaje}</div>
                     )}
                   </div>
 
                   {/* Badge + acciones */}
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
-                    {bloqueada ? (
+                    {fallido ? (
+                      <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-black">FALLIDO</span>
+                    ) : bloqueada ? (
                       <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-black">ERROR</span>
                     ) : subiendo ? (
                       <span className="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-[10px] font-black">SUBIENDO</span>
@@ -108,7 +134,16 @@ export default function QueueModal({ isOpen, onClose, cola, erroresTareas, proce
                     )}
 
                     <div className="flex gap-1">
-                      {bloqueada && (
+                      {fallido && esEdicion && guardarComoNuevo && (
+                        <button
+                          onClick={() => guardarComoNuevo(tarea)}
+                          className="w-7 h-7 rounded-lg bg-green-100 text-green-600 flex items-center justify-center active:scale-95"
+                          title="Guardar como nuevo punto"
+                        >
+                          <FilePlus size={13} />
+                        </button>
+                      )}
+                      {!fallido && bloqueada && (
                         <button
                           onClick={() => reintentarTarea(tarea.id)}
                           className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center active:scale-95"
@@ -132,7 +167,7 @@ export default function QueueModal({ isOpen, onClose, cola, erroresTareas, proce
           )}
         </div>
 
-        {/* Footer — reintentar todos con error */}
+        {/* Footer — reintentar todos con error (excluye FALLIDO) */}
         {tareasConError.length > 0 && (
           <div className={`px-4 py-3 border-t-2 ${theme.border} shrink-0`}>
             <button

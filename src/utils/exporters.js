@@ -1,8 +1,35 @@
 import { Zip, ZipPassThrough } from 'fflate';
 import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
-import { urlABase64, estamparMetadatos } from './helpers';
+import { urlABase64, estamparMetadatos, perteneceAProyecto } from './helpers';
+
+// Orden de exportación: respeta la posición ajustada con la herramienta ORDENAR
+// (datos.ordenTendido); sin posición asignada, cae al final por id.
+const ordenarPorPosicion = (lista) => [...lista].sort((a, b) => {
+  const oa = a.datos?.ordenTendido, ob = b.datos?.ordenTendido;
+  if (oa != null && ob != null) return oa - ob;
+  if (oa != null) return -1;
+  if (ob != null) return 1;
+  return parseInt(a.id) - parseInt(b.id);
+});
+
 import { TABS_CONFIG, EXTRAS_ITEMS } from '../components/PhotoManager';
+import { ref, getBlob } from 'firebase/storage';
+import { storage } from '../firebaseConfig';
+
+// Fetch usando SDK de Firebase Storage (evita CORS en URLs de Firebase)
+const fetchStorageBlob = async (url) => {
+  if (url && url.includes('firebasestorage.googleapis.com')) {
+    try {
+      const storageRef = ref(storage, url);
+      return await getBlob(storageRef);
+    } catch (e) {
+      console.error('getBlob failed, fallback fetch:', e);
+    }
+  }
+  const response = await fetch(url);
+  return response.blob();
+};
 
 // --- HELPER COMPARTIDO PARA EXTRAER FOTOS ---
 const getFormattedPhotos = (punto) => {
@@ -16,7 +43,7 @@ const getFormattedPhotos = (punto) => {
     if (!sectionPhotos) return;
 
     tab.items.forEach(item => {
-      // Caso 1: Subsección de items
+      // Caso 1: Subsección de items fijos
       if (item.items) {
         item.items.forEach(sub => {
           const val = sectionPhotos[sub.id];
@@ -26,7 +53,18 @@ const getFormattedPhotos = (punto) => {
           }
         });
       }
-      // Caso 2: Item normal
+      // Caso 2: Subgallery dinámica (acceso_0, acceso_1, ...)
+      else if (item.type === 'subgallery') {
+        Object.entries(sectionPhotos)
+          .filter(([k]) => k.startsWith(item.id + '_'))
+          .sort(([a], [b]) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]))
+          .forEach(([, val], i) => {
+            if (!val) return;
+            const url = typeof val === 'string' ? val : val.url;
+            if (url) processed.push({ url, label: `${item.label.replace('\n', ' ')} ${i + 1}`, section: tab.title });
+          });
+      }
+      // Caso 3: Item normal
       else {
         const val = sectionPhotos[item.id];
         if (val) {
@@ -36,7 +74,7 @@ const getFormattedPhotos = (punto) => {
       }
     });
 
-    // Caso 3: Extras (que se guardan en el mismo objeto de sección)
+    // Caso 3: Extras
     EXTRAS_ITEMS.forEach(extraLabel => {
       const val = sectionPhotos[extraLabel];
       if (val) {
@@ -44,6 +82,19 @@ const getFormattedPhotos = (punto) => {
         if (url) processed.push({ url, label: extraLabel, section: tab.title });
       }
     });
+
+    // Caso 4: Tabs dinámicos (adicionales) — todas las keys numéricas
+    if (tab.dynamic) {
+      const processedKeys = new Set([
+        ...tab.items.flatMap(i => i.items ? i.items.map(s => s.id) : [i.id]),
+        ...EXTRAS_ITEMS
+      ]);
+      Object.entries(sectionPhotos).forEach(([key, val]) => {
+        if (processedKeys.has(key) || !val) return;
+        const url = typeof val === 'string' ? val : val.url;
+        if (url) processed.push({ url, label: `Adicional ${parseInt(key) + 1}`, section: tab.title });
+      });
+    }
   });
 
   // 2. Soporte Legacy (Array directo)
@@ -112,386 +163,7 @@ const runParallel = async (items, processFn, concurrency = 6) => {
 
 // --- EXPORTAR EXCEL (PAGINADO + ATÓMICO) ---
 // --- EXPORTAR EXCEL (PAGINADO + ATÓMICO) ---
-export const descargarReporteExcel = async (proy, puntos, logoApp, config, signal, maxPhotosPerVol = 700, stampConfig = {}) => {
-  if (!proy) return [];
-  checkSignal(signal);
 
-  let logoBase64 = null;
-  if (logoApp) {
-    logoBase64 = await urlABase64(logoApp);
-  }
-  checkSignal(signal);
-
-  const puntosProyecto = puntos.filter(p => proy.dias.some(d => d.id === p.diaId));
-  const VOLUMENES = [];
-  let volumenActual = 1;
-
-  let puntosBuffer = [];
-  let fotosCountBuffer = 0;
-  const LIMITE_FOTOS = maxPhotosPerVol;
-
-  // Helper: elimina prefijo "FAT " si el usuario lo escribió en el campo
-  const normFat = (val) => (val || '').replace(/^fat[\s\-]*/i, '').trim();
-
-  // Helper: consolida ferretería (armado base + extras/restas)
-  const getConsolidado = (datos) => {
-    const totals = {};
-    (datos.armadosSeleccionados || []).forEach(armado => {
-      (armado.items || []).forEach(item => {
-        totals[item.idRef] = (totals[item.idRef] || 0) + item.cant;
-      });
-    });
-    Object.entries(datos.ferreteriaExtra || {}).forEach(([id, cantidad]) => {
-      if (cantidad !== 0) totals[id] = (totals[id] || 0) + cantidad;
-    });
-    return totals;
-  };
-
-  // Ferreterías del catálogo principal (todas, independientemente de si están visibles en el formulario)
-  const ferreteriasVisibles = config.catalogoFerreteria || [];
-
-  // Dimensiones de celda para fotos (mismo ancho/alto que antes)
-  const PHOTO_COL_WIDTH = 55;  // caracteres (≈385 px)
-  const PHOTO_ROW_HEIGHT = 400; // puntos Excel (≈533 px)
-  const LABEL_ROW_HEIGHT = 20;  // puntos para fila de etiqueta
-  const SEC_COL_WIDTH = 10;     // columna A: nombre de sección (texto rotado)
-
-  const cerrarVolumen = async (listaPuntos, numVol) => {
-    checkSignal(signal);
-    const workbook = new ExcelJS.Workbook();
-
-    // --- HOJA DATOS ---
-    const colsDef = [
-      { header: 'CORRELATIVO',     key: 'correlativo',      width: 12 },
-      { header: 'ITEM',            key: 'numero',           width: 12 },
-      { header: 'PASIVO',          key: 'pasivo',           width: 14 },
-      { header: 'COD POSTE',       key: 'codPoste',         width: 15 },
-      { header: 'SUMINISTRO',      key: 'sum',              width: 15 },
-      { header: 'ALTURA',          key: 'alt',              width: 10 },
-      { header: 'MATERIAL',        key: 'mat',              width: 12 },
-      { header: 'FUERZA (kg)',     key: 'fuerza',           width: 12 },
-      { header: 'TIPO DE RED',     key: 'tipo',             width: 14 },
-      { header: 'EXTRAS',          key: 'extras',           width: 25 },
-      { header: 'CANT. CABLES',    key: 'cables',           width: 12 },
-      { header: 'ARMADO',          key: 'arm',              width: 20 },
-      ...ferreteriasVisibles.map(f => ({
-        header: f.nombre.toUpperCase(),
-        key: `ferr_${f.id}`,
-        width: Math.max(12, Math.min(f.nombre.length + 4, 22))
-      })),
-      { header: 'ABSCISA INICIAL', key: 'abscisaInicial',  width: 15 },
-      { header: 'ABSCISA FINAL',   key: 'abscisaFinal',    width: 15 },
-      { header: 'FECHA',           key: 'fecha',            width: 12 },
-      { header: 'HORA',            key: 'hora',             width: 10 },
-      { header: 'DIRECCIÓN',       key: 'dir',              width: 30 },
-      { header: 'UBICACIÓN',       key: 'ubic',             width: 22 },
-      { header: 'LATITUD',         key: 'lat',              width: 15 },
-      { header: 'LONGITUD',        key: 'lng',              width: 15 },
-      { header: 'GPS',             key: 'gps',              width: 25 },
-      { header: 'OBSERVACIONES',   key: 'obs',              width: 35 },
-    ];
-
-    const wsDatos = workbook.addWorksheet('DATOS', { views: [{ state: 'frozen', ySplit: 2 }] });
-    wsDatos.columns = colsDef;
-    wsDatos.insertRow(1, []); // Empuja headers a fila 2, libera fila 1 para título
-
-    // Título (fila 1, sin logo)
-    wsDatos.mergeCells(1, 1, 1, 8);
-    const cellTitulo = wsDatos.getCell('A1');
-    cellTitulo.value = `REPORTE: ${proy.nombre.toUpperCase()} (VOL ${numVol})`;
-    cellTitulo.font = { size: 14, bold: true, color: { argb: 'FF1F4E78' } };
-    cellTitulo.alignment = { vertical: 'middle' };
-    wsDatos.getRow(1).height = 26;
-
-    // Estilo cabeceras (fila 2)
-    const headerRow = wsDatos.getRow(2);
-    headerRow.height = 30;
-    headerRow.eachCell((cell) => {
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF404040' } };
-      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-    });
-
-    // Color #FCBF26 con texto negro para columnas de ARMADO y FERRETERÍAS
-    const armColPos = colsDef.findIndex(c => c.key === 'arm');
-    const ferrColStart = colsDef.findIndex(c => c.key.startsWith('ferr_'));
-    if (armColPos >= 0) {
-      headerRow.getCell(armColPos + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCBF26' } };
-      headerRow.getCell(armColPos + 1).font = { bold: true, color: { argb: 'FF000000' } };
-    }
-    if (ferrColStart >= 0) {
-      for (let c = ferrColStart + 1; c <= ferrColStart + ferreteriasVisibles.length; c++) {
-        headerRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCBF26' } };
-        headerRow.getCell(c).font = { bold: true, color: { argb: 'FF000000' } };
-      }
-    }
-
-    const usedSheetNames = new Set(['DATOS']);
-
-    // --- 2. UNA HOJA POR PUNTO ---
-    for (let i = 0; i < listaPuntos.length; i++) {
-      checkSignal(signal);
-      const p = listaPuntos[i];
-      const correlativo = String(i + 1).padStart(3, '0');
-      const valNum = p.datos.numero || '-';
-      const valFat = normFat(p.datos.codFat || '');
-      const lat = (p.coords.lat || 0).toFixed(6);
-      const lng = (p.coords.lng || 0).toFixed(6);
-
-      // Nombre de hoja: correlativo (001, 002, 003...)
-      let sheetName = correlativo;
-      if (usedSheetNames.has(sheetName)) {
-        let cnt = 2;
-        while (usedSheetNames.has(`${correlativo}_${cnt}`)) cnt++;
-        sheetName = `${correlativo}_${cnt}`;
-      }
-      usedSheetNames.add(sheetName);
-
-      // Fila en hoja DATOS (datos desde fila 3: fila 1=título, fila 2=cabeceras)
-      const totals = getConsolidado(p.datos);
-      const ferrValues = {};
-      ferreteriasVisibles.forEach(f => {
-        ferrValues[`ferr_${f.id}`] = totals[f.id] || 0;
-      });
-
-      const armNombre = (p.datos.armadosSeleccionados?.length > 0)
-        ? p.datos.armadosSeleccionados.map(a => a.nombre).join(', ')
-        : (p.datos.armadoSeleccionado
-          ? config.armados?.find(a => a.id === p.datos.armadoSeleccionado.idArmado)?.nombre
-          : null) || '-';
-
-      const fechaFormateada = p.datos.fecha
-        ? new Date(p.datos.fecha).toLocaleDateString('es-PE')
-        : '-';
-
-      const row = wsDatos.getRow(i + 3);
-      row.values = {
-        correlativo,
-        numero: valNum,
-        pasivo: p.datos.pasivo || '-',
-        codPoste: p.datos.codigo || '-',
-        sum: p.datos.suministro || '-',
-        alt: p.datos.altura || '-',
-        mat: p.datos.material || '-',
-        fuerza: p.datos.fuerza || '-',
-        tipo: p.datos.tipo || '-',
-        extras: Array.isArray(p.datos.extrasSeleccionados) ? (p.datos.extrasSeleccionados.join(', ') || '-') : '-',
-        cables: p.datos.cables || '-',
-        arm: armNombre,
-        ...ferrValues,
-        abscisaInicial: p.datos.absIn || '-',
-        abscisaFinal: p.datos.absOut || '-',
-        fecha: fechaFormateada,
-        hora: p.datos.hora || '-',
-        dir: p.datos.direccion || '-',
-        ubic: p.datos.ubicacion || '-',
-        lat: Number(lat),
-        lng: Number(lng),
-        gps: `${lat}, ${lng}`,
-        obs: p.datos.observaciones || '-'
-      };
-      row.eachCell({ includeEmpty: true }, (cell) => {
-        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      });
-      // Correlativo con hipervínculo a la hoja de fotos
-      const cellCorr = row.getCell('correlativo');
-      cellCorr.value = { text: correlativo, hyperlink: `#'${sheetName}'!A1` };
-      cellCorr.font = { color: { argb: 'FF0000FF' }, underline: true, bold: true };
-
-      // --- HOJA DEL PUNTO ---
-      const wsPoint = workbook.addWorksheet(sheetName);
-      wsPoint.getColumn(1).width = SEC_COL_WIDTH;
-      let curRow = 1;
-      let esPrimeraSeccion = true;
-
-      // Jobs de fotos: { url, colIdx, imgRowIdx } — se llenan en fase 1 y se procesan en fase 2
-      const allPhotoJobs = [];
-
-      // Metadatos de estampado (iguales para todas las fotos del punto)
-      const datosEstampado = {
-        numero: valNum,
-        proyecto: proy.nombre,
-        gps: `${lat}, ${lng}`,
-        fecha: p.datos.fecha || new Date().toISOString(),
-        hora: p.datos.hora || '',
-        codFat: valFat,
-        pasivo: p.datos.pasivo || '',
-        direccion: p.datos.direccion || '',
-        ubicacion: p.datos.ubicacion || '',
-      };
-
-      // --- FASE 1: Estructura de celdas (sync) + recopilación de jobs de fotos ---
-      for (const tabId of Object.keys(TABS_CONFIG)) {
-        const tab = TABS_CONFIG[tabId];
-        const secFotos = (p.datos.fotos && !Array.isArray(p.datos.fotos))
-          ? (p.datos.fotos[tab.id] || {})
-          : {};
-
-        const secItems = [];
-        tab.items.forEach(item => {
-          if (item.items) {
-            item.items.forEach(sub => {
-              const val = secFotos[sub.id];
-              if (val) {
-                const url = typeof val === 'string' ? val : val.url;
-                if (url && !url.startsWith('blob:')) secItems.push({ url, label: sub.label.replace('\n', ' ') });
-              }
-            });
-          } else {
-            const val = secFotos[item.id];
-            if (val) {
-              const url = typeof val === 'string' ? val : val.url;
-              if (url && !url.startsWith('blob:')) secItems.push({ url, label: item.label.replace('\n', ' ') });
-            }
-          }
-        });
-        EXTRAS_ITEMS.forEach(extraLabel => {
-          const val = secFotos[extraLabel];
-          if (val) {
-            const url = typeof val === 'string' ? val : val.url;
-            if (url && !url.startsWith('blob:')) secItems.push({ url, label: extraLabel });
-          }
-        });
-
-        if (secItems.length === 0) continue;
-
-        if (!esPrimeraSeccion) {
-          wsPoint.getRow(curRow).height = 12;
-          curRow++;
-        }
-        esPrimeraSeccion = false;
-
-        for (let c = 2; c <= secItems.length + 1; c++) {
-          const col = wsPoint.getColumn(c);
-          if (!col.width || col.width < PHOTO_COL_WIDTH) col.width = PHOTO_COL_WIDTH;
-        }
-
-        const imgRowIdx = curRow;
-        const lblRowIdx = curRow + 1;
-        wsPoint.getRow(imgRowIdx).height = PHOTO_ROW_HEIGHT;
-        wsPoint.getRow(lblRowIdx).height = LABEL_ROW_HEIGHT;
-
-        wsPoint.mergeCells(imgRowIdx, 1, lblRowIdx, 1);
-        const cellSec = wsPoint.getCell(imgRowIdx, 1);
-        cellSec.value = tab.title;
-        cellSec.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
-        cellSec.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF404040' } };
-        cellSec.alignment = { vertical: 'middle', horizontal: 'center', textRotation: 90 };
-
-        for (let j = 0; j < secItems.length; j++) {
-          const colIdx = j + 2;
-          const cellLbl = wsPoint.getCell(lblRowIdx, colIdx);
-          cellLbl.value = secItems[j].label;
-          cellLbl.alignment = { horizontal: 'center', vertical: 'middle' };
-          cellLbl.font = { bold: true, size: 9, color: { argb: 'FF000000' } };
-          cellLbl.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCBF26' } };
-          cellLbl.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-          allPhotoJobs.push({ url: secItems[j].url, colIdx, imgRowIdx });
-        }
-        curRow += 2;
-      }
-
-      // Legacy: fotosGenerales
-      const fotosGen = p.datos.fotosGenerales;
-      if (Array.isArray(fotosGen) && fotosGen.length > 0) {
-        const genItems = fotosGen
-          .map((f, idx) => ({ url: typeof f === 'string' ? f : f?.url, label: `General ${idx + 1}` }))
-          .filter(item => item.url && !item.url.startsWith('blob:'));
-        if (genItems.length > 0) {
-          for (let c = 2; c <= genItems.length + 1; c++) {
-            const col = wsPoint.getColumn(c);
-            if (!col.width || col.width < PHOTO_COL_WIDTH) col.width = PHOTO_COL_WIDTH;
-          }
-          if (!esPrimeraSeccion) {
-            wsPoint.getRow(curRow).height = 12;
-            curRow++;
-          }
-          esPrimeraSeccion = false;
-          const imgRowIdx = curRow;
-          const lblRowIdx = curRow + 1;
-          wsPoint.getRow(imgRowIdx).height = PHOTO_ROW_HEIGHT;
-          wsPoint.getRow(lblRowIdx).height = LABEL_ROW_HEIGHT;
-          wsPoint.mergeCells(imgRowIdx, 1, lblRowIdx, 1);
-          const cellSecGen = wsPoint.getCell(imgRowIdx, 1);
-          cellSecGen.value = 'GENERALES';
-          cellSecGen.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
-          cellSecGen.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF404040' } };
-          cellSecGen.alignment = { vertical: 'middle', horizontal: 'center', textRotation: 90 };
-          for (let j = 0; j < genItems.length; j++) {
-            const colIdx = j + 2;
-            const cellLbl = wsPoint.getCell(lblRowIdx, colIdx);
-            cellLbl.value = genItems[j].label;
-            cellLbl.alignment = { horizontal: 'center', vertical: 'middle' };
-            cellLbl.font = { bold: true, size: 9 };
-            cellLbl.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };
-            allPhotoJobs.push({ url: genItems[j].url, colIdx, imgRowIdx });
-          }
-          curRow += 2;
-        }
-      }
-
-      // --- FASE 2: Descarga + estampado en paralelo (hasta 6 fotos simultáneas) ---
-      const photoBuffers = await runParallel(allPhotoJobs, async (job) => {
-        checkSignal(signal);
-        const response = await fetch(job.url);
-        const blob = await response.blob();
-        const res = await estamparMetadatos(blob, datosEstampado, logoBase64, stampConfig);
-        return res.buffer;
-      });
-
-      // --- FASE 3: Insertar imágenes en el workbook (en orden) ---
-      for (let k = 0; k < allPhotoJobs.length; k++) {
-        if (!photoBuffers[k]) continue;
-        const { colIdx, imgRowIdx } = allPhotoJobs[k];
-        const imgId = workbook.addImage({ buffer: photoBuffers[k], extension: 'jpeg' });
-        wsPoint.addImage(imgId, {
-          tl: { col: colIdx - 1, row: imgRowIdx - 1 },
-          br: { col: colIdx, row: imgRowIdx }
-        });
-      }
-    }
-
-    const content = await workbook.xlsx.writeBuffer();
-    const nombreBase = proy.nombre.replace(/\s+/g, '_').toUpperCase();
-    const nombreArchivo = VOLUMENES.length === 0 && listaPuntos.length === puntosProyecto.length
-      ? `${nombreBase}.xlsx`
-      : `${nombreBase}_VOL${numVol}.xlsx`;
-
-    return {
-      name: nombreArchivo,
-      blob: new Blob([content], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-      numPuntos: listaPuntos.length
-    };
-  };
-
-  for (const p of puntosProyecto) {
-    checkSignal(signal);
-    // CALCULAR FOTOS REALES (Usando helper)
-    const fotosPunto = getFormattedPhotos(p).length;
-
-    // FIX: Split si superamos FOTOS O PUNTOS (si no hay fotos, dividimos por puntos equitativamente)
-    const pesoLogico = Math.max(fotosPunto, 1);
-
-    if (fotosCountBuffer + pesoLogico > LIMITE_FOTOS && puntosBuffer.length > 0) {
-      const volFile = await cerrarVolumen(puntosBuffer, volumenActual);
-      VOLUMENES.push(volFile);
-      volumenActual++;
-      puntosBuffer = [];
-      fotosCountBuffer = 0;
-    }
-    puntosBuffer.push(p);
-    fotosCountBuffer += pesoLogico;
-  }
-
-  if (puntosBuffer.length > 0) {
-    const volFile = await cerrarVolumen(puntosBuffer, volumenActual);
-    VOLUMENES.push(volFile);
-  }
-
-  return VOLUMENES;
-};
 
 
 // --- EXPORTAR ZIP (PAGINADO + ATÓMICO) ---
@@ -510,7 +182,7 @@ export const descargarFotosZip = async (proy, puntos, logoApp, signal, maxPhotos
   }
   checkSignal(signal);
 
-  const puntosProyecto = puntos.filter(p => proy.dias.some(d => d.id === p.diaId));
+  const puntosProyecto = ordenarPorPosicion(puntos.filter(p => perteneceAProyecto(p, proy)));
   const VOLUMENES = [];
   let volumenActual = 1;
   let puntosBuffer = [];
@@ -532,8 +204,10 @@ export const descargarFotosZip = async (proy, puntos, logoApp, signal, maxPhotos
     for (const p of listaPuntos) {
       checkSignal(signal);
       const numItem = String(p.datos.numero || 'SN');
-      const pasivoItem = p.datos.pasivo || 'SP';
-      const nombrePuntoBase = `${numItem} - ${pasivoItem}`.replace(/[\/\\?\*\[\]:]/g, '_');
+      const partes = [numItem];
+      if (p.datos.pasivo) partes.push(p.datos.pasivo);
+      if (p.datos.tipo) partes.push(p.datos.tipo);
+      const nombrePuntoBase = partes.join('-').replace(/[\/\\?\*\[\]:]/g, '_');
 
       // Deduplicar nombres de carpeta si hay puntos con igual item+pasivo
       let nombrePunto = nombrePuntoBase;
@@ -579,6 +253,15 @@ export const descargarFotosZip = async (proy, puntos, logoApp, signal, maxPhotos
                 if (url) secItems.push({ url, label: sub.label.replace('\n', ' ') });
               }
             });
+          } else if (tabItem.type === 'subgallery') {
+            Object.entries(secFotos)
+              .filter(([k]) => k.startsWith(tabItem.id + '_'))
+              .sort(([a], [b]) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]))
+              .forEach(([, val], i) => {
+                if (!val) return;
+                const url = typeof val === 'string' ? val : val.url;
+                if (url) secItems.push({ url, label: `${tabItem.label.replace('\n', ' ')} ${i + 1}` });
+              });
           } else {
             const val = secFotos[tabItem.id];
             if (val) {
@@ -594,6 +277,19 @@ export const descargarFotosZip = async (proy, puntos, logoApp, signal, maxPhotos
             if (url) secItems.push({ url, label: extraLabel });
           }
         });
+
+        // Catch-all: cualquier foto con key no cubierta (tabs dinámicos como adicionales)
+        {
+          const processedIds = new Set([
+            ...tab.items.flatMap(i => i.items ? i.items.map(s => s.id) : [i.id]),
+            ...EXTRAS_ITEMS
+          ]);
+          Object.entries(secFotos).forEach(([key, val]) => {
+            if (processedIds.has(key) || !val) return;
+            const url = typeof val === 'string' ? val : val.url;
+            if (url && !url.startsWith('blob:')) secItems.push({ url, label: key });
+          });
+        }
 
         if (secItems.length === 0) continue;
 
@@ -616,11 +312,14 @@ export const descargarFotosZip = async (proy, puntos, logoApp, signal, maxPhotos
         });
       }
 
+      // DEBUG TEMPORAL
+      console.log('[ZIP] fotos raw:', JSON.stringify(p.datos.fotos?.adicionales));
+      console.log('[ZIP] allZipJobs:', allZipJobs.map(j => j.path));
+
       // --- FASE 2: Descarga + estampado en paralelo (hasta 6 fotos simultáneas) ---
       const zipBuffers = await runParallel(allZipJobs, async (job) => {
         checkSignal(signal);
-        const response = await fetch(job.url);
-        const blob = await response.blob();
+        const blob = await fetchStorageBlob(job.url);
         const res = await estamparMetadatos(blob, zipDatosEstampado, logoParaEstampar, stampConfig);
         return res.buffer;
       });
@@ -683,11 +382,17 @@ export const handleExportKML = async (proy, puntos, conexiones, logoApp, setExpo
     logoBase64 = await urlABase64(logoApp);
   }
 
-  const puntosProyecto = puntos.filter(p => proy.dias.some(d => d.id === p.diaId));
-  const conexionesProyecto = conexiones.filter(c => proy.dias.some(d => d.id === c.diaId));
+  const puntosProyecto = ordenarPorPosicion(puntos.filter(p => perteneceAProyecto(p, proy)));
+  const conexionesProyecto = conexiones.filter(c => perteneceAProyecto(c, proy));
 
   // Colores por capacidad de fibra (hex → KML AABBGGRR)
-  const KML_COLORES = { 6:'fff65c8b', 12:'fff6823b', 24:'ff9948ec', 48:'ff1673f9', 96:'ff4444ef', 144:'ff16cc84' };
+  // Escapa texto que va dentro de una etiqueta XML/KML. El nombre del ramal lo
+// escribe el usuario y un solo & dejaría el KMZ ilegible para Google Earth.
+const escXml = (t) => String(t == null ? '' : t)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+const KML_COLORES = { 6:'fff65c8b', 12:'fff6823b', 24:'ff9948ec', 48:'ff1673f9', 96:'ff4444ef', 144:'ff16cc84' };
   const capsUnicas = [...new Set(conexionesProyecto.map(c => c.capacidad).filter(Boolean))];
   const estilosLineas = [
     ...capsUnicas.map(cap => `  <Style id="linea_${cap}"><LineStyle><color>${KML_COLORES[cap] || 'fff6823b'}</color><width>3</width></LineStyle></Style>`),
@@ -708,11 +413,15 @@ export const handleExportKML = async (proy, puntos, conexiones, logoApp, setExpo
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
   <name>${proy.nombre} (VOL ${numVol})</name>
-  <Style id="posteStyle"><IconStyle><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle><BalloonStyle><text>$[description]</text></BalloonStyle></Style>
+  <Style id="posteStyle"><IconStyle><color>ffff0000</color><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle><LabelStyle><color>ffffff00</color><scale>0.8</scale></LabelStyle><BalloonStyle><text>$[description]</text></BalloonStyle></Style>
 ${estilosLineas}
   <Folder><name>Puntos</name>`;
 
     let kmlBody = "";
+
+    const EVA_URL = 'https://www.evadigitalgroup.com/index.html';
+    const evaPageHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>EVA Digital</title><style>body{font-family:Arial,sans-serif;padding:30px;background:#f5f5f5;color:#333;margin:0;font-size:14px;line-height:1.7}</style></head><body><p>Copia el siguiente link y conoce a EVA DIGITAL, empresa especialista en el diseño, implementacion y documentacion de redes de fibra optica: <a href="${EVA_URL}">${EVA_URL}</a></p></body></html>`;
+    kmzFiles.set('files/eva.html', new TextEncoder().encode(evaPageHtml));
 
     for (let ptIdx = 0; ptIdx < listaPuntos.length; ptIdx++) {
       checkSignal(signal);
@@ -794,8 +503,7 @@ ${estilosLineas}
       // --- Descarga + estampado en paralelo (hasta 6 fotos simultáneas) ---
       const kmzBuffers = await runParallel(allKmzPhotos, async (photo) => {
         checkSignal(signal);
-        const response = await fetch(photo.url);
-        const blobOrig = await response.blob();
+        const blobOrig = await fetchStorageBlob(photo.url);
         const res = await estamparMetadatos(blobOrig, kmzDatosEstampado, logoBase64, stampConfig);
         return res.buffer;
       });
@@ -810,10 +518,14 @@ ${estilosLineas}
 
       const firstPhoto = sections.flatMap(s => s.photos).find(ph => ph.fileName);
 
+      // Solo secciones que tienen al menos una foto real
+      const sectionsConFotos = sections.filter(sec => sec.photos.some(ph => ph.fileName));
+      const hasAnyPhoto = sectionsConFotos.length > 0;
+
       // Construir selector de fotos (desglosable por sección)
       let selectorHtml = '';
-      if (sections.length > 0) {
-        sections.forEach((sec, sIdx) => {
+      if (sectionsConFotos.length > 0) {
+        sectionsConFotos.forEach((sec, sIdx) => {
           const openAttr = sIdx === 0 ? ' open' : '';
           const secId = `kp${uid}_sec${sIdx}`;
           const photosCount = sec.photos.filter(ph => ph.fileName).length;
@@ -841,10 +553,26 @@ ${estilosLineas}
 
       const firstLabelUp = firstPhoto ? firstPhoto.label.toUpperCase() : '';
 
-      const evaHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title> </title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f0f0f0}.card{background:#fff;margin:20px 16px;padding:24px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.15)}.logo{font-size:20px;font-weight:900;text-align:center;margin-bottom:14px}.eva{color:#FCBF26}.dig{color:#100F1D}p{color:#555;font-size:13px;text-align:center;line-height:1.6;margin-bottom:14px}.url-box{border:1px dashed #ccc;padding:8px 12px;font-size:11px;color:#888;text-align:center;margin-bottom:16px;word-break:break-all}.btn{display:block;width:100%;background:#100F1D;color:#FCBF26;font-weight:bold;font-size:13px;padding:12px;border:none;border-radius:4px;cursor:pointer;letter-spacing:1px}</style></head><body><div class="card"><div class="logo"><span class="eva">EVA</span> <span class="dig">Digital</span></div><p>Si te interesa conocer mas sobre nuestras soluciones de ingenieria, diseno de redes y software especializado, visita nuestra web:</p><div class="url-box">https://www.evadigitalgroup.com/index.html</div><button class="btn" onclick="var t=document.createElement('textarea');t.value='https://www.evadigitalgroup.com/index.html';document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);this.innerText='COPIADO!'">COPIAR ENLACE</button></div></body></html>`;
-      const evaDataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(evaHtml);
-
-      const htmlPopup = `<div style="font-family:Segoe UI,Arial,sans-serif;width:570px;background:#fff;color:#333;border-radius:0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.2);">
+      const d = p.datos || {};
+      const htmlPopup = !hasAnyPhoto
+        ? `<div style="font-family:Arial,sans-serif;width:360px;background:#fff;color:#333;">
+  <div style="background:#100F1D;padding:8px 12px;">
+    <div style="color:#FCBF26;font-weight:900;font-size:14px;">${proy.nombre.toUpperCase()}</div>
+    <div style="font-size:11px;color:#ccc;">ITEM <b style="color:#fff;">${d.numero || 'S/N'}</b>&nbsp;&nbsp;PASIVO <b style="color:#fff;">${d.pasivo || '-'}</b></div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px;">
+    <tr><td style="padding:4px 8px;color:#888;border-bottom:1px solid #eee;width:40%;">Dirección</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.direccion || '-'}</td></tr>
+    <tr><td style="padding:4px 8px;color:#888;border-bottom:1px solid #eee;">GPS</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${lat}, ${lng}</td></tr>
+    <tr><td style="padding:4px 8px;color:#888;border-bottom:1px solid #eee;">Armado</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.armado || '-'}</td></tr>
+    <tr><td style="padding:4px 8px;color:#888;border-bottom:1px solid #eee;">Material</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.material || '-'}</td></tr>
+    <tr><td style="padding:4px 8px;color:#888;border-bottom:1px solid #eee;">Red</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.red || '-'}</td></tr>
+    <tr><td style="padding:4px 8px;color:#888;border-bottom:1px solid #eee;">Altura</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.altura || '-'}</td></tr>
+    <tr><td style="padding:4px 8px;color:#888;border-bottom:1px solid #eee;">Fuerza</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.fuerza || '-'}</td></tr>
+    <tr><td style="padding:4px 8px;color:#888;">Cables</td><td style="padding:4px 8px;">${d.cables || '-'}</td></tr>
+  </table>
+  <div style="padding:5px 8px;font-size:8px;color:#aaa;border-top:1px solid #eee;">KMZ generado por KIPO - App de <a href="https://kipo-d29af.web.app/eva.html" style="color:#aaa;text-decoration:underline;">EVA DIGITAL</a></div>
+</div>`
+        : `<div style="font-family:Segoe UI,Arial,sans-serif;width:570px;background:#fff;color:#333;border-radius:0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.2);">
   <div style="background:#100F1D;padding:8px 12px;">
     <table style="width:100%;border-collapse:collapse;table-layout:auto;">
       <tr>
@@ -873,13 +601,11 @@ ${estilosLineas}
       <td style="width:200px;height:570px;vertical-align:top;border-right:1px solid #ddd;background:#fafafa;overflow:hidden;">
         <div style="position:relative;height:100%;">
           <div id="kp${uid}_sel" style="padding-bottom:32px;">${selectorHtml}</div>
-          <div style="position:absolute;bottom:0;left:0;right:0;padding:5px 8px;border-top:1px solid #eee;font-size:8px;color:#aaa;line-height:1.4;background:#fafafa;">KMZ elaborado por Kipo, App de <a href="${evaDataUrl}" style="color:#aaa;text-decoration:underline;">EVA Digital</a></div>
+          <div style="position:absolute;bottom:0;left:0;right:0;padding:5px 8px;border-top:1px solid #eee;font-size:8px;color:#aaa;line-height:1.4;background:#fafafa;">KMZ generado por KIPO - App de <a href="https://kipo-d29af.web.app/eva.html" style="color:#aaa;text-decoration:underline;">EVA DIGITAL</a></div>
         </div>
       </td>
       <td style="width:370px;height:570px;vertical-align:top;text-align:center;padding:0;background:#f5f5f5;overflow:hidden;">
-        ${firstPhoto
-          ? `<table style="width:100%;height:100%;border-collapse:collapse;"><tr style="height:100%;"><td style="text-align:center;vertical-align:middle;padding:8px;"><img id="kp${uid}_ph" src="files/${firstPhoto.fileName}" style="max-width:354px;max-height:600px;width:auto;height:auto;display:block;margin:0 auto;border-radius:4px;"/></td></tr><tr><td style="padding:0;"><div id="kp${uid}_lbl" style="display:block;width:100%;font-size:12px;color:#fff;font-weight:bold;background:#100F1D;padding:7px 8px;text-align:center;">${firstLabelUp}</div></td></tr></table>`
-          : `<div style="padding:20px;color:#aaa;font-size:12px;text-align:center;">Sin fotos</div>`}
+        <table style="width:100%;height:100%;border-collapse:collapse;"><tr style="height:100%;"><td style="text-align:center;vertical-align:middle;padding:8px;"><img id="kp${uid}_ph" src="files/${firstPhoto.fileName}" style="max-width:354px;max-height:600px;width:auto;height:auto;display:block;margin:0 auto;border-radius:4px;"/></td></tr><tr><td style="padding:0;"><div id="kp${uid}_lbl" style="display:block;width:100%;font-size:12px;color:#fff;font-weight:bold;background:#100F1D;padding:7px 8px;text-align:center;">${firstLabelUp}</div></td></tr></table>
       </td>
     </tr>
   </table>
@@ -887,7 +613,7 @@ ${estilosLineas}
 
       kmlBody += `
           <Placemark>
-            <name>ITEM: ${p.datos.numero || 'S/N'}${p.datos.pasivo ? ' - ' + p.datos.pasivo : ''}</name>
+            <name>${p.datos.numero || 'S/N'}${p.datos.pasivo ? '-' + p.datos.pasivo : ''}</name>
             <Snippet maxLines="0"/>
             <styleUrl>#posteStyle</styleUrl>
             <description><![CDATA[${htmlPopup}]]></description>
@@ -899,18 +625,23 @@ ${estilosLineas}
     if (numVol === 1) { // LÍNEAS SOLO EN VOL 1
       kmlLines += `</Folder><Folder><name>Líneas</name>`;
       conexionesProyecto.forEach(c => {
-        // Usar todos los puntos del recorrido (multi-segmento), con fallback a from/to
-        const idsSerie = (Array.isArray(c.puntos) && c.puntos.length >= 2)
-          ? c.puntos
-          : [c.from, c.to].filter(Boolean);
-        const coords = idsSerie
-          .map(id => puntos.find(p => p.id === id))
-          .filter(p => p && p.coords)
-          .map(p => `${p.coords.lng.toFixed(6)},${p.coords.lat.toFixed(6)},0`);
+        // La fibra nueva trae su propia geometría. Las viejas solo guardan ids de
+        // poste y su forma se sigue deduciendo de dónde estén esos postes.
+        const coords = (Array.isArray(c.vertices) && c.vertices.length >= 2)
+          ? c.vertices
+              .filter(v => v && v.lat != null && v.lng != null)
+              .map(v => `${(v.lng || 0).toFixed(6)},${(v.lat || 0).toFixed(6)},0`)
+          : ((Array.isArray(c.puntos) && c.puntos.length >= 2) ? c.puntos : [c.from, c.to].filter(Boolean))
+              .map(id => puntos.find(p => String(p.id) === String(id)))
+              .filter(p => p && p.coords)
+              .map(p => `${(p.coords.lng || 0).toFixed(6)},${(p.coords.lat || 0).toFixed(6)},0`);
         if (coords.length < 2) return;
         const cap = c.capacidad;
         const styleId = (cap && KML_COLORES[cap]) ? `linea_${cap}` : 'linea_default';
-        const nombre = cap ? `${cap} hilos` : 'Línea de fibra';
+        // El nombre lo escribe el usuario: hay que escaparlo o un & rompe el KML entero.
+        const nombre = c.nombre
+          ? `${escXml(c.nombre)}${cap ? ` · ${cap} hilos` : ''}`
+          : (cap ? `${cap} hilos` : 'Línea de fibra');
         kmlLines += `<Placemark><name>${nombre}</name><styleUrl>#${styleId}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords.join(' ')}</coordinates></LineString></Placemark>`;
       });
     }

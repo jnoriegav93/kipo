@@ -16,19 +16,20 @@ const NOMBRE_SLOT = {
 };
 
 export const formatId = (datos) => {
-  const fat = datos?.codFat || '-';
-  const pt = datos?.numero || '-';
-  return `COD FAT: ${fat} | NRO PT: ${pt}`;
+  // El campo actual del formulario es 'pasivo'; codFat queda por puntos viejos
+  const pasivo = datos?.pasivo || datos?.codFat || '-';
+  const item = datos?.numero || '-';
+  return `ITEM: ${item} | PASIVO: ${pasivo}`;
 };
 
-export const enviarMensajeSistema = async (proyectoId, mensaje, userUid) => {
+export const enviarMensajeSistema = async (proyectoId, mensaje, userUid, autorNombre = 'Sistema', autorEmpresa = '') => {
   try {
     await addDoc(collection(db, "bitacora"), {
       proyectoId,
       mensaje,
       autorUid: userUid,
-      autorNombre: 'Sistema',
-      autorEmpresa: '',
+      autorNombre,
+      autorEmpresa,
       autorEmail: '',
       timestamp: new Date().toISOString(),
       tipo: 'sistema'
@@ -84,7 +85,7 @@ export const detectarCambiosCaracteristicas = (datosAntiguos, datosNuevos) => {
     }
   }
 
-  const camposArray = ['extrasSeleccionados', 'armadosSeleccionados', 'ferreteriaExtraSeleccionada'];
+  const camposArray = ['extrasSeleccionados', 'armadoSeleccionadoId', 'ferreteriaFinal'];
   for (const campo of camposArray) {
     if (JSON.stringify(datosAntiguos[campo] || []) !== JSON.stringify(datosNuevos[campo] || [])) {
       return true;

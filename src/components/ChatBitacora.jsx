@@ -91,28 +91,56 @@ export default function ChatBitacora({ proyectoId, user, theme, esCompartido, co
             // Mensaje de sistema (automático)
             if (msg.tipo === 'sistema') {
               const lineas = msg.mensaje.split('\n');
+              const tieneAutor = msg.autorNombre && msg.autorNombre !== 'Sistema';
+              const fechaStr = fecha.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              let identifierRendered = false;
+
+              const lineasJSX = lineas.map((linea, idx) => {
+                if (linea.endsWith(':')) {
+                  return <span key={idx} className="block font-bold">{linea}</span>;
+                }
+                // Nuevo formato: ITEM | PASIVO
+                if (linea.includes('ITEM:')) {
+                  const m = linea.match(/ITEM:\s*([^|]*)\|\s*PASIVO:\s*(.*)/);
+                  const itemVal = m?.[1]?.trim() || '-';
+                  const pasivoVal = m?.[2]?.trim() || '-';
+                  identifierRendered = true;
+                  return (
+                    <span key={idx} className="block">
+                      <span className="font-bold">ITEM: </span>{itemVal}
+                      <span className="font-bold"> | PASIVO: </span>{pasivoVal}
+                    </span>
+                  );
+                }
+                // Formato antiguo (retrocompatibilidad): COD FAT | NRO PT
+                if (linea.includes('COD FAT:')) {
+                  const m = linea.match(/COD FAT:\s*([^|]*)\|\s*NRO PT:\s*(.*)/);
+                  const pasivoVal = m?.[1]?.trim() || '-';
+                  const itemVal = m?.[2]?.trim() || '-';
+                  identifierRendered = true;
+                  return (
+                    <span key={idx} className="block">
+                      <span className="font-bold">ITEM: </span>{itemVal}
+                      <span className="font-bold"> | PASIVO: </span>{pasivoVal}
+                    </span>
+                  );
+                }
+                return <span key={idx} className="block">{linea}</span>;
+              });
+
               return (
                 <div key={msg.id} className="flex justify-center my-1">
                   <div className="bg-slate-200 rounded-lg px-3 py-1.5 max-w-[85%]">
                     <div className="text-[11px] text-slate-500 text-center">
-                      {lineas.map((linea, idx) => {
-                        if (linea.endsWith(':')) {
-                          return <span key={idx} className="block font-bold">{linea}</span>;
-                        }
-                        if (linea.includes('COD FAT:')) {
-                          const match = linea.match(/COD FAT:\s*([^|]*)\|\s*NRO PT:\s*(.*)/);
-                          if (match) {
-                            return (
-                              <span key={idx} className="block">
-                                <span className="font-bold">COD FAT: </span>{match[1].trim()} <span className="font-bold">| NRO PT: </span>{match[2].trim()}
-                              </span>
-                            );
-                          }
-                        }
-                        return <span key={idx} className="block font-normal">{linea}</span>;
-                      })}
+                      {lineasJSX}
+                      {/* Autor y fecha siempre al final */}
+                      {tieneAutor && (
+                        <span className="block text-[10px] text-slate-500 font-semibold">
+                          {msg.autorNombre}{msg.autorEmpresa ? ` · ${msg.autorEmpresa}` : ''}
+                        </span>
+                      )}
+                      <span className="block text-[9px] text-slate-400">{fechaStr} · {hora}</span>
                     </div>
-                    <p className="text-[9px] text-slate-400 text-center mt-0.5">{hora}</p>
                   </div>
                 </div>
               );
@@ -129,7 +157,7 @@ export default function ChatBitacora({ proyectoId, user, theme, esCompartido, co
                           OBS
                         </span>
                         <span className="text-[10px] font-bold text-amber-600">
-                          COD FAT: {msg.codFat || '-'} | NRO PT: {msg.nroPt || '-'}
+                          ITEM: {msg.nroPt || '-'} | PASIVO: {msg.codFat || '-'}
                         </span>
                       </div>
                       <span className="text-xs font-black text-amber-800 block">{msg.autorNombre}</span>

@@ -1,6 +1,6 @@
 import { doc, setDoc, updateDoc, writeBatch, query, collection, where, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
 import { db } from '../firebaseConfig';
-import { COLORES_DIA } from '../data/constantes';
+import { COLORES_DIA, colorDiaAleatorio, colorParaNuevoDia } from '../data/constantes';
 
 // 👇 AQUÍ RECIBIMOS TODO LO QUE NECESITAN LAS FUNCIONES
 export const useProjectLogic = ({
@@ -19,31 +19,6 @@ export const useProjectLogic = ({
 }) => {
 
 // --- FUNCIÓN AUXILIAR: GENERAR CÓDIGO ÚNICO ---
-const generarCodigoAcceso = async () => {
-    const prefijo = "FIB-";
-    let intentos = 0;
-    const maxIntentos = 10;
-
-    while (intentos < maxIntentos) {
-        // Generar 6 caracteres alfanuméricos aleatorios
-        const codigo = prefijo + Array.from({ length: 6 }, () => 
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[Math.floor(Math.random() * 36)]
-        ).join("");
-
-        // Verificar si ya existe en Firebase
-        const q = query(collection(db, "proyectos"), where("codigoAcceso", "==", codigo));
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-            return codigo; // Código único encontrado
-        }
-
-        intentos++;
-    }
-
-    // Fallback: usar timestamp si no se encuentra código único
-    return prefijo + Date.now().toString(36).toUpperCase().slice(-6);
-};
 
 // --- NUEVA FUNCIÓN: IR A UBICACIÓN DEL PROYECTO ---
 const irUbicacionProyecto = (e, proyId) => {
@@ -70,12 +45,10 @@ const irUbicacionProyecto = (e, proyId) => {
 const confirmarCrearProyecto = async () => {
     if(!tempData.nombre) return;
     
-    // 1. Generar código único
-    const codigoAcceso = await generarCodigoAcceso();
     
     // 2. Preparar datos
     const tipo = tempData.tipo || 'levantamiento';
-    const diaUno = { id: `d_${Date.now()}`, nombre: 'Día 1', fecha: new Date().toLocaleDateString(), color: '#ef4444' };
+    const diaUno = { id: `d_${Date.now()}`, nombre: 'Día 1', fecha: new Date().toLocaleDateString(), color: colorDiaAleatorio() };
     const idProyecto = String(Date.now());
 
     const modoFotos = tempData.modoFotos || 'comprimido';
@@ -89,7 +62,6 @@ const confirmarCrearProyecto = async () => {
         ownerId: user.uid,
         ownerNombre: config?.nombrePersonal || user?.displayName || '',
         ownerEmpresa: config?.empresaPersonal || '',
-        codigoAcceso,
         compartidoCon: [],
         permisos: {},
         solicitudesPendientes: [],
@@ -106,7 +78,7 @@ const confirmarCrearProyecto = async () => {
     // 4. Guardar en Firebase
     try {
         await setDoc(doc(db, "proyectos", idProyecto), nuevo);
-        console.log("Proyecto creado en la nube con código:", codigoAcceso);
+        console.log("Proyecto creado en la nube.");
     } catch (error) {
         console.error("Error al crear proyecto:", error);
     }
@@ -115,7 +87,7 @@ const confirmarCrearProyecto = async () => {
 const confirmarCrearDia = async () => {
     if(!tempData.nombre || !proyectoActual) return;
     
-    const nuevoDia = { id: `d_${Date.now()}`, nombre: tempData.nombre, fecha: new Date().toLocaleDateString(), color: '#ef4444' };
+    const nuevoDia = { id: `d_${Date.now()}`, nombre: tempData.nombre, fecha: new Date().toLocaleDateString(), color: colorParaNuevoDia(proyectoActual.dias) };
     const proyActualizado = { ...proyectoActual, dias: [...proyectoActual.dias, nuevoDia] };
     
     setProyectos(proyectos.map(p => p.id === proyectoActual.id ? proyActualizado : p));
@@ -126,7 +98,7 @@ const confirmarCrearDia = async () => {
 
     try {
         const proyectoRef = doc(db, "proyectos", String(proyectoActual.id));
-        await updateDoc(proyectoRef, { dias: proyActualizado.dias });
+        await updateDoc(proyectoRef, { dias: proyActualizado.dias, diaActivoId: nuevoDia.id });
         console.log("Nuevo día guardado en la nube");
     } catch (error) {
         console.error("Error al guardar el día:", error);
@@ -138,14 +110,26 @@ const seleccionarProyecto = (proy) => {
     // Guardar último proyecto abierto
     try { localStorage.setItem('ultimoProyectoId', proy.id); } catch(e) {}
     if (proy.dias && proy.dias.length > 0) {
-      const ultimoDia = proy.dias[proy.dias.length - 1];
-      setDiaActual(ultimoDia.id);
+      let diaDefault;
+      if (proy.esCompartido && proy.diaActivoId) {
+        diaDefault = proy.dias.find(d => d.id === proy.diaActivoId) || proy.dias[proy.dias.length - 1];
+      } else {
+        // Restaurar último día seleccionado para este proyecto
+        let savedDiaId = null;
+        try { savedDiaId = localStorage.getItem(`ultimoDia_${proy.id}`); } catch(e) {}
+        diaDefault = (savedDiaId && proy.dias.find(d => d.id === savedDiaId)) || proy.dias[proy.dias.length - 1];
+      }
+      setDiaActual(diaDefault.id);
 
-      // Solo agregar días que NO estén explícitamente ocultos
-      let ocultos = [];
-      try { ocultos = JSON.parse(localStorage.getItem('diasOcultos') || '[]'); } catch(e) {}
-      const idsNuevos = proy.dias.map(d => d.id).filter(id => !ocultos.includes(id));
-      setDiasVisibles(prev => [...new Set([...prev, ...idsNuevos])]);
+      // Al activar el proyecto, mostrar TODOS sus puntos (prender todos sus días)
+      const idsProyecto = proy.dias.map(d => d.id);
+      setDiasVisibles(prev => [...new Set([...prev, ...idsProyecto])]);
+      // Y quitarlos de la lista de ocultos para que no vuelvan a esconderse
+      try {
+        let ocultos = JSON.parse(localStorage.getItem('diasOcultos') || '[]');
+        ocultos = ocultos.filter(id => !idsProyecto.includes(id));
+        localStorage.setItem('diasOcultos', JSON.stringify(ocultos));
+      } catch(e) {}
     } else {
       setDiaActual(null);
     }
@@ -167,13 +151,15 @@ const toggleVisibilidadDia = (diaId) => {
 const toggleVisibilidadProyecto = (e, proy) => {
     e.stopPropagation();
     const idsDiasProyecto = proy.dias.map(d => d.id);
-    const todosVisibles = idsDiasProyecto.every(id => diasVisibles.includes(id));
+    const algunoVisible = idsDiasProyecto.some(id => diasVisibles.includes(id));
     let ocultos = [];
     try { ocultos = JSON.parse(localStorage.getItem('diasOcultos') || '[]'); } catch(e2) {}
-    if (todosVisibles) {
+    if (algunoVisible) {
+      // Hay alguno visible → apagar todos
       setDiasVisibles(diasVisibles.filter(id => !idsDiasProyecto.includes(id)));
       idsDiasProyecto.forEach(id => { if (!ocultos.includes(id)) ocultos.push(id); });
     } else {
+      // Todos apagados → encender todos
       setDiasVisibles([...new Set([...diasVisibles, ...idsDiasProyecto])]);
       ocultos = ocultos.filter(id => !idsDiasProyecto.includes(id));
     }
@@ -206,6 +192,27 @@ const cambiarColorDia = async (proyId, diaId, color) => {
         }
     } catch (error) {
         console.error("Error al guardar color del día:", error);
+    }
+};
+
+const uniformizarColorDias = async (proyId, color) => {
+    // Actualizar todos los días del proyecto al mismo color en una sola operación
+    setProyectos(prev => prev.map(p => p.id === proyId
+        ? { ...p, dias: p.dias.map(d => ({ ...d, color })) }
+        : p
+    ));
+    if (proyectoActual?.id === proyId) {
+        setProyectoActual(prev => ({ ...prev, dias: prev.dias.map(d => ({ ...d, color })) }));
+    }
+    try {
+        const proyecto = proyectos.find(p => p.id === proyId);
+        if (proyecto) {
+            const diasActualizados = proyecto.dias.map(d => ({ ...d, color }));
+            const proyectoRef = doc(db, "proyectos", String(proyId));
+            await updateDoc(proyectoRef, { dias: diasActualizados });
+        }
+    } catch (error) {
+        console.error("Error al uniformizar colores:", error);
     }
 };
 
@@ -246,7 +253,9 @@ const cambiarColorProyecto = async (e, proyId, color) => {
 const solicitarBorrarProyecto = (proyId) => {
     setConfirmData({
       title: '¿Eliminar Proyecto?',
-      message: 'Se borrará el proyecto y TODOS sus puntos permanentemente de la base de datos.',
+      // Si el proyecto está compartido en un equipo, avisar que también desaparece de ahí
+      // (es un mismo proyecto con doble entrada: lista personal + equipo).
+      message: `El proyecto y TODOS sus puntos irán a la Papelera por 15 días. Puedes restaurarlo desde el menú principal.${proyectos.find(p => String(p.id) === String(proyId))?.grupoId ? '\n\n⚠ Este proyecto está compartido en un equipo: también se eliminará de la lista del equipo.' : ''}`,
       actionText: 'ELIMINAR',
       theme,
       onConfirm: async () => {
@@ -261,20 +270,62 @@ const solicitarBorrarProyecto = (proyId) => {
         setConfirmData(null);
 
         try {
-          const batch = writeBatch(db);
-          const proyRef = doc(db, "proyectos", proyId);
-          batch.delete(proyRef);
-
+          // 1. Leer TODO lo que se va a borrar (puntos + fibras) desde la nube
           const qPuntos = query(collection(db, "puntos"), where("proyectoId", "==", proyId));
           const snapPuntos = await getDocs(qPuntos);
-          snapPuntos.forEach((docPunto) => batch.delete(docPunto.ref));
-
           const qCables = query(collection(db, "conexiones"), where("proyectoId", "==", proyId));
           const snapCables = await getDocs(qCables);
-          snapCables.forEach((docCable) => batch.delete(docCable.ref));
 
+          // 2. Snapshot a la papelera: cada hijo agrupado (meta.grupo) + el proyecto.
+          //    Restaurar el proyecto restaura también todos sus hijos agrupados.
+          //    Los archivos de Storage NO se tocan (los borra la purga al vencer).
+          try {
+            const { enviarAPapelera, extraerStoragePaths, contarFotos } = await import('../utils/papelera');
+            const grupo = String(proyId);
+            let totalFotos = 0;
+            for (const dp of snapPuntos.docs) {
+              const datos = { id: dp.id, ...dp.data() };
+              totalFotos += contarFotos(datos.datos);
+              await enviarAPapelera({
+                uid: user.uid, tipo: 'punto',
+                snapshot: JSON.parse(JSON.stringify(datos)),
+                coleccionOriginal: 'puntos', idOriginal: dp.id,
+                proyectoId: proyId,
+                proyectoNombre: proyecto?.nombre || '',
+                nombre: `${datos.datos?.numero || dp.id} (de ${proyecto?.nombre || 'proyecto'})`,
+                storagePaths: extraerStoragePaths(datos.datos),
+                meta: { grupo },
+              });
+            }
+            for (const dc of snapCables.docs) {
+              const datos = { id: dc.id, ...dc.data() };
+              await enviarAPapelera({
+                uid: user.uid, tipo: 'fibra',
+                snapshot: JSON.parse(JSON.stringify(datos)),
+                coleccionOriginal: 'conexiones', idOriginal: dc.id,
+                proyectoId: proyId,
+                proyectoNombre: proyecto?.nombre || '',
+                nombre: `Fibra ${datos.capacidad || ''} (de ${proyecto?.nombre || 'proyecto'})`.trim(),
+                meta: { grupo, puntos: [] }, // hija de proyecto: vuelve con el proyecto completo
+              });
+            }
+            await enviarAPapelera({
+              uid: user.uid, tipo: 'proyecto',
+              snapshot: proyecto ? JSON.parse(JSON.stringify(proyecto)) : { id: proyId },
+              coleccionOriginal: 'proyectos', idOriginal: proyId,
+              proyectoId: proyId,
+              nombre: proyecto?.nombre || String(proyId),
+              meta: { hijos: snapPuntos.size + snapCables.size, puntos: snapPuntos.size, fibras: snapCables.size, fotos: totalFotos },
+            });
+          } catch (e) { console.error('Papelera proyecto:', e); }
+
+          // 3. Borrar de las colecciones (archivos de Storage intactos hasta la purga)
+          const batch = writeBatch(db);
+          batch.delete(doc(db, "proyectos", proyId));
+          snapPuntos.forEach((docPunto) => batch.delete(docPunto.ref));
+          snapCables.forEach((docCable) => batch.delete(docCable.ref));
           await batch.commit();
-          console.log("Proyecto eliminado correctamente de la nube.");
+          console.log("Proyecto enviado a papelera y eliminado de la nube.");
 
         } catch (error) {
           console.error("Error al borrar de Firebase:", error);
@@ -291,7 +342,7 @@ const aprobarSupervisor = async (proyectoId, solicitud, permiso = 'lectura') => 
 
         const infoColaborador = {
             nombre: solicitud.nombrePersonal || solicitud.nombre || '',
-            empresa: solicitud.empresaPersonal || '',
+            empresa: solicitud.empresaPersonal || solicitud.empresa || '',
             permiso
         };
 
@@ -409,6 +460,7 @@ const eliminarSupervisor = async (proyectoId, supervisorUid) => {
         toggleVisibilidadDia,
         toggleVisibilidadProyecto,
         cambiarColorDia,
+        uniformizarColorDias,
         cambiarColorProyecto,
         solicitarBorrarProyecto,
         irUbicacionProyecto,

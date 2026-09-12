@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react';
-import { ArrowLeft, Edit3, Camera, X, Send, Share2 } from 'lucide-react';
+import { ArrowLeft, Edit3, Camera, X, Send, Share2, ClipboardList, ChevronDown } from 'lucide-react';
+import { fetchFotoBlob } from '../utils/fotoUrl';
 import { addDoc, collection, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { TABS_CONFIG, EXTRAS_ITEMS } from './PhotoManager';
-import { estamparMetadatos, urlABase64 } from '../utils/helpers';
+import { TABS_CONFIG, MAIN_TABS, EXTRAS_ITEMS } from './PhotoManager';
+import { estamparMetadatos, urlABase64, puedeCompartirArchivos, puedeCompartirTexto } from '../utils/helpers';
+import ZoomImage from './ZoomImage';
 
 // Componente fuera de VerDetalle para evitar remounts
 function FotoMini({ url, label, onClickPhoto }) {
@@ -11,11 +13,12 @@ function FotoMini({ url, label, onClickPhoto }) {
   // url puede ser string o { url, thumb, timestamp } según cómo se guardó
   const displayUrl = url && typeof url === 'object' ? (url.thumb || url.url) : url;
   const fullUrl = url && typeof url === 'object' ? (url.url || url.thumb) : url;
+  const thumbUrl = url && typeof url === 'object' ? (url.thumb || url.url) : url;
   const showImage = displayUrl && !error;
 
   return (
     <div
-      onClick={() => showImage && onClickPhoto({ url: fullUrl, label })}
+      onClick={() => showImage && onClickPhoto({ url: fullUrl, thumb: thumbUrl, label })}
       className={`relative aspect-square rounded-lg overflow-hidden bg-slate-200 border-2 border-slate-300 ${showImage ? 'cursor-pointer hover:opacity-90' : ''}`}
     >
       {showImage ? (
@@ -35,6 +38,26 @@ function FotoMini({ url, label, onClickPhoto }) {
   );
 }
 
+function FullscreenPhotoModal({ photo, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[999] bg-black flex flex-col"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="shrink-0 flex justify-between items-center px-4 py-4 bg-black/80 backdrop-blur-md border-b border-white/10">
+        <h3 className="font-bold text-white text-base truncate pr-2">{photo.label.replace('\n', ' ')}</h3>
+        <button onClick={onClose} className="shrink-0 p-2 bg-white/10 rounded-full text-white hover:bg-white/20">
+          <X size={24} />
+        </button>
+      </div>
+      {/* min-h-0 es lo que faltaba: sin él, un hijo flex no baja de su altura de
+          contenido, así que la foto se salía de la pantalla y quedaba recortada.
+          Y el visor con zoom es el mismo que usa el comparativo de ferretería. */}
+      <div className="flex-1 min-h-0 bg-black">
+        <ZoomImage src={photo.url} fallback={photo.thumb || null} alt={photo.label} heightClass="h-full" />
+      </div>
+    </div>
+  );
+}
+
 export default function VerDetalle({
   datos,
   config,
@@ -50,37 +73,16 @@ export default function VerDetalle({
   proyectoActual,
 }) {
 
-  // Función para consolidar ferretería
+  // Función para consolidar ferretería (nuevo modelo: ferreteriaFinal directo)
   const consolidarFerreteria = () => {
-    const consolidado = {};
-
-    // 1. Sumar ferretería de armados
-    (datos.armadosSeleccionados || []).forEach(armado => {
-      armado.items.forEach(item => {
-        const ferr = config.catalogoFerreteria.find(f => f.id === item.idRef);
-        if (ferr) {
-          const key = ferr.nombre;
-          if (!consolidado[key]) {
-            consolidado[key] = { cantidad: 0, unidad: ferr.unidad, nombre: ferr.nombre };
-          }
-          consolidado[key].cantidad += item.cant;
-        }
-      });
-    });
-
-    // 2. Sumar/Restar ferretería extra (incluye positivos Y negativos)
-    Object.entries(datos.ferreteriaExtra || {}).forEach(([id, cantidad]) => {
-      const ferr = config.catalogoFerreteria.find(f => f.id === id);
-      if (ferr && cantidad !== 0) {  // ← Cambio: ahora incluye negativos
-        const key = ferr.nombre;
-        if (!consolidado[key]) {
-          consolidado[key] = { cantidad: 0, unidad: ferr.unidad, nombre: ferr.nombre };
-        }
-        consolidado[key].cantidad += cantidad;  // ← Suma positivos, resta negativos
-      }
-    });
-
-    return Object.values(consolidado);
+    const catalogo = config?.catalogoFerreteria || [];
+    return Object.entries(datos.ferreteriaFinal || {})
+      .filter(([_, cant]) => cant > 0)
+      .map(([id, cant]) => {
+        const ferr = catalogo.find(f => f.id === id);
+        return ferr ? { nombre: ferr.nombre, cantidad: cant, unidad: ferr.unidad } : null;
+      })
+      .filter(Boolean);
   };
 
   const totalConsolidado = consolidarFerreteria();
@@ -153,26 +155,35 @@ export default function VerDetalle({
         .sort(([a], [b]) => parseInt(a) - parseInt(b))
         .forEach(([idx, fotoRaw]) => {
           const url = typeof fotoRaw === 'string' ? fotoRaw : fotoRaw?.url;
-          if (url) items.push({ url, label: `FOTO ${parseInt(idx) + 1}` });
+          if (url) items.push({ url, foto: fotoRaw, label: `FOTO ${parseInt(idx) + 1}` });
         });
     } else {
       tab.items.forEach(item => {
-        if (item.items) {
+        if (item.type === 'subgallery') {
+          Object.keys(fotosTab)
+            .filter(k => k.startsWith(item.id + '_'))
+            .sort((a, b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]))
+            .forEach((key, i) => {
+              const fotoRaw = fotosTab[key];
+              const url = typeof fotoRaw === 'string' ? fotoRaw : fotoRaw?.url;
+              if (url) items.push({ url, foto: fotoRaw, label: `ACCESO ${i + 1}` });
+            });
+        } else if (item.items) {
           item.items.forEach(sub => {
             const fotoRaw = fotosTab[sub.id];
             const url = typeof fotoRaw === 'string' ? fotoRaw : fotoRaw?.url;
-            if (url) items.push({ url, label: sub.label.replace('\n', ' ') });
+            if (url) items.push({ url, foto: fotoRaw, label: sub.label.replace('\n', ' ') });
           });
         } else {
           const fotoRaw = fotosTab[item.id];
           const url = typeof fotoRaw === 'string' ? fotoRaw : fotoRaw?.url;
-          if (url) items.push({ url, label: item.label.replace('\n', ' ') });
+          if (url) items.push({ url, foto: fotoRaw, label: item.label.replace('\n', ' ') });
         }
       });
       EXTRAS_ITEMS.forEach(label => {
         const fotoRaw = fotosTab[label];
         const url = typeof fotoRaw === 'string' ? fotoRaw : fotoRaw?.url;
-        if (url) items.push({ url, label });
+        if (url) items.push({ url, foto: fotoRaw, label });
       });
     }
     return items;
@@ -181,10 +192,10 @@ export default function VerDetalle({
   const iniciarCompartir = (tabId, tabTitle) => {
     const fotoItems = buildFotoItemsVD(tabId);
     if (fotoItems.length === 0) { alert('No hay fotos para compartir'); return; }
-    if (!navigator.share || !/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      alert('Función de compartir no disponible en este dispositivo'); return;
+    if (!puedeCompartirArchivos()) {
+      alert('Este navegador no puede compartir archivos. Intenta desde el celular.'); return;
     }
-    prefetchVDRef.current = Promise.all(fotoItems.map(({ url }) => fetch(url).then(r => r.blob()).catch(() => null)));
+    prefetchVDRef.current = Promise.all(fotoItems.map(f => fetchFotoBlob(f.foto ?? f.url)));
     setCompartirModal({ tabId, tabTitle, step: 'elegir' });
   };
 
@@ -195,7 +206,7 @@ export default function VerDetalle({
       const fotoItems = buildFotoItemsVD(tabId);
       if (fotoItems.length === 0) return;
 
-      const blobs = await (prefetchVDRef.current || Promise.all(fotoItems.map(({ url }) => fetch(url).then(r => r.blob()).catch(() => null))));
+      const blobs = await (prefetchVDRef.current || Promise.all(fotoItems.map(f => fetchFotoBlob(f.foto ?? f.url))));
 
       const coords = datos?.coords;
       const gps = coords ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : '';
@@ -246,8 +257,8 @@ export default function VerDetalle({
   const compartirListaVD = async (tabId, tabTitle) => {
     const fotoItems = buildFotoItemsVD(tabId);
     if (fotoItems.length === 0) { alert('No hay fotos para compartir'); return; }
-    if (!navigator.share || !/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      alert('Función de compartir no disponible en este dispositivo'); return;
+    if (!puedeCompartirTexto()) {
+      alert('Este navegador no puede compartir. Intenta desde el celular.'); return;
     }
     const nroPoste = datos?.numero || '';
     const pasivoVal = datos?.pasivo || '';
@@ -268,7 +279,7 @@ export default function VerDetalle({
     if (!observacion.trim() || enviandoObs || !proyectoId || !user) return;
     setEnviandoObs(true);
     try {
-      const fat = datos?.codFat || '-';
+      const fat = datos?.pasivo || datos?.codFat || '-';
       const pt = datos?.numero || '-';
       const nombreAutor = config?.nombrePersonal || user.displayName || user.email?.split('@')[0] || 'Supervisor';
       const empresaAutor = config?.empresaPersonal || '';
@@ -319,7 +330,7 @@ export default function VerDetalle({
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             {/* Fila 1: ITEM y Pasivo — valores en fuente normal */}
             <div><span className={`font-bold ${theme.text} opacity-60`}>ITEM:</span> <span className={`font-black ${theme.text}`}>{datos.numero || '-'}</span></div>
-            <div><span className={`font-bold ${theme.text} opacity-60`}>Pasivo:</span> <span className={`font-black ${theme.text}`}>{datos.pasivo || '-'}</span></div>
+            {proyectoActual?.tipo !== 'levantamiento' && (<div><span className={`font-bold ${theme.text} opacity-60`}>Pasivo:</span> <span className={`font-black ${theme.text}`}>{datos.pasivo || '-'}</span></div>)}
 
             {/* Fila 2: Fecha y Coor — todo pequeño */}
             <div className="min-w-0 flex items-baseline gap-1"><span className={`font-bold ${theme.text} opacity-60 shrink-0 text-[10px]`}>Fecha:</span> <span className={`font-black ${theme.text} text-[10px] truncate`}>{datos.fecha ? `${new Date(datos.fecha).toLocaleDateString('es-PE')}${datos.hora ? ` - ${datos.hora}` : ''}` : '-'}</span></div>
@@ -335,11 +346,6 @@ export default function VerDetalle({
         <div className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 mb-3`}>
           <div className="flex justify-between items-center mb-2">
             <h3 className={`text-xs font-black ${theme.text} uppercase opacity-70`}>Características del Poste</h3>
-            {!readOnly && (
-              <button onClick={onEditar} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
-                <Edit3 size={12} /> EDITAR
-              </button>
-            )}
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -349,59 +355,13 @@ export default function VerDetalle({
             <div><span className={`font-bold ${theme.text} opacity-60`}>Material:</span> <span className={`font-black ${theme.text}`}>{datos.material || '-'}</span></div>
             <div><span className={`font-bold ${theme.text} opacity-60`}>Tipo Red:</span> <span className={`font-black ${theme.text}`}>{datos.tipo || '-'}</span></div>
 
+            <div><span className={`font-bold ${theme.text} opacity-60`}>Tipo de poste:</span> <span className={`font-black ${theme.text}`}>{datos.tipoPoste || '-'}</span></div>
             <div><span className={`font-bold ${theme.text} opacity-60`}>Cables:</span> <span className={`font-black ${theme.text}`}>{datos.cables || '-'}</span></div>
-            <div><span className={`font-bold ${theme.text} opacity-60`}>Armado:</span> <span className={`font-black ${theme.text}`}>{datos.armadosSeleccionados?.map(a => a.nombre).join(', ') || '-'}</span></div>
+            {proyectoActual?.tipo !== 'levantamiento' && (<div><span className={`font-bold ${theme.text} opacity-60`}>Armado:</span> <span className={`font-black ${theme.text}`}>{config?.armados?.find(a => a.id === datos.armadoSeleccionadoId)?.nombre || '-'}</span></div>)}
 
             <div className="col-span-2"><span className={`font-bold ${theme.text} opacity-60`}>Extras:</span> <span className={`font-black ${theme.text}`}>{datos.extrasSeleccionados?.join(', ') || '-'}</span></div>
           </div>
         </div>
-
-        {/* FERRETERÍA DE ARMADOS */}
-        {datos.armadosSeleccionados && datos.armadosSeleccionados.length > 0 && (
-          <details className={`${theme.card} border-2 ${theme.border} rounded-xl overflow-hidden mb-3`}>
-            <summary className="px-3 py-2 cursor-pointer font-black text-xs uppercase opacity-70 hover:bg-slate-50 select-none">
-              Ferretería {datos.armadosSeleccionados.map(a => a.nombre).join(', ')}
-            </summary>
-            <div className="px-3 pb-2 pt-1 bg-slate-50/50 space-y-0 divide-y divide-slate-200">
-              {datos.armadosSeleccionados.flatMap(armado =>
-                armado.items.map((item, idx) => {
-                  const ferr = config.catalogoFerreteria.find(f => f.id === item.idRef);
-                  return (
-                    <div key={`${armado.id}-${idx}`} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
-                      <span className="font-black text-sm text-blue-600 w-8 text-right">{item.cant}</span>
-                      <span className="font-bold text-[10px] opacity-60 uppercase w-10">{ferr?.unidad}</span>
-                      <div className="h-3 w-px bg-slate-300"></div>
-                      <span className="font-bold text-xs flex-1">{ferr?.nombre || 'Desconocido'}</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </details>
-        )}
-
-        {/* FERRETERÍA EXTRA */}
-        {datos.ferreteriaExtra && Object.keys(datos.ferreteriaExtra).length > 0 && (
-          <details className={`${theme.card} border-2 ${theme.border} rounded-xl overflow-hidden mb-3`}>
-            <summary className="px-3 py-2 cursor-pointer font-black text-xs uppercase opacity-70 hover:bg-slate-50 select-none">
-              Ferretería Extra
-            </summary>
-            <div className="px-3 pb-2 pt-1 bg-slate-50/50 space-y-0 divide-y divide-slate-200">
-              {Object.entries(datos.ferreteriaExtra).map(([id, cantidad]) => {
-                const ferr = config.catalogoFerreteria.find(f => f.id === id);
-                if (!ferr || cantidad === 0) return null;
-                return (
-                  <div key={id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
-                    <span className="font-black text-sm text-blue-600 w-8 text-right">{cantidad}</span>
-                    <span className="font-bold text-[10px] opacity-60 uppercase w-10">{ferr.unidad}</span>
-                    <div className="h-3 w-px bg-slate-300"></div>
-                    <span className="font-bold text-xs flex-1">{ferr.nombre}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </details>
-        )}
 
         {/* CONSOLIDADO FERRETERÍAS */}
         {totalConsolidado.length > 0 && (
@@ -420,59 +380,84 @@ export default function VerDetalle({
           </div>
         )}
 
+        {/* BOTÓN EDITAR PUNTO COMPLETO */}
+        {!readOnly && (
+          <button
+            onClick={onEditar}
+            className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest mb-3 active:scale-95 transition-transform shadow-md"
+          >
+            <Edit3 size={16} /> EDITAR PUNTO
+          </button>
+        )}
+
         {/* FOTOS - DINÁMICAS */}
         {/* HELPER PARA ORDENAR SECCIONES y RENDERIZADO */}
         {(() => {
           const SECTION_ORDER = [
             'poste',
+            'instalacion',
             'fatPrecoNueva',
-            'fatPrecoExistente',
             'napMec',
             'mufaTroncal',
-            'mufaFdt',
             'xbox',
             'hbox',
-            'adicionales'
+            'camara',
+            'site1',
+            'site2',
+            'site3',
+            'nodo',
+            'adicionales',
+            'medioTramo'
           ];
 
-          // Filtrar y ordenar tabs según config
+          // ¿La sección tiene al menos una foto?
+          const hasFotos = (tabId, fotos) => {
+            const tabConfig = TABS_CONFIG[tabId];
+            if (tabConfig.dynamic) {
+              return Object.keys(fotos).filter(k => fotos[k]).length > 0;
+            }
+            let count = 0;
+            tabConfig.items.forEach(item => {
+              if (item.type === 'subgallery') {
+                count += Object.keys(fotos).filter(k => k.startsWith(item.id + '_') && fotos[k]).length;
+              } else if (item.items) {
+                item.items.forEach(sub => { if (fotos[sub.id]) count++; });
+              } else {
+                if (fotos[item.id]) count++;
+              }
+            });
+            const extras = EXTRAS_ITEMS.filter(label => fotos[label]).length;
+            return (count + extras) > 0;
+          };
+
+          // Filas visibles SEGÚN LOS DATOS DEL PUNTO (igual que la cámara): propietario → POSTE,
+          // eq. pasivo → su sección, proyecto de instalación → INSTALACIÓN, secciones agregadas
+          // (+SECCIONES) y cualquier sección que ya tenga fotos. ADICIONALES siempre.
+          const tiposSel = Array.isArray(datos?.tipoElemento) ? datos.tipoElemento : (datos?.tipoElemento ? [datos.tipoElemento] : []);
+          const seleccionadas = new Set(['adicionales']);
+          if (datos?.tipoPoste) seleccionadas.add('poste');
+          if (proyectoActual?.tipo === 'instalacionPostes') seleccionadas.add('instalacion');
+          if (tiposSel.includes('fat')) seleccionadas.add('fatPrecoNueva');
+          if (tiposSel.includes('nap')) seleccionadas.add('napMec');
+          if (tiposSel.includes('mufa')) seleccionadas.add('mufaTroncal');
+          if (tiposSel.includes('xbox')) seleccionadas.add('xbox');
+          if (tiposSel.includes('hbox')) seleccionadas.add('hbox');
+          if (tiposSel.includes('camara')) seleccionadas.add('camara');
+          if (tiposSel.includes('medioTramo')) seleccionadas.add('medioTramo');
+          (Array.isArray(datos?.seccionesExtra) ? datos.seccionesExtra : []).forEach(id => seleccionadas.add(id));
+
           let orderedTabs = SECTION_ORDER
             .map(id => Object.values(TABS_CONFIG).find(tab => tab.id === id))
-            .filter(Boolean);
+            .filter(Boolean)
+            .filter(tab => seleccionadas.has(tab.id) || hasFotos(tab.id, getFotos(tab.id)));
 
-          // LÓGICA DE ORDENAMIENTO (FEATURE REQUEST):
-          // 1. Las secciones con al menos 1 foto van PRIMERO.
-          // 2. Se respeta el orden relativo de SECTION_ORDER dentro de cada grupo.
+          // Las secciones con al menos 1 foto van PRIMERO (orden relativo se mantiene)
           orderedTabs = orderedTabs.sort((a, b) => {
-            const fotosA = getFotos(a.id);
-            const fotosB = getFotos(b.id);
-
-            // Función auxiliar para saber si tiene fotos
-            const hasFotos = (tabId, fotos) => {
-              const tabConfig = TABS_CONFIG[tabId];
-              if (tabConfig.dynamic) {
-                return Object.keys(fotos).filter(k => fotos[k]).length > 0;
-              }
-              // Principales
-              let principales = 0;
-              tabConfig.items.forEach(item => {
-                if (item.items) {
-                  item.items.forEach(sub => { if (fotos[sub.id]) principales++; });
-                } else {
-                  if (fotos[item.id]) principales++;
-                }
-              });
-              // Extras
-              const extras = EXTRAS_ITEMS.filter(label => fotos[label]).length;
-              return (principales + extras) > 0;
-            };
-
-            const aHas = hasFotos(a.id, fotosA);
-            const bHas = hasFotos(b.id, fotosB);
-
-            if (aHas && !bHas) return -1; // a va antes
-            if (!aHas && bHas) return 1;  // b va antes
-            return 0; // mantener orden relativo original (SECTION_ORDER)
+            const aHas = hasFotos(a.id, getFotos(a.id));
+            const bHas = hasFotos(b.id, getFotos(b.id));
+            if (aHas && !bHas) return -1;
+            if (!aHas && bHas) return 1;
+            return 0;
           });
 
           return (
@@ -494,32 +479,26 @@ export default function VerDetalle({
                     .filter(([, v]) => v)
                     .sort(([a], [b]) => parseInt(a) - parseInt(b));
                   const count = fotosEntries.length;
-                  const hasPhotos = count > 0;
-                  const headerBgClass = hasPhotos ? 'bg-slate-700 text-white' : 'bg-slate-50/50 hover:bg-slate-100 text-slate-800';
-                  const headerTextClass = hasPhotos ? 'text-white' : theme.text;
 
                   return (
-                    <details key={tab.id} className={`${theme.card} border-2 ${theme.border} rounded-xl mb-3 overflow-hidden group`}>
-                      <summary className={`px-3 py-3 flex justify-between items-center cursor-pointer transition-colors select-none ${headerBgClass}`}>
-                        <span className={`text-xs font-black uppercase ${headerTextClass}`}>{tab.title}</span>
-                        <span className={`text-xs font-black opacity-90 ${headerTextClass}`}>({count} fotos)</span>
+                    <details key={tab.id} className="border-2 border-slate-900 rounded-xl mb-2 overflow-hidden group bg-white">
+                      <summary className="px-3 py-2 flex items-center gap-1.5 cursor-pointer select-none bg-white list-none [&::-webkit-details-marker]:hidden">
+                        <span className="flex-1 min-w-0 font-black text-xs uppercase tracking-widest truncate text-slate-900">{tab.title}</span>
+                        <span className={`text-xs font-black shrink-0 ${count > 0 ? 'text-green-600' : 'text-slate-400'}`}>({count})</span>
+                        {!readOnly && proyectoActual?.tipo !== 'levantamiento' && proyectoActual?.modoFotos !== 'altaCalidad' && (
+                          <button
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (count > 0) iniciarCompartir(tab.id, tab.title); }}
+                            disabled={count === 0}
+                            className="w-[33px] h-[33px] rounded-lg border-2 border-slate-900 bg-white text-slate-900 flex items-center justify-center active:scale-95 shrink-0 disabled:opacity-30"
+                            title="Compartir fotos">
+                            <Share2 size={14} strokeWidth={2.5} />
+                          </button>
+                        )}
+                        <span className="w-[33px] h-[33px] rounded-lg border-2 border-slate-900 bg-white text-slate-900 flex items-center justify-center shrink-0">
+                          <ChevronDown size={16} className="transition-transform duration-200 group-open:rotate-180" />
+                        </span>
                       </summary>
-                      <div className="p-3 border-t-2 border-slate-100 bg-white">
-                        <div className="flex justify-between items-center mb-2">
-                          <p className={`text-[10px] font-bold ${theme.text} opacity-60`}>FOTOS</p>
-                          <div className="flex gap-2">
-                            {!readOnly && proyectoActual?.modoFotos !== 'altaCalidad' && (
-                              <button onClick={() => iniciarCompartir(tab.id, tab.title)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
-                                <Share2 size={12} /> COMPARTIR
-                              </button>
-                            )}
-                            {!readOnly && (
-                              <button onClick={() => onEditarFotos(tab.id)} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
-                                <Edit3 size={12} /> EDITAR
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                      <div className="p-3 border-t-2 border-slate-200 bg-white">
                         <div className="flex flex-wrap justify-center gap-2">
                           {fotosEntries.map(([idx, fotoRaw]) => (
                             <div key={idx} className="w-[31%] flex justify-center">
@@ -545,7 +524,11 @@ export default function VerDetalle({
                 let totalPrincipales = 0;
                 let filledPrincipales = 0;
                 tab.items.forEach(item => {
-                  if (item.items) {
+                  if (item.type === 'subgallery') {
+                    const sg = Object.keys(fotosTab).filter(k => k.startsWith(item.id + '_') && fotosTab[k]).length;
+                    filledPrincipales += sg;
+                    // No suma a total (es dinámico)
+                  } else if (item.items) {
                     totalPrincipales += item.items.length;
                     item.items.forEach(sub => { if (fotosTab[sub.id]) filledPrincipales++; });
                   } else {
@@ -555,14 +538,18 @@ export default function VerDetalle({
                 });
 
                 const hasPhotos = filledPrincipales > 0 || extrasCount > 0;
-                const headerBgClass = hasPhotos ? 'bg-slate-700 text-white' : 'bg-slate-50/50 hover:bg-slate-100 text-slate-800';
-                const headerTextClass = hasPhotos ? 'text-white' : theme.text;
 
                 // Agrupar items (misma lógica que PhotoManager)
                 const groups = [];
                 let currentNormalGroup = [];
                 tab.items.forEach(item => {
-                  if (item.items) {
+                  if (item.type === 'subgallery') {
+                    if (currentNormalGroup.length > 0) {
+                      groups.push({ type: 'normal', items: [...currentNormalGroup] });
+                      currentNormalGroup = [];
+                    }
+                    groups.push({ type: 'subgallery', data: item });
+                  } else if (item.items) {
                     if (currentNormalGroup.length > 0) {
                       groups.push({ type: 'normal', items: [...currentNormalGroup] });
                       currentNormalGroup = [];
@@ -575,32 +562,57 @@ export default function VerDetalle({
                 if (currentNormalGroup.length > 0) groups.push({ type: 'normal', items: currentNormalGroup });
 
                 return (
-                  <details key={tab.id} className={`${theme.card} border-2 ${theme.border} rounded-xl mb-3 overflow-hidden group`}>
-                    <summary className={`px-3 py-3 flex justify-between items-center cursor-pointer transition-colors select-none ${headerBgClass}`}>
-                      <span className={`text-xs font-black uppercase ${headerTextClass}`}>{tab.title}</span>
-                      <span className={`text-xs font-black opacity-90 ${headerTextClass}`}>({filledPrincipales}/{totalPrincipales})</span>
+                  <details key={tab.id} className="border-2 border-slate-900 rounded-xl mb-2 overflow-hidden group bg-white">
+                    <summary className="px-3 py-2 flex items-center gap-1.5 cursor-pointer select-none bg-slate-900 list-none [&::-webkit-details-marker]:hidden">
+                      <span className="flex-1 min-w-0 font-black text-xs uppercase tracking-widest truncate text-white">{tab.title}</span>
+                      <span className={`text-xs font-black shrink-0 ${hasPhotos ? 'text-green-400' : 'text-slate-400'}`}>({filledPrincipales}/{totalPrincipales})</span>
+                      {!readOnly && proyectoActual?.tipo !== 'levantamiento' && proyectoActual?.modoFotos !== 'altaCalidad' && (
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (hasPhotos) iniciarCompartir(tab.id, tab.title); }}
+                          disabled={!hasPhotos}
+                          className="w-[33px] h-[33px] rounded-lg border-2 border-white text-white flex items-center justify-center active:scale-95 shrink-0 disabled:opacity-30"
+                          title="Compartir fotos">
+                          <Share2 size={14} strokeWidth={2.5} />
+                        </button>
+                      )}
+                      <span className="w-[33px] h-[33px] rounded-lg border-2 border-white text-white flex items-center justify-center shrink-0">
+                        <ChevronDown size={16} className="transition-transform duration-200 group-open:rotate-180" />
+                      </span>
                     </summary>
 
-                    <div className="p-3 border-t-2 border-slate-100 bg-white">
-                      <div className="flex justify-between items-center mb-2">
-                        <p className={`text-[10px] font-bold ${theme.text} opacity-60`}>PRINCIPALES</p>
-                        <div className="flex gap-2">
-                          {!readOnly && proyectoActual?.modoFotos !== 'altaCalidad' && (
-                            <button onClick={() => iniciarCompartir(tab.id, tab.title)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
-                              <Share2 size={12} /> COMPARTIR
-                            </button>
-                          )}
-                          {!readOnly && (
-                            <button onClick={() => onEditarFotos(tab.id)} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold active:scale-95">
-                              <Edit3 size={12} /> EDITAR
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
+                    <div className="p-3 border-t-2 border-slate-200 bg-white">
                       <div className="space-y-3 mb-3">
                         {groups.map((group, gIdx) => {
-                          if (group.type === 'normal') {
+                          if (group.type === 'subgallery') {
+                            const sgItem = group.data;
+                            const sgFotos = Object.keys(fotosTab)
+                              .filter(k => k.startsWith(sgItem.id + '_') && fotosTab[k])
+                              .sort((a, b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]));
+                            const sgCount = sgFotos.length;
+                            return (
+                              <div key={gIdx} className="bg-blue-50 border-2 border-blue-200 rounded-lg overflow-hidden">
+                                <div className="bg-blue-600 px-3 py-2 flex justify-between items-center">
+                                  <span className="text-white text-[10px] font-black uppercase tracking-widest">FOTOS DE ACCESO</span>
+                                  <span className="text-blue-200 text-[10px] font-bold">{sgCount} foto{sgCount !== 1 ? 's' : ''}</span>
+                                </div>
+                                {sgCount > 0 && (
+                                  <div className="p-2 flex flex-wrap justify-center gap-2">
+                                    {sgFotos.map((key, i) => (
+                                      <div key={key} className="w-[31%] flex justify-center">
+                                        <div className="w-full">
+                                          <FotoMini
+                                            url={fotosTab[key]}
+                                            label={`ACCESO ${i + 1}`}
+                                            onClickPhoto={setFullscreenPhoto}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          } else if (group.type === 'normal') {
                             return (
                               <div key={gIdx} className="flex flex-wrap justify-center gap-2">
                                 {group.items.map(item => {
@@ -674,7 +686,7 @@ export default function VerDetalle({
           <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-3 mb-3">
             <h3 className="text-xs font-black text-amber-700 uppercase mb-2">Observación del Supervisor</h3>
             <p className={`text-[10px] text-amber-600 font-bold mb-2`}>
-              Se enviará a la bitácora con referencia: COD FAT: {datos?.codFat || '-'} | NRO PT: {datos?.numero || '-'}
+              Se enviará a la bitácora con referencia: ITEM: {datos?.numero || '-'} | PASIVO: {datos?.pasivo || datos?.codFat || '-'}
             </p>
             <div className="flex gap-2">
               <input
@@ -720,7 +732,7 @@ export default function VerDetalle({
               URL.revokeObjectURL(objUrl);
               const b64 = canvas.toDataURL('image/png');
               setLogoModalBase64(b64);
-              try {
+              if (!readOnly) try {
                 const { ref: sRef, uploadBytes, getDownloadURL } = await import('firebase/storage');
                 const { storage } = await import('../firebaseConfig');
                 const { updateDoc } = await import('firebase/firestore');
@@ -883,12 +895,12 @@ export default function VerDetalle({
                   <p className="text-center font-black text-slate-900 text-xs uppercase tracking-widest mt-1">Compartir</p>
                   <div className="flex gap-2">
                     <button onClick={() => { if (!logoModalBase64) { setSinLogoAdvertencia(true); } else { ejecutarCompartir(true, stampConfigCompartir); } }}
-                      className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
-                      FOTOS
+                      className="flex-1 py-3 bg-green-600 border-2 border-green-800 text-white rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform shadow-lg flex items-center justify-center gap-1.5">
+                      <Share2 size={15} strokeWidth={2.5} /> FOTOS
                     </button>
                     <button onClick={() => { compartirListaVD(compartirModal.tabId, compartirModal.tabTitle); setCompartirModal(m => m ? { ...m, step: 'config' } : null); }}
-                      className="flex-1 py-3 bg-white border-2 border-slate-900 text-slate-900 rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform">
-                      LISTA
+                      className="flex-1 py-3 bg-blue-600 border-2 border-blue-800 text-white rounded-xl font-black text-sm uppercase tracking-wide active:scale-95 transition-transform shadow-lg flex items-center justify-center gap-1.5">
+                      <ClipboardList size={15} strokeWidth={2.5} /> LISTA
                     </button>
                   </div>
                   <button onClick={() => setCompartirModal(m => ({ ...m, step: 'elegir' }))}
@@ -906,19 +918,7 @@ export default function VerDetalle({
       {/* MODAL FULLSCREEN FOTO */}
       {
         fullscreenPhoto && (
-          <div className="fixed inset-0 z-[999] bg-black flex flex-col" onClick={() => setFullscreenPhoto(null)}>
-            <div className="flex justify-between items-center px-4 pb-4 bg-black/80 backdrop-blur-md border-b border-white/10" style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
-              <div>
-                <h3 className="font-bold text-white text-base">{fullscreenPhoto.label.replace('\n', ' ')}</h3>
-              </div>
-              <button onClick={() => setFullscreenPhoto(null)} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="flex-1 flex items-center justify-center p-4 bg-black">
-              <img src={fullscreenPhoto.url} className="max-w-full max-h-full object-contain" alt={fullscreenPhoto.label} />
-            </div>
-          </div>
+          <FullscreenPhotoModal photo={fullscreenPhoto} onClose={() => setFullscreenPhoto(null)} />
         )
       }
     </div >

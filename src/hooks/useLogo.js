@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { db, storage } from '../firebaseConfig';
+import { db, storage, auth } from '../firebaseConfig';
 
 // Convierte un File local a base64 comprimido via canvas (sin CORS, sin red)
 const fileABase64 = (file) => {
@@ -43,7 +43,7 @@ export const useLogo = (user) => {
 
   useEffect(() => {
     const fetchLogo = async () => {
-      if (user && user.email) {
+      if (user && user.email && auth.currentUser) {
         console.log('[LOGO] 🔍 Buscando logo en Firestore para:', user.email);
         try {
           const snap = await getDoc(doc(db, "usuarios", user.email));

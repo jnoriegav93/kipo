@@ -1,47 +1,125 @@
-import React, { useState, useRef } from 'react';
-import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X, RotateCcw, Check } from 'lucide-react';
 import { Modal, ThemedInput } from './UI';
+import { DATA_INICIAL, FERRETERIA_BASE_DEFAULT, VINCULOS_FERRETERIA } from '../data/constantes';
+import { useFerreteriaBase } from '../hooks/useFerreteriaBase';
+import EditorArmadoItems from './EditorArmadoItems';
+import { construirItems } from '../utils/armados';
 
 // --- CONFIGURADOR (FINAL: Textos Blancos en Modo Oscuro) ---
-export default function Configurador({ config, saveConfig, volver, modalState = {}, theme, tab, setTab, seccionAbierta, setSeccionAbierta }) {
+export default function Configurador({ config, saveConfig, volver, modalState = {}, theme, tab, setTab, seccionAbierta, setSeccionAbierta, perfilActivo = 'avanzado' }) {
   const { modalOpen, setModalOpen, tempData, setTempData, setConfirmData, setAlertData } = modalState;
-  
+  // BÁSICO: armados y ferretería no aplican (su tipo levantamiento no los usa)
+  const tabsVisibles = perfilActivo === 'basico' ? ['datos'] : ['armados', 'ferreteria', 'datos'];
+  useEffect(() => {
+    if (!tabsVisibles.includes(tab)) setTab('datos');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, perfilActivo]);
+  const { ferreteriaBase } = useFerreteriaBase();
+  const [ferrYaExiste, setFerrYaExiste] = useState(null); // nombre encontrado en el buscador
+
+  // Importar / restaurar la lista base: pone TODOS los ítems de la base (con su MISMO id,
+  // así no se rompe el vínculo con proyectos) y quita las que el usuario creó (id 'f_').
+  const importarBase = () => {
+    const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
+    const creadasPropias = config.catalogoFerreteria.filter(f => String(f.id).startsWith('f_'));
+    const ejecutar = () => {
+      const nueva = base.map(b => ({ id: b.id, nombre: b.nombre, unidad: 'und', visible: true, codigo: b.codigo || '', detalle: b.detalle || '' }));
+      saveConfig({ ...config, catalogoFerreteria: nueva });
+      setAlertData?.({ title: 'Lista base cargada', message: `Se cargaron ${nueva.length} ferreterías de la base.`, theme });
+    };
+    if (creadasPropias.length > 0) {
+      setConfirmData?.({
+        title: 'Restaurar lista base',
+        message: `Vas a volver a la lista base. Se ELIMINARÁN las ${creadasPropias.length} ferreterías que agregaste tú y perderán su vínculo con los proyectos. Las de la base se mantienen. ¿Continuar?`,
+        actionText: 'RESTAURAR', theme,
+        onConfirm: () => { setConfirmData(null); ejecutar(); },
+      });
+    } else {
+      ejecutar();
+    }
+  };
+
+  // Re-agrega a la lista del usuario una ferretería que está en la BASE pero él borró.
+  // Usa su MISMO id (b..) + codigo/detalle, así vuelve tal cual la base. Va ARRIBA.
+  const agregarDesdeBase = (b) => {
+    const yaEsta = config.catalogoFerreteria.some(f => f.id === b.id || (f.nombre || '').toLowerCase() === (b.nombre || '').toLowerCase());
+    if (yaEsta) return;
+    const nuevo = { id: b.id, nombre: b.nombre, unidad: 'und', visible: true, codigo: b.codigo || '', detalle: b.detalle || '' };
+    saveConfig({ ...config, catalogoFerreteria: [nuevo, ...config.catalogoFerreteria] });
+    setModalOpen(null);
+    setTempData({ ...tempData, nombre: '' });
+  };
+
+  // Botón "Agregar" del buscador: si el texto coincide EXACTO con una de la base (que no
+  // tenés), la trae de la base; si no, la crea como nueva. Nada si ya la tenés.
+  const agregarBuscado = () => {
+    const q = (tempData.nombre || '').trim();
+    if (!q) return;
+    if (config.catalogoFerreteria.some(f => (f.nombre || '').toLowerCase() === q.toLowerCase())) return;
+    const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
+    const baseMatch = base.find(b => (b.nombre || '').toLowerCase() === q.toLowerCase() && !config.catalogoFerreteria.some(f => f.id === b.id));
+    if (baseMatch) agregarDesdeBase(baseMatch);
+    else crearFerreteria();
+  };
+
   // Helpers (Sin cambios)
-  const crearArmado = () => { 
-    if(!tempData.nombre) return; 
-    
+  const crearArmado = () => {
+    if(!tempData.nombre) return;
+
     // Validar que no exista nombre duplicado
     const nombreExiste = config.armados.some(a => a.nombre.toLowerCase() === tempData.nombre.toLowerCase());
     if (nombreExiste) {
-      setAlertData({ 
-        title: 'Nombre duplicado', 
+      setAlertData({
+        title: 'Nombre duplicado',
         message: `Ya existe un armado con el nombre "${tempData.nombre}". Por favor usa otro nombre.`,
-        theme: theme 
+        theme: theme
       });
       return;
     }
-    
-    const nuevo = { id: `a_${Date.now()}`, nombre: tempData.nombre, items: [], visible: true }; 
-    saveConfig({ ...config, armados: [...config.armados, nuevo] }); 
-    setModalOpen(null); 
+
+    // Ir a selección de ferreterías en lugar de guardar directamente
+    const defaultOrden = config.catalogoFerreteria.map(f => f.id);
+    setTempData({
+      nuevoArmadoId: `a_${Date.now()}`,
+      nuevoArmadoNombre: tempData.nombre,
+      itemsSeleccion: {},
+      listaOrden: defaultOrden,
+      snapshot: JSON.stringify({ itemsSeleccion: {}, listaOrden: defaultOrden }),
+    });
+    setModalOpen('SELECCIONAR_ITEMS_ARMADO');
   };
-  const crearFerreteria = () => { 
-    if(!tempData.nombre || !tempData.unidad) return; 
-    
+
+  const guardarArmadoConItems = () => {
+    const { nuevoArmadoId, nuevoArmadoNombre, itemsSeleccion = {}, modoEdicion, listaOrden } = tempData;
+    const items = construirItems({ itemsSeleccion, listaOrden }, config.catalogoFerreteria);
+    if (modoEdicion) {
+      const nuevosArmados = config.armados.map(a => a.id === nuevoArmadoId ? { ...a, items } : a);
+      saveConfig({ ...config, armados: nuevosArmados });
+    } else {
+      const nuevo = { id: nuevoArmadoId, nombre: nuevoArmadoNombre, items, visible: true };
+      saveConfig({ ...config, armados: [...config.armados, nuevo] });
+    }
+    setModalOpen(null);
+  };
+  const crearFerreteria = () => {
+    if(!tempData.nombre) return;
+
     // Validar que no exista nombre duplicado
     const nombreExiste = config.catalogoFerreteria.some(f => f.nombre.toLowerCase() === tempData.nombre.toLowerCase());
     if (nombreExiste) {
-      setAlertData({ 
-        title: 'Nombre duplicado', 
+      setAlertData({
+        title: 'Nombre duplicado',
         message: `Ya existe una ferretería con el nombre "${tempData.nombre}". Por favor usa otro nombre.`,
-        theme: theme 
+        theme: theme
       });
       return;
     }
-    
-    const nuevo = { id: `f_${Date.now()}`, nombre: tempData.nombre, unidad: tempData.unidad }; 
-    saveConfig({ ...config, catalogoFerreteria: [...config.catalogoFerreteria, nuevo] }); 
-    setModalOpen(null); 
+
+    // El usuario solo agrega el NOMBRE (ferretería local); unidad por defecto 'und'.
+    const nuevo = { id: `f_${Date.now()}`, nombre: tempData.nombre, unidad: 'und', visible: true };
+    saveConfig({ ...config, catalogoFerreteria: [nuevo, ...config.catalogoFerreteria] });
+    setModalOpen(null);
   };
   const agregarMaterial = () => { 
     if(!tempData.matId || !tempData.cant) return; 
@@ -218,56 +296,40 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
   const renderBotones = (tipo, addModal, tipoAdd) => {
     const enModoEdit = modoEditBotones === tipo;
-    
+
     return (
-      <div className="space-y-2">
-        {enModoEdit && (
-          <div className="flex justify-end">
-            <button 
-              onClick={() => setModoEditBotones(null)}
-              className="text-sm font-bold text-brand-600 hover:text-brand-700 px-3 py-1 rounded"
-            >
-              Listo
-            </button>
-          </div>
+      <div className="flex flex-wrap gap-2">
+        {config.botonesPoste[tipo]?.map((item, i) => (
+          <button
+            key={i}
+            onClick={() => {
+              if (enModoEdit) {
+                const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].filter(b => b.v !== item.v) };
+                saveConfig({ ...config, botonesPoste: nuevosBotones });
+              } else {
+                toggleVisibilidadBoton(tipo, item.v);
+              }
+            }}
+            className={`h-12 rounded-lg text-sm font-bold border-2 flex items-center overflow-hidden active:scale-95 transition-all shadow-sm select-none
+            ${item.visible || enModoEdit ? 'bg-slate-900 text-white border-black' : `${theme.card} ${theme.text} border-slate-300`}`}
+          >
+            <span className="pl-4 pr-3">{item.v}</span>
+            <span className={`self-stretch flex items-center px-3 ${
+              enModoEdit ? 'bg-red-500 text-white' : item.visible ? 'text-white' : `${theme.text} opacity-60`
+            }`}>
+              {enModoEdit ? <X size={15} strokeWidth={3}/> : item.visible ? <Eye size={15}/> : <EyeOff size={15}/>}
+            </span>
+          </button>
+        ))}
+
+        {!enModoEdit && (
+          <button
+            onClick={() => { setTempData({ tipoLista: tipoAdd }); setModalOpen(addModal); }}
+            className={`h-12 w-12 rounded-lg border-2 border-dashed ${theme.border} ${theme.card} flex items-center justify-center text-green-600 hover:opacity-80 active:scale-95 transition-colors`}
+          >
+            <Plus size={24} strokeWidth={4} />
+          </button>
         )}
-        
-        <div className="flex flex-wrap gap-2">
-          {config.botonesPoste[tipo]?.map((item, i) => (
-            <div key={i} className="relative">
-              <LongPressButton 
-                onClick={() => !enModoEdit && toggleVisibilidadBoton(tipo, item.v)}
-                onLongPress={() => setModoEditBotones(tipo)}
-                className={`h-12 px-4 rounded-lg text-sm font-bold border-2 flex items-center gap-2 active:scale-95 transition-all shadow-sm select-none
-                ${item.visible ? 'bg-slate-900 text-white border-black' : `${theme.card} ${theme.text} border-slate-300`}
-                ${enModoEdit ? 'animate-wiggle' : ''}`}
-              >
-                {item.v} {!enModoEdit && (item.visible ? <Eye size={16}/> : <EyeOff size={16}/>)}
-              </LongPressButton>
-              
-              {enModoEdit && (
-                <button
-                  onClick={() => {
-                    const nuevosBotones = { ...config.botonesPoste, [tipo]: config.botonesPoste[tipo].filter(b => b.v !== item.v) };
-                    saveConfig({ ...config, botonesPoste: nuevosBotones });
-                  }}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-90 z-10"
-                >
-                  <X size={14} strokeWidth={3}/>
-                </button>
-              )}
-            </div>
-          ))}
-          
-          {!enModoEdit && (
-            <button 
-              onClick={() => { setTempData({ tipoLista: tipoAdd }); setModalOpen(addModal); }}
-              className={`h-12 w-12 rounded-lg border-2 border-dashed ${theme.border} ${theme.card} flex items-center justify-center text-green-600 hover:opacity-80 active:scale-95 transition-colors`}
-            >
-              <Plus size={24} strokeWidth={4} />
-            </button>
-          )}
-        </div>
       </div>
     );
   };
@@ -275,16 +337,22 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
   return (
     <div className={`flex-1 flex flex-col ${theme.bg} overflow-hidden relative`}>
 
-      <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}> 
+      <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
           <button onClick={() => { if (editId) setEditId(null); volver(); }}>
             <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
-          </button> 
-          <span className={`font-black ${theme.text} text-lg uppercase`}>Configuración</span> 
-          <div className="w-6"></div> 
+          </button>
+          <span className={`font-black ${theme.text} text-lg uppercase`}>Configuración</span>
+          <button
+            onClick={importarBase}
+            title="Importar / restaurar lista base"
+            className="p-1.5 rounded-xl bg-slate-900 border-2 border-slate-900 active:scale-95 transition-all"
+          >
+            <RotateCcw size={16} className="text-white" strokeWidth={2.5} />
+          </button>
       </div>
       
       <div className={`flex ${theme.header} border-b-2 ${theme.border} shrink-0`}> 
-          {['armados', 'ferreteria', 'botones'].map(t => ( 
+          {tabsVisibles.map(t => (
               <button 
                 key={t} 
                 onClick={() => { 
@@ -300,15 +368,15 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       
       <div className="flex-1 overflow-y-auto p-3">
 
-  {tab === 'armados' && ( 
-            <div className="space-y-4 pb-24"> 
-                
-                <button 
-                    onClick={() => { setTempData({}); setModalOpen('CREAR_ARMADO'); }} 
+  {tab === 'armados' && (
+            <div className="space-y-4 pb-24">
+
+                <button
+                    onClick={() => { setTempData({}); setModalOpen('CREAR_ARMADO'); }}
                     className={`w-full py-3 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500 transition-all bg-transparent`}
                 >
                     + Crear Armado
-                </button> 
+                </button>
                 
                 <div className="space-y-3">
                     {config.armados.map(arm => {
@@ -326,25 +394,29 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
                                     <div className="flex items-center gap-2 shrink-0">
                                         
-                                        <button 
-                                            onClick={() => { 
-                                                if (isEditing) {
-                                                    setEditId(null);
-                                                } else {
-                                                    setEditId(arm.id);
-                                                    setExpandedId(arm.id); 
-                                                }
+                                        <button
+                                            onClick={() => {
+                                              const itemsSeleccion = {};
+                                              arm.items.forEach(item => {
+                                                itemsSeleccion[item.idRef] = { cant: item.cant, tipo: item.tipo || 'primaria' };
+                                              });
+                                              // Orden: items guardados primero (en su orden), luego el resto del catálogo
+                                              const savedIds = arm.items.map(i => i.idRef);
+                                              const restIds = config.catalogoFerreteria.filter(f => !savedIds.includes(f.id)).map(f => f.id);
+                                              const listaOrden = [...savedIds, ...restIds];
+                                              setTempData({ nuevoArmadoId: arm.id, nuevoArmadoNombre: arm.nombre, itemsSeleccion, listaOrden, snapshot: JSON.stringify({ itemsSeleccion, listaOrden }), modoEdicion: true });
+                                              setModalOpen('SELECCIONAR_ITEMS_ARMADO');
                                             }}
-                                            className={`w-9 h-9 flex items-center justify-center rounded-lg border-2 transition-colors ${isEditing ? 'bg-green-600 border-green-700 text-white shadow-md' : `${theme.border} ${theme.text} opacity-60 hover:opacity-100`}`}
+                                            className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-black text-slate-800 transition-colors opacity-60 hover:opacity-100"
                                         >
-                                            {isEditing ? <Save size={18} strokeWidth={2.5}/> : <Edit3 size={18} strokeWidth={2.5}/>}
+                                            <Edit3 size={18} strokeWidth={2.5}/>
                                         </button>
 
-                                        <DeleteButton 
+                                        <DeleteButton
                                             onClick={() => borrarArmado(arm.id)}
-                                            className={`w-9 h-9 flex items-center justify-center rounded-lg border-2 ${theme.border} text-red-600 bg-red-50 hover:bg-red-100 transition-colors`}
+                                            className="w-9 h-9 flex items-center justify-center rounded-lg border-2 bg-red-600 border-red-800 text-white hover:bg-red-700 active:scale-90 transition-all"
                                         >
-                                            <Trash2 size={18} strokeWidth={2.5}/>
+                                            <Trash2 size={18} strokeWidth={2.5} className="text-white"/>
                                         </DeleteButton>
 
                                         <button 
@@ -371,41 +443,29 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
                                 {isExpanded && (
                                     <div className={`px-4 py-3 bg-black/5 border-t ${theme.border}`}>
-                                        
-                                        <div className="flex flex-col mb-3">
-                                            {arm.items.length === 0 ? (
-                                                <div className="text-center py-2 opacity-40 text-xs italic">Sin materiales asignados</div>
-                                            ) : (
-                                                arm.items.map((item, idx) => {
-                                                    const matInfo = config.catalogoFerreteria.find(f => f.id === item.idRef);
-                                                    return (
-                                                        <div key={idx} className={`flex justify-between items-center py-2 border-b ${theme.border} last:border-0`}>
-                                                            <span className={`font-bold text-xs ${theme.text} opacity-90 truncate flex-1`}>
-                                                                {matInfo?.nombre || '???'}
+                                        {arm.items.length === 0 ? (
+                                            <div className="text-center py-2 opacity-40 text-xs italic">Sin materiales asignados</div>
+                                        ) : (
+                                            [...arm.items.filter(i => (i.tipo || 'primaria') === 'primaria'), ...arm.items.filter(i => i.tipo === 'secundaria')]
+                                            .map((item, idx) => {
+                                                const matInfo = config.catalogoFerreteria.find(f => f.id === item.idRef);
+                                                const esPrimaria = (item.tipo || 'primaria') === 'primaria';
+                                                return (
+                                                    <div key={idx} className={`flex justify-between items-center py-2 border-b ${theme.border} last:border-0`}>
+                                                        <span className={`font-bold text-xs ${theme.text} opacity-90 truncate flex-1`}>
+                                                            {matInfo?.nombre || '???'}
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-black ${theme.text} opacity-70`}>
+                                                                {item.cant}
                                                             </span>
-                                                            <div className="flex items-center gap-3">
-                                                                <span className={`text-xs font-black ${theme.text} opacity-70`}>
-                                                                    {item.cant} {matInfo?.unidad}
-                                                                </span>
-                                                                {isEditing && (
-                                                                    <button onClick={() => borrarMaterialDeArmado(arm.id, idx)} className="text-red-500 hover:text-red-700 p-1">
-                                                                        <X size={16}/>
-                                                                    </button>
-                                                                )}
-                                                            </div>
+                                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${esPrimaria ? 'border-green-500 text-green-600' : 'border-orange-500 text-orange-600'}`}>
+                                                                {esPrimaria ? 'P' : 'S'}
+                                                            </span>
                                                         </div>
-                                                    )
-                                                })
-                                            )}
-                                        </div>
-                                        
-                                        {isEditing && (
-                                            <button 
-                                                onClick={() => { setTempData({ armadoId: arm.id }); setModalOpen('AGREGAR_MAT'); }}
-                                                className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-slate-800 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
-                                            >
-                                                <Plus size={16} strokeWidth={3} /> AGREGAR FERRETERÍA
-                                            </button>
+                                                    </div>
+                                                );
+                                            })
                                         )}
                                     </div>
                                 )}
@@ -416,30 +476,31 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
             </div> 
         )}
 
-{tab === 'ferreteria' && ( 
+{tab === 'ferreteria' && (
             <div className="space-y-3 pb-24">
-                <button onClick={() => { setTempData({}); setModalOpen('CREAR_FERR'); }} className={`w-full py-3 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500 transition-all bg-transparent`}>+ Crear Ferretería</button> 
-                
+                <button onClick={() => { setTempData({}); setModalOpen('CREAR_FERR'); }} className={`w-full py-3 border-2 border-dashed ${theme.border} rounded-xl ${theme.text} text-xs font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-500 transition-all bg-transparent`}>+ Crear Ferretería</button>
+
+                {config.catalogoFerreteria.length === 0 && (
+                  <p className={`text-center text-xs ${theme.textSec || 'text-slate-400'} py-4`}>Tu lista está vacía. Presiona <b>Importar base</b> para cargar el catálogo.</p>
+                )}
+
                 <div className="space-y-2">
-                  {config.catalogoFerreteria.map(f => ( 
-                    <div key={f.id} className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 flex items-center justify-between transition-all hover:shadow-md`}> 
-                      
-                      <div className="flex items-baseline gap-2 overflow-hidden">
+                  {config.catalogoFerreteria.map(f => (
+                    <div key={f.id} className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 flex items-center justify-between transition-all hover:shadow-md`}>
+
+                      <div className="flex items-center gap-2 overflow-hidden">
                         <span className={`font-bold text-sm ${theme.text} truncate`}>{f.nombre}</span>
-                        <span className="text-[10px] opacity-50 font-black uppercase shrink-0">{f.unidad}</span>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 shrink-0">
-                        <DeleteButton 
-                           onClick={() => borrarFerreteria(f.id)} 
-                           className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-red-200 bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-600 transition-colors"
+                        <DeleteButton
+                           onClick={() => borrarFerreteria(f.id)}
+                           className="w-9 h-9 flex items-center justify-center rounded-lg border-2 bg-red-600 border-red-800 text-white hover:bg-red-700 active:scale-90 transition-all"
                         >
-                           <Trash2 size={16} strokeWidth={2.5}/>
+                           <Trash2 size={16} strokeWidth={2.5} className="text-white"/>
                         </DeleteButton>
-
                         <div className={`h-6 w-px ${theme.border} opacity-50`}></div>
-
-                        <button 
+                        <button
                           onClick={() => {
                              const nuevos = config.catalogoFerreteria.map(item => item.id === f.id ? {...item, visible: !item.visible} : item);
                              saveConfig({...config, catalogoFerreteria: nuevos});
@@ -449,48 +510,97 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                           {f.visible === true ? <Eye size={16} strokeWidth={2.5}/> : <EyeOff size={16} strokeWidth={2.5}/>}
                         </button>
                       </div>
-                    </div> 
-                  ))} 
+                    </div>
+                  ))}
                 </div>
-            </div> 
+            </div>
         )}
         
-{tab === 'botones' && ( 
-          <div className="space-y-2 pb-24">
-            
-            <div className="relative flex py-2 items-center mt-2 mb-2">
-                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
-                <span className={`flex-shrink-0 mx-4 ${theme.text} opacity-50 text-[10px] font-black tracking-[0.2em] uppercase`}>Datos de Postes</span>
-                <div className={`flex-grow border-t-2 ${theme.border}`}></div>
-            </div>
-            
-            <FilaPestanas idA="vis_altura" tituloA="Altura" renderA={() => renderBotones('alturas', 'AGREGAR_BOTON', 'alturas')} idB="vis_material" tituloB="Material" renderB={() => renderBotones('materiales', 'AGREGAR_BOTON', 'materiales')}/>
-            <FilaPestanas idA="vis_fuerza" tituloA="Fuerza" renderA={() => renderBotones('fuerzas', 'AGREGAR_BOTON', 'fuerzas')} idB="vis_tipo" tituloB="Tipo de Red" renderB={() => renderBotones('tipos', 'AGREGAR_BOTON', 'tipos')}/>
-            <FilaPestanas 
-                idA="vis_extras" 
-                tituloA="Datos Extras" 
-                renderA={() => renderBotones('extras', 'AGREGAR_BOTON', 'extras')} 
-                idB="vis_cables" 
-                tituloB="Cantidad de Cables" 
-                renderB={() => renderBotones('cables', 'AGREGAR_BOTON', 'cables')}
-            />
-          </div> 
+{tab === 'datos' && (
+          <div className="space-y-6 pb-24">
+            {[
+              { titulo: 'Altura',            tipo: 'alturas',   tipoAdd: 'alturas'   },
+              { titulo: 'Material',          tipo: 'materiales',tipoAdd: 'materiales'},
+              { titulo: 'Fuerza',            tipo: 'fuerzas',   tipoAdd: 'fuerzas'   },
+              { titulo: 'Tipo de Red',       tipo: 'tipos',     tipoAdd: 'tipos'     },
+              { titulo: 'Datos Extras',      tipo: 'extras',    tipoAdd: 'extras'    },
+              { titulo: 'Cantidad de Cables',tipo: 'cables',    tipoAdd: 'cables'    },
+            ].map(({ titulo, tipo, tipoAdd }) => {
+              const enModoEdit = modoEditBotones === tipo;
+              return (
+                <div key={tipo} className={`${theme.card} border-2 ${theme.border} rounded-xl overflow-hidden`}>
+                  <div className={`px-4 py-2 flex items-center justify-between border-b-2 ${theme.border} ${theme.header}`}>
+                    <span className={`text-[11px] font-black tracking-[0.15em] uppercase ${theme.text}`}>{titulo}</span>
+                    <button
+                      onClick={() => setModoEditBotones(enModoEdit ? null : tipo)}
+                      className={`text-[11px] font-black px-3 py-1 rounded-lg border-2 transition-all active:scale-95 ${enModoEdit ? 'bg-slate-900 text-white border-black' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+                    >
+                      {enModoEdit ? 'LISTO' : 'EDITAR'}
+                    </button>
+                  </div>
+                  <div className="p-3">
+                    {renderBotones(tipo, 'AGREGAR_BOTON', tipoAdd)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
 
       </div>
 
-      <Modal isOpen={modalOpen === 'CREAR_ARMADO'} onClose={() => setModalOpen(null)} title="Nuevo Armado" theme={theme}> 
-        <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} /> 
-        <div className="h-4"></div> 
-        <button onClick={crearArmado} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">CREAR</button> 
+      <Modal isOpen={modalOpen === 'CREAR_ARMADO'} onClose={() => setModalOpen(null)} title="Nuevo Armado" theme={theme}>
+        <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} />
+        <div className="h-4"></div>
+        <button onClick={crearArmado} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">CREAR</button>
       </Modal>
 
-      <Modal isOpen={modalOpen === 'CREAR_FERR'} onClose={() => setModalOpen(null)} title="Nueva Ferretería" theme={theme}> 
-        <ThemedInput autoFocus placeholder="Nombre" val={tempData.nombre || ''} onChange={e => setTempData({...tempData, nombre: e.target.value})} theme={theme} /> 
-        <div className="flex gap-2 my-4"> 
-          {['und', 'mts'].map(u => ( <button key={u} onClick={() => setTempData({...tempData, unidad: u})} className={`flex-1 py-4 rounded-xl font-bold border-2 text-lg ${tempData.unidad === u ? 'bg-slate-900 text-white' : theme.input}`}> {u.toUpperCase()} </button> ))} 
-        </div> 
-        <button onClick={crearFerreteria} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">REGISTRAR</button> 
+
+
+      <Modal isOpen={modalOpen === 'CREAR_FERR'} onClose={() => { setModalOpen(null); setFerrYaExiste(null); }} title="Nueva Ferretería" theme={theme} topAnchor>
+        {ferrYaExiste ? (
+          <div className="text-center space-y-3 py-2">
+            <p className={`text-sm ${theme.textSec || 'text-slate-500'}`}>Esta ferretería ya existe en tu configuración:</p>
+            <p className={`font-black text-lg ${theme.text}`}>{ferrYaExiste}</p>
+            <button onClick={() => { setFerrYaExiste(null); setTempData({ ...tempData, nombre: '' }); }} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg">AGREGAR OTRA FERRETERÍA</button>
+          </div>
+        ) : (
+          <>
+            <ThemedInput autoFocus placeholder="Escribe para buscar o crear…" val={tempData.nombre || ''} onChange={e => setTempData({ ...tempData, nombre: e.target.value })} theme={theme} />
+            {(() => {
+              const q = (tempData.nombre || '').trim().toLowerCase();
+              if (!q) return null;
+              const userList = config.catalogoFerreteria;
+              const enUser = (nom) => userList.some(f => (f.nombre || '').toLowerCase() === (nom || '').toLowerCase());
+              // Coincidencias en TU lista (ya las tenés → "ya existe")
+              const matchesUser = userList.filter(f => (f.nombre || '').toLowerCase().includes(q));
+              // Coincidencias en la BASE que borraste (no están en tu lista → se pueden re-agregar)
+              const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
+              const matchesBase = base.filter(b => (b.nombre || '').toLowerCase().includes(q) && !enUser(b.nombre));
+              return (
+                <div className="mt-3 space-y-1.5 max-h-56 overflow-y-auto">
+                  {matchesUser.map(f => (
+                    <button key={f.id} onClick={() => setFerrYaExiste(f.nombre)} className={`w-full text-left px-3 py-2.5 rounded-lg border-2 ${theme.border} ${theme.card} ${theme.text} text-sm font-bold active:scale-95 transition-all`}>
+                      {f.nombre}
+                    </button>
+                  ))}
+                  {/* De la base (borrada): al tocar SOLO completa el input; se agrega con el botón de abajo */}
+                  {matchesBase.map(b => (
+                    <button key={b.id} onClick={() => setTempData({ ...tempData, nombre: b.nombre })} className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg border-2 border-dashed ${theme.border} ${theme.text} text-sm font-bold active:scale-95 transition-all`}>
+                      <span className="truncate">{b.nombre}</span>
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 shrink-0">base</span>
+                    </button>
+                  ))}
+                  {!enUser(q) && (
+                    <button onClick={agregarBuscado} className="w-full px-3 py-3 rounded-lg bg-brand-600 text-white text-sm font-black active:scale-95 transition-all">
+                      + Agregar “{(tempData.nombre || '').trim()}”
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </>
+        )}
       </Modal>
 
       <Modal isOpen={modalOpen === 'AGREGAR_MAT'} onClose={() => setModalOpen(null)} title="Agregar Ferretería" theme={theme} bottomSheet> 
@@ -503,7 +613,6 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
               className={`p-3 rounded-lg text-sm font-medium cursor-pointer mb-1 transition-colors flex justify-between items-center ${tempData.matId === f.id ? 'bg-slate-900 text-white shadow-md' : `${theme.text} hover:bg-slate-100`}`}
             > 
               <span className="font-bold">{f.nombre}</span> 
-              <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${tempData.matId === f.id ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>{f.unidad}</span> 
             </div> 
           ))} 
         </div> 
@@ -535,6 +644,19 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
         <div className="h-4"></div> 
         <button onClick={agregarBoton} className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-xl">AGREGAR</button> 
       </Modal>
+
+      {/* PANTALLA COMPLETA: Selección de ferreterías para armado */}
+      {modalOpen === 'SELECCIONAR_ITEMS_ARMADO' && (
+        <EditorArmadoItems
+          tempData={tempData}
+          setTempData={setTempData}
+          config={config}
+          theme={theme}
+          setConfirmData={setConfirmData}
+          onCerrar={() => setModalOpen(null)}
+          onGuardar={guardarArmadoConItems}
+        />
+      )}
 
     </div>
   );
