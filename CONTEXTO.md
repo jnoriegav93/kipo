@@ -4,7 +4,7 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 11 de septiembre de 2026.
+Última actualización: 12 de septiembre de 2026.
 
 ---
 
@@ -12,9 +12,14 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 
 Kipo cubre hoy **levantamiento en campo**, **tendido** y **liquidación**. Falta el
 eslabón del medio: el **diseño** de la red, que hoy se hace en un proyecto aparte
-(`C:\Users\USER\App_Design`, "GPON Design": JavaScript puro, sin build, PWA local
-con IndexedDB). Ese proyecto no está en uso todavía — no hay datos que migrar, y
-por eso podemos rehacerlo sobre un modelo mejor en vez de portarlo tal cual.
+("GPON Design", App_Design: JavaScript puro, sin build, PWA local con IndexedDB).
+Ese proyecto **nunca se despliega**: fue un prototipo en localhost y la idea es
+que Kipo absorba todas sus herramientas. No está en uso ni tiene datos que migrar,
+así que se rehace sobre un modelo mejor en vez de portarlo tal cual.
+
+App_Design no está en git. Dónde está:
+- Otra PC: `C:\Users\USER\App_Design`
+- Laptop: `C:\VIAJE_LIMA_11_9_26\App_Design`
 
 El puente manual que queremos eliminar: hoy se exporta un KMZ de Kipo para
 importarlo en el paso 2 de App_Design.
@@ -73,6 +78,12 @@ tendido conserva la proyección con la que se construyó.
 
 **Sin diseño, nada cambia.** Un proyecto sin diseño funciona exactamente como hoy.
 
+**Formato en Firestore.** Firestore no acepta un array dentro de otro. En memoria
+el diseño trabaja con pares `[lat, lng]`; al guardar, `aFirestore()` los pasa a
+`{lat, lng}` y al leer `desdeFirestore()` los devuelve (las dos en
+`disenoGeo.js`, usadas por `disenoService.js`). Todo lo que se guarde en
+`diseno` pasa por ahí.
+
 ### Decisiones del catastro
 
 **Nada de OSM.** Todo manual. Los postes de Kipo sí se muestran de fondo como
@@ -96,10 +107,15 @@ los dos lados como frontis; eso cambia.)
 **Precisión.** Los lotes deben salir lo más precisos posible, pero eso depende del
 técnico que dibuja: nuestro trabajo es darle herramientas rápidas y exactas.
 
-**Idea abierta, no decidida:** guardar la *receta* (manzana + configuración) en vez
-de los 594 polígonos de lote, y recalcular al abrir, con las excepciones
-(familias propias, fusiones, divisores) guardadas aparte. Reduce mucho lo que se
-escribe en cada cambio. Pendiente de confirmar con el usuario.
+**Pendiente de confirmar con el usuario — qué se guarda de los lotes.** Se había
+pensado guardar solo la *receta* (manzana + configuración) y recalcular los lotes
+al abrir. La recomendación del 12/09 es guardar **los polígonos de los lotes, un
+documento por manzana**, con la configuración dentro para poder regenerarlos a
+propósito. Motivos: el diseño aprobado es contra lo que se liquida y no puede
+cambiar solo si mañana se toca el código que parte los lotes; los NAPs se asignan
+a lotes y recalcular rompería esos vínculos; y partir por manzana ya evita el tope
+de 1 MB y las escrituras grandes. Es lo que hace App_Design: al reabrir una
+manzana confirmada no la regenera, para no perder las fusiones.
 
 **Geometría:** `polygon-clipping` (~30 KB) solo para unir, cortar y restar
 polígonos, en vez de Turf entero (~500 KB). El resto escrito a mano en
@@ -114,34 +130,48 @@ polígonos, en vez de Turf entero (~500 KB). El resto escrito a mano en
 | Entrada DISEÑO en el menú, tras `esAdmin` | hecho |
 | Vista con stepper de 6 pasos, carga diferida | hecho |
 | Elegir proyecto y ver sus postes reales | hecho |
-| Colección `proyectos/{id}/diseno` + reglas | hecho |
-| Guardado diferido de 600 ms, en vivo | hecho |
+| Colección `proyectos/{id}/diseno` + reglas | hecho — **sin confirmar que las reglas estén desplegadas** |
+| Guardado diferido de 600 ms, con su estado en la barra | hecho — **hasta el 12/09 no guardaba nada** (arrays anidados) |
 | Cuadra rectangular (3 clics) y cuadra irregular | hecho |
 | Áreas especiales (polígono y círculo) con sus tipos | hecho |
 | Marcadores y etiquetas con sus tipos | hecho |
 | Panel de capas con conteos | hecho |
 | **Calles:** trazar borde A, imán a vértices, imán de ángulo 90°, medida en vivo, ancho de arranque, cambiar lado, confirmar | hecho |
+| **Editar calle:** arrastrar vértices de los dos bordes con imán (16 px a vértices, 12 px a bordes de otras calles), ancho local en vivo, rango de ancho en el panel, Guardar / Cancelar | hecho |
+| **Agregar vértice** tocando un borde y **cortar calle** con un clic en cada borde | hecho |
 
 Archivos: `src/views/VistaDiseno.jsx`, `src/components/DisenoCatastro.jsx`,
 `src/components/DisenoCalles.jsx`, `src/services/disenoService.js`,
 `src/utils/disenoGeo.js`.
 
+Lo del 12/09 (guardado y edición de calles) está probado en Chrome con la página
+de prueba de abajo, pero **todavía no con el usuario admin en la app real**.
+
 ## Qué sigue, en orden
 
-1. **Editar calle**: arrastrar vértices de ambos bordes con imán, mostrando el
-   ancho local en metros. Aquí es donde el ancho se vuelve variable de verdad.
-2. **Agregar vértice** y **cortar calle en dos clics**.
-3. **Cerrar esquinas**: prolongar cada extremo hasta 10 m y pegarlo al borde de
+1. **Probar en localhost con el admin** el guardado y la edición de calles. Si la
+   barra dice "sin permiso de escritura", faltan desplegar las reglas de `diseno`.
+2. **Cerrar esquinas**: prolongar cada extremo hasta 10 m y pegarlo al borde de
    otra calle si choca.
-4. **Generar manzanas desde calles**, con candidatas revisables (naranja = entra,
+3. **Generar manzanas desde calles**, con candidatas revisables (naranja = entra,
    gris = no). Necesita `polygon-clipping`.
-5. **Subdividir en lotes** con la regla nueva de frontis.
-6. Divisores, familias por lote, selección múltiple y fusión.
-7. Bloque de cuadras (baja prioridad: con las calles funcionando pierde sentido).
-8. Exportar GeoJSON.
+4. **Subdividir en lotes** con la regla nueva de frontis.
+5. Divisores, familias por lote, selección múltiple y fusión.
+6. Bloque de cuadras (baja prioridad: con las calles funcionando pierde sentido).
+7. Exportar GeoJSON.
 
 Después del catastro vienen las fases 2 a 5 del plan: tramos (grafo de vanos),
 NAPs, rutas y aprobación, y reconciliación con la liquidación.
+
+## Cómo probar el modo Diseño sin login
+
+Claude no puede entrar con el usuario admin. En la laptop hay una página de
+prueba local **fuera de git** (`harness-diseno/`, excluida en `.git/info/exclude`):
+monta `VistaDiseno` con un proyecto falso y cambia `firebaseConfig.js` por un
+Firestore que apunta a un emulador inexistente, así que nunca toca producción
+pero las escrituras pasan por el SDK real. Se levanta con
+`npx vite --config harness-diseno/vite.config.js` (puerto 5199) y se recorre con
+`puppeteer-core` y el Chrome instalado.
 
 ---
 
@@ -151,8 +181,11 @@ NAPs, rutas y aprobación, y reconciliación con la liquidación.
   solo trozo: cualquier cambio obliga a rebajar 2,4 MB en cada actualización, y
   en campo con poca señal se siente. Candidatos: sacar ExcelJS a su propio trozo
   y revisar `jszip`, que sigue en `package.json` pero ya no se usa en `src/`.
-- **La credencial del remoto de git va en la URL en texto plano.** Conviene
-  quitarla y autenticar por el gestor de credenciales de Windows o `gh auth login`.
+- **`npm install` después de cada pull que traiga dependencias nuevas.** En la
+  laptop faltaban `jsqr`, `qrcode` y `puppeteer-core` y la compilación fallaba.
+- **La credencial del remoto de git va en la URL en texto plano** (en la otra PC).
+  Conviene quitarla y autenticar por el gestor de credenciales de Windows o
+  `gh auth login`.
 - Ferretería automática (cálculo de materiales), pausado.
 - Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
 - El aviso de actualización recarga la página: conviene que no aparezca mientras

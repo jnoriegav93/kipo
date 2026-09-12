@@ -142,6 +142,43 @@ export const anchoLocal = (otro, p) => {
   return pr ? Math.round(pr.dist * 10) / 10 : null;
 };
 
+/* Ancho mínimo y máximo de la calle, medido desde cada vértice de un borde hasta
+   el borde de enfrente. Es lo que el panel enseña mientras se edita. */
+export const anchosCalle = (A, B) => {
+  const medidas = [...A.map(p => anchoLocal(B, p)), ...B.map(p => anchoLocal(A, p))].filter(v => v != null);
+  return medidas.length ? { min: Math.min(...medidas), max: Math.max(...medidas) } : null;
+};
+
+/* Inserta un vértice sobre la polilínea, en el punto de ella más cercano a `p`. */
+export const insertarVertice = (pts, p) => {
+  const pr = proyectarEnPolilinea(pts, p);
+  if (!pr) return pts;
+  return [...pts.slice(0, pr.seg + 1), pr.punto, ...pts.slice(pr.seg + 1)];
+};
+
+// Quita vértices pegados (a menos de 1 cm): dejarían tramos de largo cero
+const sinRepetidos = (pts) => pts.filter((p, i) => i === 0 || metrosEntre(pts[i - 1], p) > 0.01);
+
+/* Parte una calle en dos con un punto sobre cada borde. Los dos bordes van en el
+   mismo sentido —el B nace como paralela del A—, así que el primer trozo de uno
+   casa con el primer trozo del otro. Devuelve null si algún trozo queda por debajo
+   de `minimo` metros: un corte en la misma punta no parte nada. */
+export const cortarCalle = (A, B, pA, pB, minimo = 1) => {
+  const partir = (pts, p) => {
+    const pr = proyectarEnPolilinea(pts, p);
+    if (!pr) return null;
+    return [
+      sinRepetidos([...pts.slice(0, pr.seg + 1), pr.punto]),
+      sinRepetidos([[...pr.punto], ...pts.slice(pr.seg + 1)]),
+    ];
+  };
+  const a = partir(A, pA);
+  const b = partir(B, pB);
+  if (!a || !b) return null;
+  if ([...a, ...b].some(t => t.length < 2 || largoPolilinea(t) < minimo)) return null;
+  return [{ A: a[0], B: b[0] }, { A: a[1], B: b[1] }];
+};
+
 /* ── Formato de guardado ──────────────────────────────────────────────────
    Firestore no acepta un array directamente dentro de otro, y la geometría del
    diseño son listas de pares [lat, lng]: con una sola manzana o calle, la capa

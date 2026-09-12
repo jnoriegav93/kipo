@@ -77,6 +77,12 @@ durante el render.
 
 **Flexbox:** un hijo con `flex-1` necesita `min-h-0` para poder encogerse.
 
+**Firestore no acepta arrays dentro de arrays.** Con `[[lat, lng], ...]`, `setDoc`
+lanza en el acto y no se guarda nada del documento. Los vértices van como
+`{lat, lng}`, como en las fibras; el modo Diseño convierte al guardar y al leer
+con `aFirestore` / `desdeFirestore`. Pasó una tanda entera sin guardar nada
+porque el error solo salía en la consola.
+
 **El smoke test solo llega al login**, así que no ve errores dentro de modales.
 
 ---

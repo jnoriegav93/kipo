@@ -5,13 +5,15 @@ import {
   ArrowLeft, Folder, Layers, Waypoints, Boxes, Route, Cable, FileDown, Lock,
   ZoomIn, ZoomOut, Square, PenTool, Undo2, Check, X, Trash2, Loader2,
   Circle as CircleIcon, MapPin, Type, PanelLeftClose, PanelLeft, ChevronDown,
-  Spline, Minus, Plus, FlipHorizontal,
+  Spline, Minus, Plus, FlipHorizontal, Scissors, PenLine,
 } from 'lucide-react';
 import { perteneceAProyecto } from '../utils/helpers';
 import DisenoCatastro from '../components/DisenoCatastro';
 import DisenoCalles from '../components/DisenoCalles';
 import { suscribirCatastro, crearGuardadoDiferido, CAPAS } from '../services/disenoService';
-import { areaM2, paralela, largoPolilinea } from '../utils/disenoGeo';
+import {
+  areaM2, paralela, largoPolilinea, proyectarEnPolilinea, insertarVertice, cortarCalle, anchosCalle,
+} from '../utils/disenoGeo';
 
 /* Modo DISEÑO — la proyección de la red, sobre los postes reales del proyecto.
    No migra nada: lee los mismos puntos que la cuadrilla está levantando.
@@ -149,6 +151,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
   const [capas, setCapas] = useState({ calles: true, manzanas: true, areas: true, marcadores: true, etiquetas: true, postes: true });
   const [trazoCalle, setTrazoCalle] = useState([]);
   const [borrador, setBorrador] = useState(null);   // calle a la espera de ancho y lado
+  const [edicion, setEdicion] = useState(null);     // { id, A, B, modo, corte, aviso } — calle en edición
   const [medida, setMedida] = useState(null);       // longitud del tramo en curso
   const [anchoDefecto, setAnchoDefecto] = useState(8);
   const [estadoGuardado, setEstadoGuardado] = useState({ estado: 'guardado' });
@@ -261,11 +264,58 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
     setBorrador(null);
   };
 
+  /* Edición de calle: se trabaja sobre una copia de los dos bordes y nada se
+     guarda hasta pulsar Guardar. Cortar sí guarda en el acto, porque crea otra
+     calle. */
+  const editarCalle = (c) => {
+    setSeleccion(null);
+    setHerramienta(null);
+    setEdicion({ id: c.id, A: c.A.map(p => [...p]), B: c.B.map(p => [...p]), modo: null, corte: null, aviso: null });
+  };
+
+  const alternarModoEdicion = (modo) =>
+    setEdicion(ed => ({ ...ed, modo: ed.modo === modo ? null : modo, corte: null, aviso: null }));
+
+  const moverVertice = (borde, idx, punto) =>
+    setEdicion(ed => ({ ...ed, [borde]: ed[borde].map((p, i) => (i === idx ? punto : p)), aviso: null }));
+
+  const clicBorde = (borde, punto) => {
+    if (!edicion) return;
+    if (edicion.modo === 'agregar') {
+      setEdicion(ed => ({ ...ed, [borde]: insertarVertice(ed[borde], punto), aviso: null }));
+      return;
+    }
+    if (edicion.modo !== 'cortar') return;
+    const enBorde = proyectarEnPolilinea(edicion[borde], punto)?.punto || punto;
+    // Primer clic, o el mismo borde otra vez: la marca se mueve ahí
+    if (!edicion.corte || edicion.corte.borde === borde) {
+      setEdicion(ed => ({ ...ed, corte: { borde, punto: enBorde }, aviso: null }));
+      return;
+    }
+    const pA = borde === 'A' ? enBorde : edicion.corte.punto;
+    const pB = borde === 'B' ? enBorde : edicion.corte.punto;
+    const partes = cortarCalle(edicion.A, edicion.B, pA, pB);
+    if (!partes) {
+      setEdicion(ed => ({ ...ed, corte: null, aviso: 'Corta más hacia el centro de la calle.' }));
+      return;
+    }
+    const nueva = { ...calles.find(c => c.id === edicion.id), ...partes[1], id: siguienteId(calles, 'calle') };
+    guardar({ calles: [...calles.map(c => (c.id === edicion.id ? { ...c, ...partes[0] } : c)), nueva] });
+    setEdicion(null);
+  };
+
+  const guardarEdicion = () => {
+    if (!edicion) return;
+    guardar({ calles: calles.map(c => (c.id === edicion.id ? { ...c, A: edicion.A, B: edicion.B } : c)) });
+    setSeleccion({ tipo: 'calle', id: edicion.id });
+    setEdicion(null);
+  };
+
   const cancelarDibujo = () => {
     setPts([]); setHerramienta(null); setPendiente(null);
-    setTrazoCalle([]); setBorrador(null); setMedida(null);
+    setTrazoCalle([]); setBorrador(null); setMedida(null); setEdicion(null);
   };
-  const usar = (h) => { setPts([]); setPendiente(null); setSeleccion(null); setHerramienta(v => v === h ? null : h); };
+  const usar = (h) => { setPts([]); setPendiente(null); setSeleccion(null); setEdicion(null); setHerramienta(v => v === h ? null : h); };
 
   const btn = 'h-10 px-3 rounded-xl border-2 flex items-center justify-center gap-1.5 text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all';
   const btnBase = `${btn} bg-[var(--d-alto)] border-[var(--d-borde)] text-[var(--d-texto)] hover:border-[var(--d-borde2)]`;
@@ -286,6 +336,14 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
     seleccion.tipo === 'calle'    ? calles.find(x => x.id === seleccion.id)      :
     etiquetas.find(x => x.id === seleccion.id)
   );
+  const anchosSeleccion = seleccion?.tipo === 'calle' && seleccionado ? anchosCalle(seleccionado.A, seleccionado.B) : null;
+
+  const anchosEdicion = edicion ? anchosCalle(edicion.A, edicion.B) : null;
+  const ayudaEdicion = !edicion ? null
+    : edicion.modo === 'agregar' ? 'Toca cualquiera de los dos bordes para insertar un vértice ahí.'
+    : edicion.modo === 'cortar'
+      ? (edicion.corte ? 'Ahora toca el borde de enfrente.' : 'Toca un borde y luego el de enfrente: la calle se parte en dos.')
+      : 'Arrastra los vértices de cualquiera de los dos bordes. Se imantan a los de otras calles.';
 
   return (
     <div
@@ -458,6 +516,9 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
                 borrador={borrador}
                 seleccionId={seleccion && seleccion.tipo === 'calle' ? seleccion.id : null}
                 onSeleccionar={(id) => setSeleccion({ tipo: 'calle', id })}
+                edicion={paso === 'catastro' ? edicion : null}
+                onMoverVertice={moverVertice}
+                onClicBorde={clicBorde}
               />
 
               <DisenoCatastro
@@ -466,7 +527,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
                 herramienta={paso === 'catastro' ? herramienta : null}
                 pts={pts} setPts={setPts}
                 onFinalizar={finalizar}
-                seleccion={seleccion} onSeleccionar={setSeleccion}
+                seleccion={seleccion} onSeleccionar={(s) => { if (!edicion) setSeleccion(s); }}
               />
 
               {capas.postes && puntosProy.map(p => (
@@ -590,7 +651,34 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
             </div>
           )}
 
-          {!borrador && (pendiente || seleccionado) && (
+          {!borrador && edicion && (
+            <div className="w-60 shrink-0 border-l border-[var(--d-borde)] bg-[var(--d-panel)] overflow-y-auto p-3 space-y-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">Editando</p>
+              <p className="text-sm font-black uppercase">{String(edicion.id).replace('_', ' ')}</p>
+              <div className="space-y-1 text-[11px] font-bold text-[var(--d-suave)]">
+                <p>{Math.round(largoPolilinea(edicion.A))} m de largo</p>
+                {anchosEdicion && <p>Ancho {anchosEdicion.min.toFixed(1)} – {anchosEdicion.max.toFixed(1)} m</p>}
+                <p>{edicion.A.length + edicion.B.length} vértices</p>
+              </div>
+
+              <Herramienta icono={<Plus size={14} strokeWidth={2.5} />} label="Agregar vértice"
+                activa={edicion.modo === 'agregar'} onClick={() => alternarModoEdicion('agregar')} />
+              <Herramienta icono={<Scissors size={14} strokeWidth={2.5} />} label="Cortar calle"
+                activa={edicion.modo === 'cortar'} onClick={() => alternarModoEdicion('cortar')} />
+
+              <p className="text-[10px] font-bold text-[var(--d-suave)] leading-snug">{ayudaEdicion}</p>
+              {edicion.aviso && <p className="text-[11px] font-black text-red-400">{edicion.aviso}</p>}
+
+              <button onClick={guardarEdicion} className={btn + ' w-full bg-brand-500 border-brand-600 text-white'}>
+                <Check size={13} /> Guardar
+              </button>
+              <button onClick={() => setEdicion(null)} className={btn + ' w-full bg-[var(--d-alto)] border-red-500/60 text-red-400'}>
+                <X size={13} /> Cancelar
+              </button>
+            </div>
+          )}
+
+          {!borrador && !edicion && (pendiente || seleccionado) && (
             <div className="w-60 shrink-0 border-l border-[var(--d-borde)] bg-[var(--d-panel)] overflow-y-auto p-3 space-y-3">
               {pendiente ? (
                 <>
@@ -647,12 +735,17 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [] }) {
                     {seleccion.tipo === 'calle' && (
                       <>
                         <p>{Math.round(largoPolilinea(seleccionado.A))} m de largo</p>
-                        <p>Ancho de arranque {seleccionado.ancho} m</p>
+                        {anchosSeleccion && <p>Ancho {anchosSeleccion.min.toFixed(1)} – {anchosSeleccion.max.toFixed(1)} m</p>}
                       </>
                     )}
                     {seleccion.tipo === 'marcador' && <p>{seleccionado.tipo}</p>}
                     {seleccion.tipo === 'etiqueta' && <p>“{seleccionado.texto}”</p>}
                   </div>
+                  {seleccion.tipo === 'calle' && (
+                    <button onClick={() => editarCalle(seleccionado)} className={`${btnBase} w-full`}>
+                      <PenLine size={13} /> Editar
+                    </button>
+                  )}
                   <button onClick={borrarSeleccion} className={`${btn} w-full bg-[var(--d-alto)] border-red-500/60 text-red-400`}>
                     <Trash2 size={13} /> Borrar
                   </button>
