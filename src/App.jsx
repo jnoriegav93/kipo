@@ -2457,7 +2457,7 @@ function App() {
         isOpen={!!exportData}
         onClose={() => setExportData(null)}
         fileName={exportData?.fileName}
-        onConfirm={() => handleExportKML(exportData?.proyecto, puntos, conexiones, logoApp, setExportData)}
+        onConfirm={() => handleExportKML(exportData?.proyecto, puntos, conexiones, logoApp, setExportData, undefined, undefined, undefined, config?.catalogoFerreteria || [])}
         theme={theme}
       />
 

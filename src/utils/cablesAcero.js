@@ -25,6 +25,25 @@ export const postesDeCable = (cable, porId) => {
   return a?.coords?.lat != null && b?.coords?.lat != null ? [a, b] : null;
 };
 
+// Para reportes de una fila por poste: los metros de cada cable van en UNO de sus dos
+// postes, el que va después en el orden dado. Así cada cable cuenta una sola vez, como
+// la distancia al poste anterior. Un cable con un poste fuera de la lista (rango del
+// reporte) no entra. Devuelve { puntoId: { ferrId: metros } }.
+export const metrosAceroPorPoste = (cables = [], puntosEnOrden = []) => {
+  const posicion = new Map(puntosEnOrden.map((p, i) => [String(p.id), i]));
+  const porId = new Map(puntosEnOrden.map(p => [String(p.id), p]));
+  const resultado = {};
+  cables.forEach(c => {
+    const postes = postesDeCable(c, porId);
+    if (!postes || !c.ferrId) return;
+    const [a, b] = postes;
+    const destino = String(posicion.get(String(a.id)) > posicion.get(String(b.id)) ? a.id : b.id);
+    const t = resultado[destino] || (resultado[destino] = {});
+    t[c.ferrId] = (t[c.ferrId] || 0) + metrosCableAcero(a.coords, b.coords);
+  });
+  return resultado;
+};
+
 // Metros a liquidar por ítem del catálogo: { ferrId: metros }
 export const metrosPorItem = (cables = [], puntos = []) => {
   const porId = new Map(puntos.map(p => [String(p.id), p]));

@@ -221,15 +221,23 @@ usuario el 14/09.
   aparecen si un punto ya traía cantidad, para poder quitarla: las cantidades
   viejas las corrige el usuario, el código no las compensa.
 - **Dónde suma.** Excel de liquidación de materiales, Control Ferretería
-  (consolidado) y comparativo de ferretería del proyecto.
-  **Todavía no** en el Excel del servidor (RESUMEN de `generarExcel` en
-  `functions/`), cuantificado, listado de utilizados ni KMZ.
+  (consolidado), comparativo de ferretería del proyecto y, en el reporte de tendido
+  del servidor, una tabla "CABLE DE ACERO" en metros dentro del RESUMEN, aparte del
+  total de piezas. En los reportes de una fila por poste (cuantificado y listado de
+  utilizados) cada cable va en la fila del **segundo de sus dos postes** según el
+  orden de posición (`metrosAceroPorPoste`), así cuenta una sola vez, igual que la
+  distancia al poste anterior. En el KMZ (cliente y servidor) va una carpeta
+  "Cables de acero". No entra en la hoja DATOS del servidor ni en el RF de ferretería.
+  La regla de metros está copiada en `functions/index.js`: si cambia, cambia en los dos.
 - **Ciclo de vida.** Borrar un poste borra sus cables (papelera tipo `acero`, que
   restaura si los dos postes existen). Copiar/cortar puntos los lleva si van sus
   dos postes. Borrar proyecto (lista, equipos, admin) los incluye. Salir de un
   equipo los copia.
-- **Despliegue.** Las reglas de `cablesAcero` tienen que estar desplegadas antes
-  que el hosting, o guardar un cable fallará por permisos.
+- **Despliegue.** Tres partes, en este orden: reglas (`cablesAcero`), hosting y la
+  función `procesarExportacion` (Excel y KMZ del servidor). Sin las reglas, guardar
+  un cable falla por permisos; los reportes del cliente no se rompen porque cuentan
+  cero cables. **La laptop no tiene sesión de Firebase**: antes de desplegar desde
+  ella hace falta `firebase login`, que abre el navegador.
 
 Probado con Node (regla de metros), con lint (ningún error nuevo en los 22 archivos
 tocados) y compilando. También en Chrome con una página local (`harness-diseno/acero.html`,

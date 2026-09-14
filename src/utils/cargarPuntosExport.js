@@ -35,3 +35,19 @@ export async function cargarPuntosProyecto(proyecto, puntosEnMemoria = []) {
     return enMemProyecto;
   }
 }
+
+// Cables de acero del proyecto, para los reportes que los liquidan por metro. Un "sin
+// permiso" cuenta como ninguno: las reglas de cablesAcero todavía no están desplegadas
+// y entonces tampoco pudo guardarse ninguno. Cualquier otro error sube, porque un
+// reporte con los metros cortos no se nota.
+export async function cargarCablesAceroProyecto(proyecto) {
+  if (!proyecto?.id) return [];
+  try {
+    const snap = await getDocs(query(collection(db, 'cablesAcero'), where('proyectoId', '==', String(proyecto.id))));
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  } catch (e) {
+    if (e?.code !== 'permission-denied') throw e;
+    console.warn('Export: sin permiso para leer cablesAcero (¿reglas sin desplegar?)', e);
+    return [];
+  }
+}

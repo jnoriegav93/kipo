@@ -277,7 +277,7 @@ const VistaProyectos = ({
         if (tipo === 'ZIP') {
           res = await descargarFotosZip(proy, puntos, logoApp, signal, limiteFotos, stampConfig);
         } else if (tipo === 'KMZ') {
-          res = await handleExportKML(proy, puntos, conexiones || [], logoApp, null, signal, limiteFotos, stampConfig);
+          res = await handleExportKML(proy, puntos, conexiones || [], logoApp, null, signal, limiteFotos, stampConfig, config?.catalogoFerreteria || []);
         }
 
         // Agregar ID único y timestamp y TIPO CORRECTO

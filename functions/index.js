@@ -799,7 +799,7 @@ const generarZIP = async (proy, puntosProyecto, logoBuffer, limiteFotos, stampCo
 // GENERAR KMZ
 // ============================================================
 
-const generarKMZ = async (proy, puntosProyecto, conexiones, todosPuntos, logoBuffer, limiteFotos, stampConfig) => {
+const generarKMZ = async (proy, puntosProyecto, conexiones, todosPuntos, logoBuffer, limiteFotos, stampConfig, cablesAcero = [], catalogo = []) => {
   const VOLUMENES = [];
   let volumenActual = 1;
   let puntosBuffer = [];
@@ -1026,6 +1026,15 @@ ${estilosLineas}
           : (cap ? `${cap} hilos` : 'Línea de fibra');
         kmlLines += `<Placemark><name>${nombre}</name><styleUrl>#${styleId}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords.join(' ')}</coordinates></LineString></Placemark>`;
       });
+      // Cables de acero en su carpeta: gris acero, con el tipo y los metros a liquidar
+      const lineasAcero = cablesAcero.map(c => {
+        const [a, b] = (c.puntos || []).map(id => todosPuntos.find(p => String(p.id) === String(id)));
+        if (a?.coords?.lat == null || b?.coords?.lat == null) return '';
+        const tipo = escXml((catalogo.find(f => f.id === c.ferrId) || {}).nombre || 'Cable de acero');
+        const coords = [a, b].map(p => `${p.coords.lng.toFixed(6)},${p.coords.lat.toFixed(6)},0`).join(' ');
+        return `<Placemark><name>${tipo} · ${metrosCableAcero(a.coords, b.coords)} m</name><Style><LineStyle><color>ffb8a394</color><width>2</width></LineStyle></Style><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+      }).join('');
+      if (lineasAcero) kmlLines += `</Folder><Folder><name>Cables de acero</name>${lineasAcero}`;
     }
 
     const kmlFinal = `${kmlHead}${kmlBody}${kmlLines}</Folder></Document></kml>`;
@@ -1098,6 +1107,29 @@ const largoDeFibra = (vs) => {
   let t = 0;
   for (let i = 0; i < vs.length - 1; i++) t += distMetros(vs[i], vs[i + 1]);
   return t;
+};
+
+// ─── CABLE DE ACERO ──────────────────────────────────────────────────────────
+// Espejo de src/utils/cablesAcero.js, duplicado a propósito por lo mismo que lo de
+// arriba. Se liquida la distancia entre sus dos postes + 1 m, al metro superior (al
+// centímetro antes de subir, para que la coma flotante no sume un metro).
+const metrosCableAcero = (a, b) => Math.ceil(Math.round((distMetros(a, b) + 1) * 100) / 100);
+
+// Los metros de cada cable van en el poste que va DESPUÉS de sus dos en el orden
+// dado, así cuenta una sola vez aunque sus postes caigan en volúmenes distintos.
+// Un cable con un poste fuera de la lista no entra. { puntoId: { ferrId: metros } }
+const metrosAceroPorPoste = (cables, puntosEnOrden) => {
+  const posicion = new Map(puntosEnOrden.map((p, i) => [String(p.id), i]));
+  const porId = new Map(puntosEnOrden.map(p => [String(p.id), p]));
+  const resultado = {};
+  (cables || []).forEach(c => {
+    const [a, b] = (c.puntos || []).map(id => porId.get(String(id)));
+    if (!c.ferrId || a?.coords?.lat == null || b?.coords?.lat == null) return;
+    const destino = String(posicion.get(String(a.id)) > posicion.get(String(b.id)) ? a.id : b.id);
+    const t = resultado[destino] || (resultado[destino] = {});
+    t[c.ferrId] = (t[c.ferrId] || 0) + metrosCableAcero(a.coords, b.coords);
+  });
+  return resultado;
 };
 
 // Croquis esquemático de un ramal: su recorrido y sus postes en negro, el resto
@@ -1381,10 +1413,12 @@ const asignarRamales = (puntos, conexiones) => {
   return { deQuien, fibras };
 };
 
-const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig = [], conexiones = [], porRamal = false) => {
+const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig = [], conexiones = [], porRamal = false, cablesAcero = []) => {
   // Ramal de cada poste, calculado al vuelo: refleja el trazado tal como está hoy.
   const { deQuien: ramalDe, fibras: fibrasProy } = asignarRamales(puntosProyecto, conexiones);
   const nombreRamal = (p) => (fibrasProy.find(f => f.id === ramalDe[p.id]) || {}).nombre || '';
+  // Metros de cable de acero por poste, en el mismo orden con que se arman los volúmenes
+  const aceroPorPoste = metrosAceroPorPoste(cablesAcero, ordenarPorPosicion(puntosProyecto));
   const VOLUMENES = [];
   let volumenActual = 1;
   let puntosBuffer = [];
@@ -1527,6 +1561,7 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
 
       // Totales de todo el proyecto
       const totFerrP = {};
+      const totAceroP = {};
       const totArmP = {};
       let nMediosP = 0, nBT = 0, nMT = 0, nOtros = 0;
       for (const p of listaPuntos) {
@@ -1537,6 +1572,7 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
         }
         const cons = getConsolidado(p.datos || {});
         Object.entries(cons).forEach(([id, c]) => { if (c) totFerrP[id] = (totFerrP[id] || 0) + c; });
+        Object.entries(aceroPorPoste[String(p.id)] || {}).forEach(([id, m]) => { totAceroP[id] = (totAceroP[id] || 0) + m; });
         const aId = p.datos && p.datos.armadoSeleccionadoId;
         if (aId) {
           const nom = (armadosConfig.find(a => a.id === aId) || {}).nombre || aId;
@@ -1605,10 +1641,16 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
 
       const finFerr = tabla(filaTablas, 4, 2, "FERRETERÍA UTILIZADA", "FF1F4E78", paresF, "TOTAL DE PIEZAS");
       const finArm = tabla(filaTablas, 7, 2, "ARMADOS UTILIZADOS", "FFB45309", paresA, "TOTAL DE ARMADOS");
+      // El cable de acero es ferretería pero va en metros: su propia tabla, debajo,
+      // para no sumarse al total de piezas
+      const paresAcero = Object.entries(totAceroP).map(([id, m]) => [nomF(id), m]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      const finAcero = paresAcero.length
+        ? tabla(finFerr + 1, 4, 2, "CABLE DE ACERO (METROS)", "FF475569", paresAcero, "TOTAL DE METROS")
+        : finFerr;
 
       // ── Sección 2: fibra óptica ────────────────────────────────────────────
       // Primero el consolidado por capacidad y debajo el detalle ramal por ramal.
-      let fr = Math.max(finPostes + 1, finFerr, finArm) + 2;
+      let fr = Math.max(finPostes + 1, finAcero, finArm) + 2;
       fr = banda(fr, "FIBRA ÓPTICA");
 
       const porCap = {};
@@ -3018,6 +3060,15 @@ exports.procesarExportacion = onDocumentCreated(
         console.log(`Conexiones cargadas: ${conexiones.length} proyectoId=${proyectoId}`);
       }
 
+      // Cables de acero: el KMZ los dibuja y el EXCEL suma sus metros en el RESUMEN.
+      // Sin try: si fallara, el reporte saldría con los metros cortos sin avisar.
+      let cablesAcero = [];
+      if (tipo === 'KMZ' || tipo === 'EXCEL') {
+        const aceroSnap = await db.collection('cablesAcero').where('proyectoId', '==', String(proyectoId)).get();
+        cablesAcero = aceroSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log(`Cables de acero cargados: ${cablesAcero.length}`);
+      }
+
       // Cargar logo
       let logoBuffer = null;
       if (proy.logoEmpresa) {
@@ -3027,10 +3078,11 @@ exports.procesarExportacion = onDocumentCreated(
         } catch (e) { console.error('Logo no cargado:', e.message); }
       }
 
-      // Cargar catálogo de ferretería y armados (para Excel)
+      // Cargar catálogo de ferretería y armados. El Excel lo usa para las columnas y el
+      // KMZ para nombrar los cables de acero.
       let ferreteriasVisibles = [];
       let armadosConfig = [];
-      if (tipo === 'EXCEL') {
+      if (tipo === 'EXCEL' || tipo === 'KMZ') {
         const configSnap = await db.collection('configuraciones').doc(userId).get();
         if (configSnap.exists) {
           ferreteriasVisibles = configSnap.data().catalogoFerreteria || [];
@@ -3044,7 +3096,7 @@ exports.procesarExportacion = onDocumentCreated(
       if (tipo === 'ZIP') {
         volumenes = await generarZIP(proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig);
       } else if (tipo === 'KMZ') {
-        volumenes = await generarKMZ(proy, puntosProyecto, conexiones, puntosProyecto, logoBuffer, limiteFotos, stampConfig);
+        volumenes = await generarKMZ(proy, puntosProyecto, conexiones, puntosProyecto, logoBuffer, limiteFotos, stampConfig, cablesAcero, ferreteriasVisibles);
       } else if (tipo === 'EXCEL') {
         if (stampConfig.reporte === 'postesPropios') {
           volumenes = await generarReportePostesPropios(proy, puntosProyecto, logoBuffer, stampConfig);
@@ -3059,7 +3111,7 @@ exports.procesarExportacion = onDocumentCreated(
         } else {
           // El reporte de tendido es el mismo generador: misma hoja DATOS, pero con
           // una hoja por ramal en vez de una por poste.
-          volumenes = await generarExcel(proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig, conexiones, stampConfig.reporte === 'tendidoRamales');
+          volumenes = await generarExcel(proy, puntosProyecto, logoBuffer, limiteFotos, stampConfig, ferreteriasVisibles, armadosConfig, conexiones, stampConfig.reporte === 'tendidoRamales', cablesAcero);
         }
       } else {
         throw new Error(`Tipo no soportado: ${tipo}`);

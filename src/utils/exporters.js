@@ -2,6 +2,8 @@ import { Zip, ZipPassThrough } from 'fflate';
 import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
 import { urlABase64, estamparMetadatos, perteneceAProyecto } from './helpers';
+import { cargarCablesAceroProyecto } from './cargarPuntosExport';
+import { postesDeCable, metrosCableAcero } from './cablesAcero';
 
 // Orden de exportación: respeta la posición ajustada con la herramienta ORDENAR
 // (datos.ordenTendido); sin posición asignada, cae al final por id.
@@ -372,7 +374,7 @@ export const descargarFotosZip = async (proy, puntos, logoApp, signal, maxPhotos
 
 
 // --- EXPORTAR KMZ (PAGINADO + ATÓMICO) ---
-export const handleExportKML = async (proy, puntos, conexiones, logoApp, setExportData, signal, maxPhotosPerVol = 700, stampConfig = {}) => {
+export const handleExportKML = async (proy, puntos, conexiones, logoApp, setExportData, signal, maxPhotosPerVol = 700, stampConfig = {}, catalogo = []) => {
   if (!proy) return [];
   if (setExportData) setExportData(null);
   checkSignal(signal);
@@ -384,6 +386,8 @@ export const handleExportKML = async (proy, puntos, conexiones, logoApp, setExpo
 
   const puntosProyecto = ordenarPorPosicion(puntos.filter(p => perteneceAProyecto(p, proy)));
   const conexionesProyecto = conexiones.filter(c => perteneceAProyecto(c, proy));
+  // Cables de acero: van en su propia carpeta, poste a poste, con tipo y metros
+  const cablesAcero = await cargarCablesAceroProyecto(proy);
 
   // Colores por capacidad de fibra (hex → KML AABBGGRR)
   // Escapa texto que va dentro de una etiqueta XML/KML. El nombre del ramal lo
@@ -644,6 +648,17 @@ ${estilosLineas}
           : (cap ? `${cap} hilos` : 'Línea de fibra');
         kmlLines += `<Placemark><name>${nombre}</name><styleUrl>#${styleId}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords.join(' ')}</coordinates></LineString></Placemark>`;
       });
+      // Cables de acero en su carpeta: gris acero, con el tipo y los metros a liquidar
+      const porIdPunto = new Map(puntos.map(p => [String(p.id), p]));
+      const lineasAcero = cablesAcero.map(c => {
+        const postes = postesDeCable(c, porIdPunto);
+        if (!postes) return '';
+        const [a, b] = postes;
+        const tipo = escXml(catalogo.find(f => f.id === c.ferrId)?.nombre || 'Cable de acero');
+        const coords = [a, b].map(p => `${p.coords.lng.toFixed(6)},${p.coords.lat.toFixed(6)},0`).join(' ');
+        return `<Placemark><name>${tipo} · ${metrosCableAcero(a.coords, b.coords)} m</name><Style><LineStyle><color>ffb8a394</color><width>2</width></LineStyle></Style><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+      }).join('');
+      if (lineasAcero) kmlLines += `</Folder><Folder><name>Cables de acero</name>${lineasAcero}`;
     }
 
     const kmlFinal = `${kmlHead}${kmlBody}${kmlLines}</Folder></Document></kml>`;

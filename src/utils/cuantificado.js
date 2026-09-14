@@ -2,9 +2,11 @@
 // Ordena los puntos por ITEM (prefijo de texto sin espacios + número ascendente),
 // y para cada punto reparte su consolidado de ferretería en las columnas de la
 // plantilla por similitud (con prioridad a números). Lo que no matchea va al final.
+// El cable de acero entra en metros, en la fila del segundo de sus dos postes.
 import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
-import { cargarPuntosProyecto } from './cargarPuntosExport';
+import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
+import { metrosAceroPorPoste } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/CUANTIFICADO_MATERIALES.xlsx';
 const SHEET = 'cuantificado';
@@ -108,8 +110,11 @@ export async function descargarCuantificado(proyecto, puntos, config) {
   // 3. Armar datos por punto (item + consolidado con nombres del catálogo)
   const catalogo = config?.catalogoFerreteria || [];
   const porId = new Map(catalogo.map(f => [f.id, f]));
-  const ptsProy = await cargarPuntosProyecto(proyecto, puntos);
-  const data = ptsProy.map(p => {
+  const [ptsProy, cablesAcero] = await Promise.all([
+    cargarPuntosProyecto(proyecto, puntos),
+    cargarCablesAceroProyecto(proyecto),
+  ]);
+  const filas = ptsProy.map(p => {
     const d = p.datos || {};
     // Solo ferreterías que existen en el catálogo (igual que la vista por punto;
     // se descartan IDs huérfanos de ferreterías borradas/renombradas).
@@ -129,16 +134,29 @@ export async function descargarCuantificado(proyecto, puntos, config) {
       tipo,
       consolidado,
     };
-  }).filter(p => p.item || p.consolidado.length);
+  });
 
   // Orden por POSICIÓN (ordenTendido); fallback al orden de creación (id)
-  data.sort((a, b) => {
+  filas.sort((a, b) => {
     const oa = a.orden, ob = b.orden;
     if (oa != null && ob != null) return oa - ob;
     if (oa != null) return -1;
     if (ob != null) return 1;
     return (parseInt(a.id) || 0) - (parseInt(b.id) || 0);
   });
+
+  // Cable de acero: sus metros van en la fila del poste que va DESPUÉS en este orden,
+  // así cada cable cuenta una vez, igual que la distancia al poste anterior.
+  const acero = metrosAceroPorPoste(cablesAcero, filas);
+  filas.forEach(fila => {
+    Object.entries(acero[String(fila.id)] || {}).forEach(([id, metros]) => {
+      if (!porId.has(id)) return;
+      const nombre = porId.get(id).nombre;
+      const ya = fila.consolidado.find(m => m.nombre === nombre);
+      if (ya) ya.cant += metros; else fila.consolidado.push({ nombre, cant: metros });
+    });
+  });
+  const data = filas.filter(p => p.item || p.consolidado.length);
 
   // 4. Si hay más puntos que filas, insertar filas (duplicando el formato de la última)
   const sobran = data.length - (ULTIMA_FILA_DATOS - PRIMER_FILA_DATOS + 1);

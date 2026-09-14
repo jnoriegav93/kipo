@@ -10,7 +10,7 @@ import { saveAs } from 'file-saver';
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { cargarPuntosProyecto } from './cargarPuntosExport';
+import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
 import { metrosPorItem } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/LIQUIDACION_DE_MATERIALES.xlsx';
@@ -60,18 +60,8 @@ export async function descargarLiquidacion(proyecto, puntos, config) {
   ptsProy.forEach(p => {
     Object.entries(getConsolidado(p.datos || {})).forEach(([id, c]) => { if (c) consolidado[id] = (consolidado[id] || 0) + c; });
   });
-  // Cables de acero: se liquidan por metro, medidos con los postes donde están hoy.
-  // Si la lectura falla la liquidación saldría corta sin que nadie lo note, así que el
-  // error sube. La excepción es "sin permiso": las reglas de cablesAcero todavía no
-  // están desplegadas, y entonces tampoco puede haber ningún cable guardado.
-  let cablesAcero = [];
-  try {
-    const snapAcero = await getDocs(query(collection(db, 'cablesAcero'), where('proyectoId', '==', String(proyecto.id))));
-    cablesAcero = snapAcero.docs.map(d => d.data());
-  } catch (e) {
-    if (e?.code !== 'permission-denied') throw e;
-    console.warn('Liquidación: sin permiso para leer cablesAcero (¿reglas sin desplegar?)', e);
-  }
+  // Cables de acero: se liquidan por metro, medidos con los postes donde están hoy
+  const cablesAcero = await cargarCablesAceroProyecto(proyecto);
   const metrosAcero = metrosPorItem(cablesAcero, [...ptsProy, ...(puntos || [])]);
   Object.entries(metrosAcero).forEach(([id, m]) => { consolidado[id] = (consolidado[id] || 0) + m; });
 

@@ -2,8 +2,9 @@
 // ordenado por posición (ordenTendido). Incluye TODOS los postes.
 import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
-import { cargarPuntosProyecto } from './cargarPuntosExport';
+import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
 import { equiposDePunto } from './equiposPasivos';
+import { esPorMetro, metrosAceroPorPoste } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/LISTADO_DE_POSTES_UTILIZADOS.xlsx';
 const PRIMER_FILA = 10;
@@ -42,10 +43,12 @@ const getConsolidado = (datos) => {
   return t;
 };
 
-// "1 CABLE PRECO 150, 1 CIERRE…" — consolidado como texto, en orden del catálogo
-const elementosTexto = (datos, catalogo) => {
+// "1 CABLE PRECO 150, 31 m CABLE MENSAJERO 3/16…" — consolidado como texto, en orden del
+// catálogo. Lo que se tiende por metro (cable de acero) llega aparte y va con sus metros.
+const elementosTexto = (datos, catalogo, acero = {}) => {
   const cons = getConsolidado(datos);
-  return catalogo.filter(f => (cons[f.id] || 0) > 0).map(f => `${cons[f.id]} ${f.nombre}`).join(', ');
+  Object.entries(acero).forEach(([id, m]) => { cons[id] = (cons[id] || 0) + m; });
+  return catalogo.filter(f => (cons[f.id] || 0) > 0).map(f => `${cons[f.id]}${esPorMetro(f) ? ' m' : ''} ${f.nombre}`).join(', ');
 };
 
 export async function descargarListadoUtilizados(proyecto, puntos, config) {
@@ -58,13 +61,18 @@ export async function descargarListadoUtilizados(proyecto, puntos, config) {
   const catalogo = config?.catalogoFerreteria || [];
 
   // Todos los postes del proyecto, ordenados por posición
-  const postes = await cargarPuntosProyecto(proyecto, puntos);
+  const [postes, cablesAcero] = await Promise.all([
+    cargarPuntosProyecto(proyecto, puntos),
+    cargarCablesAceroProyecto(proyecto),
+  ]);
   postes.sort((a, b) => {
     const oa = a.datos?.ordenTendido, ob = b.datos?.ordenTendido;
     if (oa != null && ob != null) return oa - ob;
     if (oa != null) return -1; if (ob != null) return 1;
     return (parseInt(a.id) || 0) - (parseInt(b.id) || 0);
   });
+  // Cada cable de acero se anota en el poste que va después de sus dos
+  const aceroPorPoste = metrosAceroPorPoste(cablesAcero, postes);
 
   // Cabecera
   const primer = postes[0]?.datos || {};
@@ -103,7 +111,7 @@ export async function descargarListadoUtilizados(proyecto, puntos, config) {
       .map(e => [e.pasivo, e.codigoSerie].map(v => String(v || '').trim()).filter(Boolean).join('-'))
       .filter(Boolean).join(' / ');
     // L N° DE APOYOS A INSTALAR — en blanco
-    R.getCell(13).value = elementosTexto(d, catalogo);                                        // M ELEMENTOS A COLOCAR
+    R.getCell(13).value = elementosTexto(d, catalogo, aceroPorPoste[String(p.id)]);           // M ELEMENTOS A COLOCAR
     R.getCell(14).value = d.observaciones || '';                                              // N OBSERV.
   });
 
