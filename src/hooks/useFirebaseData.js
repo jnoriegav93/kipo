@@ -10,6 +10,7 @@ export const useFirebaseData = (user) => {
   const [puntosCompartidos, setPuntosCompartidos] = useState([]);
   const [puntosDeProyectosProxios, setPuntosDeProyectosProxios] = useState([]);
   const [conexiones, setConexiones] = useState([]);
+  const [cablesAcero, setCablesAcero] = useState([]);
   const [config, setConfig] = useState(null);
 
   // 2. EFECTO (La lógica de conexión que me pasaste)
@@ -19,11 +20,12 @@ export const useFirebaseData = (user) => {
       setProyectosSupervisados([]);
       setPuntos([]);
       setConexiones([]);
+      setCablesAcero([]);
       setConfig(null);
       return;
     }
 
-    let unsubProyectos, unsubSupervisados, unsubPuntos, unsubConexiones, unsubConfig;
+    let unsubProyectos, unsubSupervisados, unsubPuntos, unsubConexiones, unsubCablesAcero, unsubConfig;
     let cancelado = false;
 
     // Esperar a que el token esté validado por Firestore antes de abrir listeners
@@ -68,6 +70,13 @@ export const useFirebaseData = (user) => {
         setConexiones(docs);
       }, (error) => console.error("Error en Conexiones:", error));
 
+      // C2. ESCUCHAR CABLES DE ACERO (otra capa: no son fibra, se liquidan por metro)
+      const qCablesAcero = query(collection(db, "cablesAcero"), where("ownerId", "==", user.uid));
+      unsubCablesAcero = onSnapshot(qCablesAcero, (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        setCablesAcero(docs);
+      }, (error) => console.error("Error en Cables de acero:", error));
+
       // D. ESCUCHAR CONFIGURACIÓN
       const configRef = doc(db, "configuraciones", user.uid);
       unsubConfig = onSnapshot(configRef, (docSnap) => {
@@ -81,6 +90,7 @@ export const useFirebaseData = (user) => {
       unsubSupervisados?.();
       unsubPuntos?.();
       unsubConexiones?.();
+      unsubCablesAcero?.();
       unsubConfig?.();
     };
   }, [user]);
@@ -131,6 +141,7 @@ export const useFirebaseData = (user) => {
     puntosCompartidos,
     puntosDeProyectosProxios,
     conexiones, setConexiones,
+    cablesAcero, setCablesAcero,
     config, setConfig
   };
 };

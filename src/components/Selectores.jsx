@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 import { VINCULOS_FERRETERIA } from '../data/constantes';
+import { esPorMetro } from '../utils/cablesAcero';
 
 // Subcomponentes auxiliares
 const chunkArray = (arr, size) => {
@@ -65,7 +66,10 @@ export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols,
 
 // --- COMPONENTE DE LISTA CON CONTADORES ---
 export const ListaContadores = ({ config, datos, setDatos, theme, disabled, armadoSeleccionado, subirConValor }) => {
-  const itemsVisibles = config.catalogoFerreteria.filter(f => f.visible !== false);
+  // Lo que se tiende por metro (cable de acero) se liquida desde el mapa, no por poste.
+  // Solo aparece si el punto trae una cantidad de antes, para poder quitarla.
+  const itemsVisibles = config.catalogoFerreteria.filter(f =>
+    f.visible !== false && (!esPorMetro(f) || (datos[f.id] || 0) > 0));
 
   // Determinar tipo de cada ítem según el armado seleccionado
   const getTipo = (ferrId) => {
@@ -133,6 +137,7 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
               <div className={`font-bold text-sm leading-tight ${theme.text} flex items-center gap-1.5`}>
                 {item.nombre}
                 {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">sugerida</span>}
+                {esPorMetro(item) && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 shrink-0">por metro</span>}
               </div>
             </div>
             <div className="flex items-center gap-2 bg-slate-900/5 rounded-lg p-1">

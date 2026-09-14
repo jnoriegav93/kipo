@@ -1,10 +1,10 @@
 import React from 'react';
-import { ArrowLeft, Trash2, RotateCcw, MapPin, Cable, Image as ImageIcon, Folder, ClipboardList, Loader2, Download, X } from 'lucide-react';
-import { suscribirsePapelera, suscribirsePapeleraProyecto, diasRestantes, restaurarPunto, restaurarFibra, restaurarFoto, restaurarLista, restaurarProyecto, contarFotos } from '../utils/papelera';
+import { ArrowLeft, Trash2, RotateCcw, MapPin, Cable, Link2, Image as ImageIcon, Folder, ClipboardList, Loader2, Download, X } from 'lucide-react';
+import { suscribirsePapelera, suscribirsePapeleraProyecto, diasRestantes, restaurarPunto, restaurarFibra, restaurarCableAcero, restaurarFoto, restaurarLista, restaurarProyecto, contarFotos } from '../utils/papelera';
 
-const ICONO = { punto: MapPin, fibra: Cable, foto: ImageIcon, proyecto: Folder, lista: ClipboardList };
-const NOMBRE_TIPO = { punto: 'Puntos', fibra: 'Fibras', foto: 'Fotos', proyecto: 'Proyectos', lista: 'Listas' };
-const ORDEN = ['proyecto', 'punto', 'fibra', 'foto', 'lista'];
+const ICONO = { punto: MapPin, fibra: Cable, acero: Link2, foto: ImageIcon, proyecto: Folder, lista: ClipboardList };
+const NOMBRE_TIPO = { punto: 'Puntos', fibra: 'Fibras', acero: 'Cables de acero', foto: 'Fotos', proyecto: 'Proyectos', lista: 'Listas' };
+const ORDEN = ['proyecto', 'punto', 'fibra', 'acero', 'foto', 'lista'];
 
 const srcDeFoto = (f) => {
   if (!f) return null;
@@ -74,6 +74,12 @@ export default function VistaPapelera({ theme, isDark, onVolver, user, puntos, p
         if (!r.ok) {
           const det = (r.faltantes || []).map(f => `• ${f.id} (${f.motivo === 'movido' ? 'se movió de lugar' : 'no existe'})`).join('\n');
           setAlertData?.({ title: 'No se puede restaurar la fibra', message: `La fibra solo se restaura si TODOS sus puntos existen en su ubicación original.\n\n${det}\n\nRestaura esos puntos primero.`, theme });
+        }
+      } else if (it.tipo === 'acero') {
+        const r = await restaurarCableAcero(it, puntos || []);
+        if (!r.ok) {
+          const det = (r.faltantes || []).map(f => `• ${f.id}`).join('\n');
+          setAlertData?.({ title: 'No se puede restaurar el cable', message: `El cable de acero solo vuelve si sus dos postes existen.\n\n${det}\n\nRestaura esos postes primero.`, theme });
         }
       } else if (it.tipo === 'foto') {
         const r = await restaurarFoto(it);

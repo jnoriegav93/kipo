@@ -39,7 +39,17 @@ export const contarFotos = (datos) => {
 export const DIAS_PAPELERA = 15;
 const MS_PAPELERA = DIAS_PAPELERA * 24 * 60 * 60 * 1000;
 
-// Envía un elemento a la papelera. tipo: 'punto' | 'fibra' | 'foto' | 'proyecto' | 'lista'.
+// Cable de acero a la papelera. El snapshot va sin id: al restaurar manda idOriginal.
+export const enviarCableAceroAPapelera = ({ uid, cable, proyectoNombre = '', nombre = 'Cable de acero', meta = {} }) => {
+  const { id, ...snapshot } = cable;
+  return enviarAPapelera({
+    uid, tipo: 'acero', snapshot: JSON.parse(JSON.stringify(snapshot)),
+    coleccionOriginal: 'cablesAcero', idOriginal: id,
+    proyectoId: cable.proyectoId || null, proyectoNombre, nombre, meta,
+  });
+};
+
+// Envía un elemento a la papelera. tipo: 'punto' | 'fibra' | 'acero' | 'foto' | 'proyecto' | 'lista'.
 // snapshot = datos completos para restaurar. meta = extra (ej. fibra: puntos+coords).
 export const enviarAPapelera = async ({ uid, tipo, snapshot, coleccionOriginal, idOriginal, proyectoId = null, proyectoNombre = '', nombre = '', storagePaths = [], meta = {} }) => {
   const ahora = Date.now();
@@ -95,6 +105,18 @@ export const restaurarFibra = async (entrada, puntosActuales) => {
   }
   if (faltantes.length) return { ok: false, faltantes };
   await setDoc(doc(db, entrada.coleccionOriginal || 'conexiones', String(entrada.idOriginal)), entrada.snapshot || {});
+  await quitarDePapelera(entrada.id);
+  return { ok: true };
+};
+
+// Cable de acero: vuelve si sus dos postes existen. No hace falta que sigan en el
+// mismo sitio: el cable no guarda geometría, se mide siempre desde sus postes.
+export const restaurarCableAcero = async (entrada, puntosActuales) => {
+  const faltantes = (entrada.snapshot?.puntos || []).map(String)
+    .filter(id => !(puntosActuales || []).some(p => String(p.id) === id))
+    .map(id => ({ id, motivo: 'no existe' }));
+  if (faltantes.length) return { ok: false, faltantes };
+  await setDoc(doc(db, entrada.coleccionOriginal || 'cablesAcero', String(entrada.idOriginal)), entrada.snapshot || {});
   await quitarDePapelera(entrada.id);
   return { ok: true };
 };

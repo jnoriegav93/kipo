@@ -74,7 +74,8 @@ export default function BarraFibra({
   fibrasVisibles,
   setFibrasVisibles,
   totalFibras,
-  onCerrar
+  onCerrar,
+  selector = null   // FIBRA | ACERO, arriba de la barra
 }) {
   // Edición del ramal elegido en la lista. Los cambios quedan PENDIENTES hasta
   // confirmarlos: así se puede ver el color nuevo en el mapa antes de decidir.
@@ -211,8 +212,10 @@ export default function BarraFibra({
 
   return (
     <div className="relative shrink-0 flex flex-col items-center justify-center w-full pointer-events-none" ref={refBarra}>
+      {selector}
+
       {/* Barra principal flotante */}
-      <div className={`pointer-events-auto mt-2 rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 px-2 py-1.5 flex items-center gap-1.5 shadow-xl backdrop-blur-sm`}>
+      <div className={`pointer-events-auto ${selector ? 'mt-1.5' : 'mt-2'} rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 px-2 py-1.5 flex items-center gap-1.5 shadow-xl backdrop-blur-sm`}>
 
         {/* ATRÁS — quita el último vértice puesto. Sin esto, un toque mal dado
             obligaba a guardar el ramal y borrarlo, porque ya no existe el lápiz

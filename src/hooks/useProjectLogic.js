@@ -298,12 +298,13 @@ const solicitarBorrarProyecto = (proyId) => {
           const snapPuntos = await getDocs(qPuntos);
           const qCables = query(collection(db, "conexiones"), where("proyectoId", "==", proyId));
           const snapCables = await getDocs(qCables);
+          const snapAcero = await getDocs(query(collection(db, "cablesAcero"), where("proyectoId", "==", String(proyId))));
 
           // 2. Snapshot a la papelera: cada hijo agrupado (meta.grupo) + el proyecto.
           //    Restaurar el proyecto restaura también todos sus hijos agrupados.
           //    Los archivos de Storage NO se tocan (los borra la purga al vencer).
           try {
-            const { enviarAPapelera, extraerStoragePaths, contarFotos } = await import('../utils/papelera');
+            const { enviarAPapelera, enviarCableAceroAPapelera, extraerStoragePaths, contarFotos } = await import('../utils/papelera');
             const grupo = String(proyId);
             let totalFotos = 0;
             for (const dp of snapPuntos.docs) {
@@ -332,13 +333,21 @@ const solicitarBorrarProyecto = (proyId) => {
                 meta: { grupo, puntos: [] }, // hija de proyecto: vuelve con el proyecto completo
               });
             }
+            for (const da of snapAcero.docs) {
+              await enviarCableAceroAPapelera({
+                uid: user.uid, cable: { id: da.id, ...da.data() },
+                proyectoNombre: proyecto?.nombre || '',
+                nombre: `Cable de acero (de ${proyecto?.nombre || 'proyecto'})`,
+                meta: { grupo }, // hijo de proyecto: vuelve con el proyecto completo
+              });
+            }
             await enviarAPapelera({
               uid: user.uid, tipo: 'proyecto',
               snapshot: proyecto ? JSON.parse(JSON.stringify(proyecto)) : { id: proyId },
               coleccionOriginal: 'proyectos', idOriginal: proyId,
               proyectoId: proyId,
               nombre: proyecto?.nombre || String(proyId),
-              meta: { hijos: snapPuntos.size + snapCables.size, puntos: snapPuntos.size, fibras: snapCables.size, fotos: totalFotos },
+              meta: { hijos: snapPuntos.size + snapCables.size + snapAcero.size, puntos: snapPuntos.size, fibras: snapCables.size, aceros: snapAcero.size, fotos: totalFotos },
             });
           } catch (e) { console.error('Papelera proyecto:', e); }
 
@@ -347,6 +356,7 @@ const solicitarBorrarProyecto = (proyId) => {
           batch.delete(doc(db, "proyectos", proyId));
           snapPuntos.forEach((docPunto) => batch.delete(docPunto.ref));
           snapCables.forEach((docCable) => batch.delete(docCable.ref));
+          snapAcero.forEach((docAcero) => batch.delete(docAcero.ref));
           await batch.commit();
           console.log("Proyecto enviado a papelera y eliminado de la nube.");
 

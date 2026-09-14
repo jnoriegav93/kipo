@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X, RotateCcw, Check } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X, RotateCcw, Check, Ruler } from 'lucide-react';
 import { Modal, ThemedInput } from './UI';
-import { DATA_INICIAL, FERRETERIA_BASE_DEFAULT, VINCULOS_FERRETERIA } from '../data/constantes';
+import { DATA_INICIAL, FERRETERIA_BASE_DEFAULT, VINCULOS_FERRETERIA, itemDesdeBase } from '../data/constantes';
+import { esPorMetro } from '../utils/cablesAcero';
 import { useFerreteriaBase } from '../hooks/useFerreteriaBase';
 import EditorArmadoItems from './EditorArmadoItems';
 import { construirItems } from '../utils/armados';
@@ -24,7 +25,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
     const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
     const creadasPropias = config.catalogoFerreteria.filter(f => String(f.id).startsWith('f_'));
     const ejecutar = () => {
-      const nueva = base.map(b => ({ id: b.id, nombre: b.nombre, unidad: 'und', visible: true, codigo: b.codigo || '', detalle: b.detalle || '' }));
+      const nueva = base.map(itemDesdeBase);
       saveConfig({ ...config, catalogoFerreteria: nueva });
       setAlertData?.({ title: 'Lista base cargada', message: `Se cargaron ${nueva.length} ferreterías de la base.`, theme });
     };
@@ -45,7 +46,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
   const agregarDesdeBase = (b) => {
     const yaEsta = config.catalogoFerreteria.some(f => f.id === b.id || (f.nombre || '').toLowerCase() === (b.nombre || '').toLowerCase());
     if (yaEsta) return;
-    const nuevo = { id: b.id, nombre: b.nombre, unidad: 'und', visible: true, codigo: b.codigo || '', detalle: b.detalle || '' };
+    const nuevo = itemDesdeBase(b);
     saveConfig({ ...config, catalogoFerreteria: [nuevo, ...config.catalogoFerreteria] });
     setModalOpen(null);
     setTempData({ ...tempData, nombre: '' });
@@ -490,9 +491,26 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
                       <div className="flex items-center gap-2 overflow-hidden">
                         <span className={`font-bold text-sm ${theme.text} truncate`}>{f.nombre}</span>
+                        {esPorMetro(f) && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-800 text-white shrink-0">por metro</span>}
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
+                        {/* POR METRO: se tiende como cable de acero en el mapa y se liquida por
+                            metro; deja de ofrecerse como ferretería de cada poste */}
+                        <button
+                          onClick={() => {
+                            const nuevos = config.catalogoFerreteria.map(item => {
+                              if (item.id !== f.id) return item;
+                              const { porMetro: _porMetro, ...resto } = item;
+                              return esPorMetro(item) ? { ...resto, unidad: 'und' } : { ...resto, porMetro: true, unidad: 'mts' };
+                            });
+                            saveConfig({ ...config, catalogoFerreteria: nuevos });
+                          }}
+                          title={esPorMetro(f) ? 'Se liquida por metro, como cable de acero. Tocar para contarlo por poste' : 'Se cuenta por poste. Tocar para liquidarlo por metro, como cable de acero'}
+                          className={`w-9 h-9 flex items-center justify-center rounded-lg border-2 ${esPorMetro(f) ? 'bg-slate-900 text-white border-black shadow-md' : `${theme.bg} ${theme.text} border-slate-300 opacity-30 hover:opacity-100`}`}
+                        >
+                          <Ruler size={16} strokeWidth={2.5} />
+                        </button>
                         <DeleteButton
                            onClick={() => borrarFerreteria(f.id)}
                            className="w-9 h-9 flex items-center justify-center rounded-lg border-2 bg-red-600 border-red-800 text-white hover:bg-red-700 active:scale-90 transition-all"

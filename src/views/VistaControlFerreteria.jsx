@@ -7,6 +7,8 @@ import {
   collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, query, where
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
+import { metrosPorItem } from '../utils/cablesAcero';
 
 // ─── Consolidado de ferretería de los puntos de un proyecto ──────────────────
 const consolidarFerreteria = (puntosProyecto) => {
@@ -144,10 +146,14 @@ export default function VistaControlFerreteria({
   const proyectosConLista = new Set((listas || []).filter(l => l.proyectoId).map(l => l.proyectoId));
   const proyectosDisponibles = proyectos.filter(p => !proyectosConLista.has(p.id) || p.id === listaActual?.proyectoId);
 
+  // Consolidado del proyecto vinculado: lo contado por poste más los metros de cable de acero
+  const cablesAceroProyecto = useCablesAceroProyecto(listaActual?.proyectoId);
   const consolidado = useMemo(() => {
     if (!listaActual?.proyectoId) return {};
-    return consolidarFerreteria(puntos.filter(p => p.proyectoId === listaActual.proyectoId));
-  }, [listaActual, puntos]);
+    const t = consolidarFerreteria(puntos.filter(p => p.proyectoId === listaActual.proyectoId));
+    Object.entries(metrosPorItem(cablesAceroProyecto, puntos)).forEach(([id, m]) => { t[id] = (t[id] || 0) + m; });
+    return t;
+  }, [listaActual, puntos, cablesAceroProyecto]);
 
   const recibido = listaActual?.recibido || {};
 

@@ -919,6 +919,15 @@ export default function VistaEquipos({
           });
         });
         await Promise.all(conexOps);
+
+        // d. Copiar cables de acero, también con sus postes remapeados
+        const aceroSnap = await getDocs(query(collection(db, 'cablesAcero'), where('proyectoId', '==', _oldProyId)));
+        await Promise.all(aceroSnap.docs.map(ad => setDoc(doc(collection(db, 'cablesAcero')), {
+          ...ad.data(),
+          proyectoId: nuevoProyId,
+          ownerId: equipo.ownerId,
+          puntos: (ad.data().puntos || []).map(pid => mapaIds[pid] || pid),
+        })));
       }
 
       // 2. Quitar acceso de proyectos donde era editor/supervisor
@@ -986,11 +995,12 @@ export default function VistaEquipos({
   // Proyecto no deseado → papelera del MENÚ del creador (mismo mecanismo que borrar de la lista)
   const borrarProyectoAPapelera = async (p) => {
     const proyId = String(p.id);
-    const [snapPuntos, snapCables] = await Promise.all([
+    const [snapPuntos, snapCables, snapAcero] = await Promise.all([
       getDocs(query(collection(db, 'puntos'), where('proyectoId', '==', proyId))),
       getDocs(query(collection(db, 'conexiones'), where('proyectoId', '==', proyId))),
+      getDocs(query(collection(db, 'cablesAcero'), where('proyectoId', '==', proyId))),
     ]);
-    const { enviarAPapelera, extraerStoragePaths, contarFotos } = await import('../utils/papelera');
+    const { enviarAPapelera, enviarCableAceroAPapelera, extraerStoragePaths, contarFotos } = await import('../utils/papelera');
     const grupo = proyId;
     let totalFotos = 0;
     for (const dp of snapPuntos.docs) {
@@ -1017,6 +1027,14 @@ export default function VistaEquipos({
         meta: { grupo, puntos: [] },
       });
     }
+    for (const da of snapAcero.docs) {
+      await enviarCableAceroAPapelera({
+        uid: user.uid, cable: { id: da.id, ...da.data() },
+        proyectoNombre: p.nombre || '',
+        nombre: `Cable de acero (de ${p.nombre || 'proyecto'})`,
+        meta: { grupo },
+      });
+    }
     // Snapshot del proyecto LIMPIO de equipo (si se restaura, vuelve como personal)
     const { grupoId: _g, enListaDe: _e, ...pLimpio } = p;
     await enviarAPapelera({
@@ -1024,12 +1042,13 @@ export default function VistaEquipos({
       snapshot: JSON.parse(JSON.stringify({ ...pLimpio, compartidoCon: [], permisos: {}, supervisoresInfo: {} })),
       coleccionOriginal: 'proyectos', idOriginal: proyId,
       proyectoId: proyId, nombre: p.nombre || proyId,
-      meta: { hijos: snapPuntos.size + snapCables.size, puntos: snapPuntos.size, fibras: snapCables.size, fotos: totalFotos },
+      meta: { hijos: snapPuntos.size + snapCables.size + snapAcero.size, puntos: snapPuntos.size, fibras: snapCables.size, aceros: snapAcero.size, fotos: totalFotos },
     });
     const batch = writeBatch(db);
     batch.delete(doc(db, 'proyectos', proyId));
     snapPuntos.forEach(d => batch.delete(d.ref));
     snapCables.forEach(d => batch.delete(d.ref));
+    snapAcero.forEach(d => batch.delete(d.ref));
     await batch.commit();
   };
 

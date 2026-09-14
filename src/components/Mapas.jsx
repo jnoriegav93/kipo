@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Pane, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPinOff } from 'lucide-react';
@@ -220,6 +220,11 @@ export const MapaReal = ({
   apoyadosAjuste = [],
   simbologiaActiva = false,
   coloresArmado = {},
+  // Cable de acero: otra capa, que se dibuja desde la misma barra que la fibra
+  modoLinea = 'fibra',
+  lineasAcero = [],
+  trazoAcero = [],
+  cableAceroSeleccionado = null,
 }) => {
 
   const [miUbicacion, setMiUbicacion] = useState(null);
@@ -422,6 +427,50 @@ export const MapaReal = ({
     };
   }, [conexionesVisiblesMapa, puntosVisiblesMapa]);
 
+  // Dentro del modo de líneas, la fibra solo se dibuja "en modo" cuando es ella la
+  // que se está trazando; con el acero activo se ve como fuera del modo.
+  const modoAcero = modoFibra && modoLinea === 'acero';
+  const modoFibraLinea = modoFibra && !modoAcero;
+
+  // CABLES DE ACERO: poste a poste, gris acero punteado sobre un contorno oscuro, para
+  // leerse sobre el satélite sin parecerse a ninguna fibra (van de color y sin contorno).
+  const coordPoste = (id) => {
+    const p = puntosVisiblesMapa.find(x => String(x.id) === String(id));
+    return p?.coords?.lat != null ? [p.coords.lat, p.coords.lng] : null;
+  };
+  const tramoAceroEnCurso = modoAcero && trazoAcero.length === 2 ? trazoAcero.map(coordPoste) : null;
+  const capaAcero = (
+    <>
+      {lineasAcero.map(c => {
+        const sel = cableAceroSeleccionado && String(cableAceroSeleccionado.id) === String(c.id);
+        const pos = [[c.a.coords.lat, c.a.coords.lng], [c.b.coords.lat, c.b.coords.lng]];
+        return (
+          <React.Fragment key={`ac-${c.id}`}>
+            <Polyline positions={pos} interactive={false} pathOptions={{ color: '#0f172a', weight: sel ? 9 : 6, opacity: 0.85 }} />
+            <Polyline positions={pos} interactive={false} pathOptions={{ color: sel ? '#fbbf24' : '#e2e8f0', weight: sel ? 5 : 3, dashArray: '4,5' }} />
+          </React.Fragment>
+        );
+      })}
+      {tramoAceroEnCurso && tramoAceroEnCurso.every(Boolean) && (
+        <Polyline positions={tramoAceroEnCurso} interactive={false} pathOptions={{ color: '#fbbf24', weight: 4, dashArray: '10,6', opacity: 0.95 }} />
+      )}
+      {/* Tipo y metros a mitad del vano, solo mientras se trabaja con el acero */}
+      {modoAcero && lineasAcero.map(c => (
+        <Marker
+          key={`acl-${c.id}`}
+          position={[(c.a.coords.lat + c.b.coords.lat) / 2, (c.a.coords.lng + c.b.coords.lng) / 2]}
+          interactive={false}
+          zIndexOffset={400}
+          icon={L.divIcon({
+            className: '',
+            html: `<div style="white-space:nowrap; font-size:10px; font-weight:900; color:#e2e8f0; transform:translate(-50%,-50%); text-shadow:1px 0 0 #000,-1px 0 0 #000,0 1px 0 #000,0 -1px 0 #000,1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;">${escaparHtml(`${c.nombreTipo} · ${c.metros} m`)}</div>`,
+            iconSize: [0, 0], iconAnchor: [0, 0]
+          })}
+        />
+      ))}
+    </>
+  );
+
   return (
     <div className="h-full w-full relative z-0">
       <style>{`
@@ -475,7 +524,7 @@ export const MapaReal = ({
 
         <MapController
           centrarEnCoord={centrarEnCoord}
-          dibujandoFibra={modoFibra && dibujandoFibra}
+          dibujandoFibra={modoFibraLinea && dibujandoFibra}
           gpsTrigger={gpsTrigger}
           miUbicacion={miUbicacion}
           setViewState={setViewState}
@@ -486,6 +535,10 @@ export const MapaReal = ({
         />
 
         {miUbicacion && <Marker position={miUbicacion} icon={userIcon} zIndexOffset={9999} />}
+
+        {/* Cables de acero por DEBAJO de las fibras, salvo mientras se trabaja con ellos:
+            comparten postes y el contorno oscuro taparía el color de la fibra */}
+        <Pane name="acero-bajo" style={{ zIndex: 395 }}>{!modoAcero && capaAcero}</Pane>
 
         {/* Renderizado de conexiones/fibras */}
         {lineasFibra.map(f => {
@@ -504,12 +557,12 @@ export const MapaReal = ({
               // Seleccionada = más gruesa, nunca de otro color: el color ES el dato
               // (la capacidad), y pintarla de rojo tapaba justo lo que se está editando.
               color: colorFibra,
-              weight: isSelCon ? 7 : (modoFibra ? 4 : 3),
-              dashArray: modoFibra ? undefined : '8,8',
-              opacity: isSelCon ? 1 : (modoFibra ? 0.95 : 1.0),
-              ...(modoFibra && (capacidad === 1) ? { className: 'fibra-blanca' } : {})
+              weight: isSelCon ? 7 : (modoFibraLinea ? 4 : 3),
+              dashArray: modoFibraLinea ? undefined : '8,8',
+              opacity: isSelCon ? 1 : (modoFibraLinea ? 0.95 : 1.0),
+              ...(modoFibraLinea && (capacidad === 1) ? { className: 'fibra-blanca' } : {})
             }}
-            eventHandlers={modoFibra && !dibujandoFibra ? {
+            eventHandlers={modoFibraLinea && !dibujandoFibra ? {
               click: (e) => {
                 L.DomEvent.stopPropagation(e);
                 if (handleConexionClick) handleConexionClick({ ...f.datos, id: f.id });
@@ -517,6 +570,8 @@ export const MapaReal = ({
             } : {}}
           />
         })}
+
+        <Pane name="acero-sobre" style={{ zIndex: 405 }}>{modoAcero && capaAcero}</Pane>
 
         {/* Controlador del marcador arrastrable (nativo Leaflet) */}
         <DragMoverController
@@ -539,8 +594,10 @@ export const MapaReal = ({
             ? (coloresArmado[p.datos?.armadoSeleccionadoId] || '#9ca3af')
             : obtenerColorDia(p.diaId);
           const isSelected = !modoMoverPuntos && puntoSeleccionado === p.id;
-          const isInRecorrido = modoFibra && dibujandoFibra &&
-            puntosRecorrido.some(v => v && String(v.puntoId) === String(p.id));
+          // En el trazo en curso: vértice de la fibra, o uno de los dos postes del acero
+          const isInRecorrido = modoFibra && dibujandoFibra && (modoAcero
+            ? trazoAcero.includes(String(p.id))
+            : puntosRecorrido.some(v => v && String(v.puntoId) === String(p.id)));
           const isEnSeleccion = modoMoverPuntos && puntosSeleccionadosMover.includes(p.id);
           // Corrigiendo: TODOS los puntos muestran su posición actual (hace falta para
           // poder elegir el ancla). Los marcados muestran en cambio el orden en que se

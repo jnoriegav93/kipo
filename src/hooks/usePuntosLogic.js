@@ -17,7 +17,7 @@ export const usePuntosLogic = ({
   diaActual, proyectoActual,
   proyectos,
   asegurarDiaHoy,
-  puntos, setPuntos, conexiones, setConexiones,
+  puntos, setPuntos, conexiones, setConexiones, cablesAcero, setCablesAcero,
   setVista,
   setConfirmData, setAlertData,
   agregarTarea, theme,
@@ -47,7 +47,13 @@ export const usePuntosLogic = ({
       const ids = (c.puntos?.length >= 2 ? c.puntos : [c.from, c.to]).filter(Boolean).map(String);
       return ids.includes(idSel);
     });
-    const notaFibras = fibrasDelPunto.length > 0 ? ` (y ${fibrasDelPunto.length} fibra${fibrasDelPunto.length !== 1 ? 's' : ''} conectada${fibrasDelPunto.length !== 1 ? 's' : ''})` : '';
+    // Un cable de acero sin uno de sus dos postes deja de existir: se va con el poste
+    const cablesDelPunto = (cablesAcero || []).filter(c => (c.puntos || []).map(String).includes(idSel));
+    const conectados = [
+      fibrasDelPunto.length > 0 ? `${fibrasDelPunto.length} fibra${fibrasDelPunto.length !== 1 ? 's' : ''} conectada${fibrasDelPunto.length !== 1 ? 's' : ''}` : '',
+      cablesDelPunto.length > 0 ? `${cablesDelPunto.length} cable${cablesDelPunto.length !== 1 ? 's' : ''} de acero` : '',
+    ].filter(Boolean);
+    const notaFibras = conectados.length > 0 ? ` (y ${conectados.join(' y ')})` : '';
     setConfirmData({
       title: '¿Eliminar Poste?',
       message: `Irá a la Papelera por 15 días${notaFibras}. Puedes restaurarlo desde el menú principal.`,
@@ -59,12 +65,14 @@ export const usePuntosLogic = ({
         setConfirmData(null);
         setPuntoSeleccionado(null);
         const idsFibras = new Set(fibrasDelPunto.map(f => String(f.id)));
+        const idsCables = new Set(cablesDelPunto.map(c => String(c.id)));
         setPuntos(prev => prev.filter(p => p.id !== puntoSeleccionado));
         setConexiones(prev => prev.filter(c => !idsFibras.has(String(c.id))));
+        setCablesAcero(prev => prev.filter(c => !idsCables.has(String(c.id))));
 
-        // 1. Snapshot a la papelera (punto + cada fibra completa) ANTES de borrar
+        // 1. Snapshot a la papelera (punto + cada fibra y cable completos) ANTES de borrar
         try {
-          const { enviarAPapelera, extraerStoragePaths } = await import('../utils/papelera');
+          const { enviarAPapelera, enviarCableAceroAPapelera, extraerStoragePaths } = await import('../utils/papelera');
           if (puntoABorrar) {
             await enviarAPapelera({
               uid: user.uid, tipo: 'punto',
@@ -93,11 +101,19 @@ export const usePuntosLogic = ({
               meta: { puntos: metaPuntos },
             });
           }
+          for (const c of cablesDelPunto) {
+            await enviarCableAceroAPapelera({
+              uid: user.uid, cable: c,
+              proyectoNombre: (proyectoDe(c.proyectoId) || proyectoActual)?.nombre || '',
+              nombre: `${(config?.catalogoFerreteria || []).find(f => f.id === c.ferrId)?.nombre || 'Cable de acero'} (con ${identificador || 'el poste'})`,
+            });
+          }
         } catch (e) { console.error('Papelera:', e); }
 
         // 2. Borrar de las colecciones (los archivos de Storage NO se tocan)
         agregarTarea('borrar_punto', { coleccion: 'puntos', idDoc: idSel });
         fibrasDelPunto.forEach(f => agregarTarea('borrar_punto', { coleccion: 'conexiones', idDoc: String(f.id) }));
+        cablesDelPunto.forEach(c => agregarTarea('borrar_punto', { coleccion: 'cablesAcero', idDoc: String(c.id) }));
 
         const chatBorrar = puntoABorrar?.proyectoId || proyectoActual?.id;
         if (chatBorrar) {

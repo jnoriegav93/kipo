@@ -1,7 +1,7 @@
 export const mapInteractions = {
   handleMapaClick(params) {
     const {
-      e, menuAbierto, modoFibra, dibujandoFibra, setPuntosRecorrido, ajustarVertice,
+      e, menuAbierto, modoFibra, dibujandoFibra, modoLinea, setPuntosRecorrido, ajustarVertice,
       puntoSeleccionado, vista, diaActual,
       diasVisibles, proyectos, proyectoActual, theme,
       setPuntoSeleccionado, setPuntoTemporal, setVista, setAlertData,
@@ -11,8 +11,9 @@ export const mapInteractions = {
     if(menuAbierto) return;
     // Dibujando fibra: un toque en el mapa (fuera de cualquier poste) agrega un
     // VÉRTICE LIBRE. La fibra tiene geometría propia, así que no necesita un poste
-    // debajo para doblar.
-    if (modoFibra && dibujandoFibra && e?.latlng) {
+    // debajo para doblar. El cable de acero, en cambio, va de poste a poste: tocar
+    // el mapa vacío no hace nada.
+    if (modoFibra && dibujandoFibra && modoLinea !== 'acero' && e?.latlng) {
       const bruto = { lat: e.latlng.lat, lng: e.latlng.lng };
       setPuntosRecorrido?.(prev => [...prev, ajustarVertice ? ajustarVertice(bruto) : bruto]);
       return;
@@ -64,14 +65,25 @@ export const mapInteractions = {
 
   handlePuntoClick(params) {
     const {
-      e, puntoId, puntoCoords, modoFibra, dibujandoFibra, setPuntosRecorrido,
-      ajustarVertice, setPuntoSeleccionado, setPuntoTemporal
+      e, puntoId, puntoCoords, modoFibra, dibujandoFibra, modoLinea, setPuntosRecorrido,
+      setTrazoAcero, ajustarVertice, setPuntoSeleccionado, setPuntoTemporal
     } = params;
 
     if (e && typeof e.stopPropagation === 'function') {
       e.stopPropagation();
     } else if (e && e.originalEvent && typeof e.originalEvent.stopPropagation === 'function') {
       e.originalEvent.stopPropagation();
+    }
+
+    // Cable de acero: exactamente dos postes. Un tercer toque cambia el segundo
+    // poste, que es donde suele estar el error; el primero se quita con ATRÁS.
+    if (modoFibra && dibujandoFibra && modoLinea === 'acero') {
+      const id = String(puntoId);
+      setTrazoAcero?.(prev => {
+        if (prev.includes(id)) return prev;
+        return prev.length < 2 ? [...prev, id] : [prev[0], id];
+      });
+      return;
     }
 
     // En modo fibra, solo agregar vértices si está dibujando.

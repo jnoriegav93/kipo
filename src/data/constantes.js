@@ -19,7 +19,7 @@ export const FERRETERIA_BASE_DEFAULT = [
   { id: 'b10', nombre: 'BRAZO 80CM',                        codigo: '',        detalle: 'BRAZOS EXTENSOR DE 80CM' },
   { id: 'b11', nombre: 'BRAZO 1M',                          codigo: '',        detalle: 'BRAZOS EXTENSOR DE 1M' },
   { id: 'b12', nombre: 'GRLLETE',                           codigo: '1000022', detalle: 'GRILLETE TIPO CANDADO (100 UND)' },
-  { id: 'b13', nombre: 'CABLE MENSAJERO 1/8',               codigo: '1000012', detalle: 'CABLE MENSAJERO 1/8 (200 MTS)' },
+  { id: 'b13', nombre: 'CABLE MENSAJERO 1/8',               codigo: '1000012', detalle: 'CABLE MENSAJERO 1/8 (200 MTS)', porMetro: true },
   { id: 'b14', nombre: 'CHAPA Q',                           codigo: '1000145', detalle: 'SUJETADOR DE TRAMO-CHAPA Q' },
   { id: 'b15', nombre: 'CHAPA BRAQUELITA',                  codigo: '1000146', detalle: 'CHAPA SUSPENSIÓN DIELECTRICA-BRAQUELITA' },
   { id: 'b16', nombre: 'FAT11',                             codigo: '1056892', detalle: 'CIERRE DE EMPALME FAT SSC2816-SM-11U' },
@@ -44,7 +44,7 @@ export const FERRETERIA_BASE_DEFAULT = [
   { id: 'b35', nombre: 'SPLITTER 70/30',                   codigo: '',        detalle: 'SPLITTER DESBALANCEADO 70/30' },
   { id: 'b36', nombre: 'SPLITTER 60/40',                   codigo: '',        detalle: 'SPLITTER DESBALANCEADO 60/40' },
   { id: 'b37', nombre: 'CHAPA 3 HUECOS',                   codigo: '1000030', detalle: 'CHAPA 3 HUECOS' },
-  { id: 'b38', nombre: 'CABLE MENSAJERO 3/16',             codigo: '1000198', detalle: 'CABLE MENSAJERO 3/16' },
+  { id: 'b38', nombre: 'CABLE MENSAJERO 3/16',             codigo: '1000198', detalle: 'CABLE MENSAJERO 3/16', porMetro: true },
   { id: 'b39', nombre: 'PREFORMADO AZUL',                  codigo: '1000008', detalle: 'PREFORMADO AZUL 24H SPAN 250 (12.5MM)' },
   { id: 'b40', nombre: 'PREFORMADO ROJO 3/16',             codigo: '1000034', detalle: 'PREFORMADO ROJO 3/16' },
   { id: 'b41', nombre: 'PREFORMADO NEGRO',                 codigo: '',        detalle: 'PREFORMADO NEGRO' },
@@ -65,6 +65,14 @@ export const FERRETERIA_BASE_DEFAULT = [
   { id: 'b56', nombre: 'MUFA TIPO DOMO DE 96H',            codigo: '',        detalle: 'MUFA TIPO DOMO DE 96H' },
   { id: 'b57', nombre: 'MUFA TIPO DOMO DE 144H',           codigo: '',        detalle: 'MUFA TIPO DOMO DE 144H' },
 ];
+
+// Ítem del catálogo de un usuario a partir de uno de la base. Los que se tienden como
+// cable (porMetro) van en metros: se liquidan por lo trazado en el mapa, no por poste.
+export const itemDesdeBase = (b) => ({
+  id: b.id, nombre: b.nombre, unidad: b.porMetro ? 'mts' : 'und', visible: true,
+  codigo: b.codigo || '', detalle: b.detalle || '',
+  ...(b.porMetro ? { porMetro: true } : {}),
+});
 
 // Ferreterías que "van juntas" (sugerencia interna, por nombre). Al ponerle cantidad a una
 // en el punto, las demás del grupo salen resaltadas como sugerencia (sin forzar cantidad).

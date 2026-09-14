@@ -89,9 +89,14 @@ porque el error solo salía en la consola.
 
 ## Datos
 
-Colecciones: `proyectos`, `puntos`, `conexiones`, `bitacora`, `configuraciones`,
-`usuarios`, `exportaciones`, y las subcolecciones `proyectos/{id}/fotosProyecto`
-y `proyectos/{id}/diseno`.
+Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
+`configuraciones`, `usuarios`, `exportaciones`, y las subcolecciones
+`proyectos/{id}/fotosProyecto` y `proyectos/{id}/diseno`.
+
+- `cablesAcero`: mensajero de poste a poste. **No va en `conexiones`**: todo lo que
+  lee fibras lo contaría como fibra. Se liquida por metro contra los ítems
+  `porMetro` del catálogo (`src/utils/cablesAcero.js`). Cualquier código nuevo que
+  borre, copie o mueva puntos o proyectos tiene que llevar también sus cables.
 
 - `puntos` y `conexiones`: lectura y escritura para cualquier autenticado. La
   regla estricta rompía con puntos viejos que traen `proyectoId` numérico o sin

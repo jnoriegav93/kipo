@@ -10,6 +10,8 @@ import { TABS_CONFIG, esFotoMiniatura } from '../components/PhotoManager';
 import { MiniMapaRevision } from '../components/Mapas';
 import useIsDesktop from '../hooks/useIsDesktop';
 import { compartirODescargar, perteneceAProyecto } from '../utils/helpers';
+import { metrosPorItem } from '../utils/cablesAcero';
+import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
 import BloqueoHerramienta from '../components/BloqueoHerramienta';
 import { equiposDePunto } from '../utils/equiposPasivos';
 import RenumerarItems from '../components/RenumerarItems';
@@ -2199,6 +2201,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
 
   const normV = (v) => typeof v === 'number' ? { factor: 1, cant: v } : (v && typeof v === 'object' ? { factor: v.factor || 1, cant: v.cant || 0 } : { factor: 1, cant: 0 });
   const totalDe = (v) => { const n = normV(v); return n.cant * (n.factor || 1); };
+  const cablesAceroProyecto = useCablesAceroProyecto(proyecto?.id);
   const consolidado = React.useMemo(() => {
     const t = {};
     (puntos || []).filter(p => p.proyectoId === proyecto.id).forEach(p => {
@@ -2210,8 +2213,10 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
         Object.entries(d.ferreteriaExtra || {}).forEach(([id, c]) => { if (c) t[id] = (t[id] || 0) + c; });
       }
     });
+    // Cables de acero: por metro, medidos entre sus postes
+    Object.entries(metrosPorItem(cablesAceroProyecto, puntos || [])).forEach(([id, m]) => { t[id] = (t[id] || 0) + m; });
     return t;
-  }, [puntos, proyecto]);
+  }, [puntos, proyecto, cablesAceroProyecto]);
 
   const vincular = async (l) => {
     setVinculando(true);

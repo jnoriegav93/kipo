@@ -14,6 +14,12 @@ export const useUIState = () => {
     const [puntoSeleccionado, setPuntoSeleccionado] = useState(null);
     const [conexionSeleccionada, setConexionSeleccionada] = useState(null);
     const [conexionesOcultas, setConexionesOcultas] = useState([]);
+    // Cable de acero: se dibuja desde la misma barra que la fibra, pero es otra capa
+    const [modoLinea, setModoLinea] = useState('fibra');          // 'fibra' | 'acero'
+    const [trazoAcero, setTrazoAcero] = useState([]);             // ids de los dos postes
+    const [cableAceroSeleccionado, setCableAceroSeleccionado] = useState(null);
+    const [acerosVisibles, setAcerosVisibles] = useState(true);
+    const [tipoAceroId, setTipoAceroId] = useState(null);         // último tipo usado
     const [modoEdicion, setModoEdicion] = useState(false);
     const [modoLectura, setModoLectura] = useState(false);
     const [configTab, setConfigTab] = useState('armados');
@@ -41,6 +47,11 @@ return {
     puntoSeleccionado, setPuntoSeleccionado,
     conexionSeleccionada, setConexionSeleccionada,
     conexionesOcultas, setConexionesOcultas,
+    modoLinea, setModoLinea,
+    trazoAcero, setTrazoAcero,
+    cableAceroSeleccionado, setCableAceroSeleccionado,
+    acerosVisibles, setAcerosVisibles,
+    tipoAceroId, setTipoAceroId,
     modoEdicion, setModoEdicion,
     modoLectura, setModoLectura,
     configTab, setConfigTab,

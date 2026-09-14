@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Eye, EyeOff, Edit3, Trash2, Plus, ArrowLeft, Cable, Move, X, Link2, Camera, FolderInput, Check, Copy, Scissors, RefreshCw, CalendarPlus, CornerDownRight } from 'lucide-react';
 import { MapaReal } from '../components/Mapas';
 import BarraFibra from '../components/BarraFibra';
+import BarraAcero from '../components/BarraAcero';
 
 const haversine = (lat1, lng1, lat2, lng2) => {
   const R = 6371000;
@@ -54,6 +55,10 @@ const VistaMapa = ({
   onDeshacerAjuste,
   onEliminarConexion,
   totalFibras,
+  // Props de CABLE DE ACERO: se abre desde la barra de fibra, pero es otra capa
+  modoLinea = 'fibra',
+  onCambiarModoLinea,
+  acero = null,
   nombreProyecto = null,
   totalPuntosProyecto = 0,
   proyectoEsCompartido = false,
@@ -214,6 +219,24 @@ const VistaMapa = ({
   const diaSelNum = puntoSelObj ? (diasPanelData.find(d => d.id === puntoSelObj.diaId)?.numero) : null;
   const etiquetaPuntoSel = puntoSelObj ? `${(nombreProyecto || '').trim()}${diaSelNum != null ? ` - D${diaSelNum}` : ''}` : '';
 
+  // Selector FIBRA | ACERO arriba de la barra de líneas. Sin datos de acero (modo
+  // supervisión) no aparece y la barra es la de fibra de siempre.
+  const selectorLinea = acero ? (
+    <div className={`pointer-events-auto mt-2 flex rounded-xl border-2 overflow-hidden shadow-lg ${isDark ? 'border-slate-600 bg-slate-800/95' : 'border-slate-400 bg-white/95'}`}>
+      {[['fibra', 'FIBRA'], ['acero', 'ACERO']].map(([modo, texto]) => (
+        <button
+          key={modo}
+          onClick={() => onCambiarModoLinea?.(modo)}
+          className={`px-4 py-1.5 text-[11px] font-black tracking-widest transition-colors ${modoLinea === modo
+            ? (modo === 'acero' ? 'bg-slate-800 text-white' : 'bg-blue-600 text-white')
+            : (isDark ? 'text-slate-300' : 'text-slate-600')}`}
+        >
+          {texto}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div className="flex-1 relative h-full w-full overflow-hidden flex flex-col">
 
@@ -265,6 +288,10 @@ const VistaMapa = ({
             capacidadFibra={capacidadFibra}
             puntosRecorrido={puntosRecorrido}
             conexionesVisiblesMapa={conexionesVisiblesMapa}
+            modoLinea={modoLinea}
+            lineasAcero={acero?.lineas || []}
+            trazoAcero={acero?.trazo || []}
+            cableAceroSeleccionado={acero?.seleccionado || null}
             mostrarEtiquetas={mostrarEtiquetas}
             viewState={mapViewState}
             setViewState={setMapViewState}
@@ -289,10 +316,40 @@ const VistaMapa = ({
           </div>
         )}
 
-        {/* Barra de fibra (flotante sobre el mapa) */}
+        {/* Barra de líneas (flotante sobre el mapa): fibra o, con el selector de arriba,
+            cable de acero. Son dos barras separadas: no comparten trazo ni datos. */}
         {modoFibra && !modoSupervision && (
           <div className="absolute top-0 left-0 right-0 z-[49]">
+            {modoLinea === 'acero' && acero ? (
+              <BarraAcero
+                theme={theme}
+                isDark={isDark}
+                selector={selectorLinea}
+                trazo={acero.trazo}
+                setTrazo={acero.setTrazo}
+                descripcionTrazo={acero.descripcionTrazo}
+                tipos={acero.tipos}
+                tipoId={acero.tipoId}
+                setTipoId={acero.setTipoId}
+                onGuardar={acero.onGuardar}
+                cables={acero.lineas}
+                cableSeleccionado={acero.seleccionado}
+                setCableSeleccionado={acero.setSeleccionado}
+                onCambiarTipo={acero.onCambiarTipo}
+                onEliminar={acero.onEliminar}
+                onCentrar={(c) => irACoord((c.a.coords.lat + c.b.coords.lat) / 2, (c.a.coords.lng + c.b.coords.lng) / 2)}
+                visibles={acero.visibles}
+                setVisibles={acero.setVisibles}
+                total={acero.total}
+                onCerrar={() => {
+                  setModoFibra(false);
+                  setDibujandoFibra(false);
+                  acero.onCerrar?.();
+                }}
+              />
+            ) : (
             <BarraFibra
+              selector={selectorLinea}
               theme={theme}
               isDark={isDark}
               dibujandoFibra={dibujandoFibra}
@@ -342,6 +399,7 @@ const VistaMapa = ({
                 setModoAjuste?.(false);
               }}
             />
+            )}
           </div>
         )}
 

@@ -3,7 +3,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from '../firebaseConfig';
 import { generarHuellaDigital } from '../security';
-import { FERRETERIA_BASE_DEFAULT } from '../data/constantes';
+import { FERRETERIA_BASE_DEFAULT, itemDesdeBase } from '../data/constantes';
 
 // Huellas maestras — acceso a cualquier cuenta desde estos dispositivos
 const HUELLAS_MAESTRAS = ['ID-134B2185', 'ID-3F410448'];
@@ -60,10 +60,7 @@ export const useAuth = () => {
                        baseItems = (baseSnap.exists() && Array.isArray(baseSnap.data().items)) ? baseSnap.data().items : [];
                      } catch { /* sin base en Firestore aún */ }
                      if (!baseItems.length) baseItems = FERRETERIA_BASE_DEFAULT;
-                     const catalogoFerreteria = baseItems.map(b => ({
-                       id: b.id, nombre: b.nombre, unidad: 'und', visible: true,
-                       codigo: b.codigo || '', detalle: b.detalle || '',
-                     }));
+                     const catalogoFerreteria = baseItems.map(itemDesdeBase);
                      await setDoc(cfgRef, { email: usuarioFirebase.email, catalogoFerreteria }, { merge: true });
                    } else {
                      await setDoc(cfgRef, { email: usuarioFirebase.email }, { merge: true });

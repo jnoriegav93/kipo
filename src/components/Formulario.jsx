@@ -3,6 +3,7 @@ import { X, Save, Camera , Settings } from 'lucide-react';
 import { equiposDePunto, sincronizarEquipos, LABEL_EQUIPO } from '../utils/equiposPasivos';
 import { ThemedInput } from './UI';
 import { SelectorGrid, SelectorGridMulti, ListaContadores } from './Selectores';
+import { esPorMetro } from '../utils/cablesAcero';
 
 export default function Formulario({
   theme,
@@ -504,8 +505,10 @@ export const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario,
                     if (isSelected) {
                       setDatosFormulario(prev => ({ ...prev, armadoSeleccionadoId: null, ferreteriaFinal: {} }));
                     } else {
+                      // Lo que se tiende por metro no entra por poste, aunque el armado lo traiga
+                      const porMetro = new Set(config.catalogoFerreteria.filter(esPorMetro).map(f => f.id));
                       const ferreteriaFinal = {};
-                      armado.items.forEach(item => { if (item.cant > 0) ferreteriaFinal[item.idRef] = item.cant; });
+                      armado.items.forEach(item => { if (item.cant > 0 && !porMetro.has(item.idRef)) ferreteriaFinal[item.idRef] = item.cant; });
                       setDatosFormulario(prev => ({ ...prev, armadoSeleccionadoId: armado.id, ferreteriaFinal }));
                     }
                   }}

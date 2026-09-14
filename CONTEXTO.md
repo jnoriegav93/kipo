@@ -4,7 +4,10 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 12 de septiembre de 2026.
+Última actualización: 14 de septiembre de 2026.
+
+> **Ahora:** el modo Diseño quedó en pausa el 14/09 para agregar el **cable de
+> acero** a la sección FIBRA. Ver la sección "Cable de acero" más abajo.
 
 ---
 
@@ -188,6 +191,57 @@ pero las escrituras pasan por el SDK real. Se levanta con
 `npx vite --config harness-diseno/vite.config.js` (puerto 5199) y se recorre con
 `puppeteer-core` y el Chrome instalado; las búsquedas de Nominatim se responden
 con datos falsos interceptando la petición.
+
+---
+
+## Cable de acero (dentro de FIBRA)
+
+Mensajero de acero **de poste a poste**, para sostener la fibra en los cambios de
+dirección. **No es fibra: es ferretería que se liquida por metro.** Decidido con el
+usuario el 14/09.
+
+- **Dónde se dibuja.** Selector FIBRA | ACERO arriba de la barra que abre el botón
+  FIBRA. En ACERO la barra es otra (`src/components/BarraAcero.jsx`) y no comparte
+  nada con la de fibra: trazo de **exactamente dos postes** (tocar el mapa vacío no
+  hace nada; un tercer poste cambia el segundo), lista, borrar y ver/ocultar.
+- **Datos.** Colección propia `cablesAcero`:
+  `{ puntos: [A, B], ferrId, proyectoId, diaId, ownerId, timestamp }`. Va aparte de
+  `conexiones` a propósito: todo lo que lee fibras (metros por capacidad, reparto
+  de postes en ramales, KMZ) lo contaría como fibra de 12 hilos, y las versiones
+  viejas de la app lo verían como fibra. No guarda geometría: se mide siempre con
+  la posición actual de sus dos postes.
+- **Metros a liquidar.** Distancia entre postes **+ 1 m, redondeado al metro
+  superior** (`metrosCableAcero` en `src/utils/cablesAcero.js`, probado con Node).
+- **Tipos de cable.** Ítems del catálogo marcados `porMetro` (en la semilla: CABLE
+  MENSAJERO 1/8 y 3/16, con unidad `mts`). Se marcan en Configuración → Ferretería
+  (botón de regla) o en la ferretería base del admin. Salen del catálogo del
+  dueño del proyecto, como el resto de la ferretería.
+- **Fuera de la ferretería por poste.** Los ítems `porMetro` no se ofrecen en los
+  contadores del punto ni en los armados, y al aplicar un armado se ignoran. Solo
+  aparecen si un punto ya traía cantidad, para poder quitarla: las cantidades
+  viejas las corrige el usuario, el código no las compensa.
+- **Dónde suma.** Excel de liquidación de materiales, Control Ferretería
+  (consolidado) y comparativo de ferretería del proyecto.
+  **Todavía no** en el Excel del servidor (RESUMEN de `generarExcel` en
+  `functions/`), cuantificado, listado de utilizados ni KMZ.
+- **Ciclo de vida.** Borrar un poste borra sus cables (papelera tipo `acero`, que
+  restaura si los dos postes existen). Copiar/cortar puntos los lleva si van sus
+  dos postes. Borrar proyecto (lista, equipos, admin) los incluye. Salir de un
+  equipo los copia.
+- **Despliegue.** Las reglas de `cablesAcero` tienen que estar desplegadas antes
+  que el hosting, o guardar un cable fallará por permisos.
+
+Probado con Node (regla de metros), con lint (ningún error nuevo en los 22 archivos
+tocados) y compilando. También en Chrome con una página local (`harness-diseno/acero.html`,
+fuera de git): VistaMapa real con el mismo cableado que App sobre tres postes
+falsos. Se probó el selector, que el mapa vacío no agrega nada, dos postes →
+31 m, tipos solo por metro, guardar, tercer poste, ATRÁS, lista, cambio de tipo,
+borrar y vuelta a FIBRA. **No probado todavía en la app real con Firestore**:
+tocar dos postes, guardar, recargar, ver la lista y liquidar.
+
+La liquidación no se rompe si se sube el hosting antes que las reglas: un "sin
+permiso" al leer `cablesAcero` cuenta como cero cables, porque sin reglas tampoco
+pudo guardarse ninguno. Cualquier otro error sí hace fallar la liquidación.
 
 ---
 
