@@ -260,20 +260,20 @@ pudo guardarse ninguno. Cualquier otro error sí hace fallar la liquidación.
   solo trozo: cualquier cambio obliga a rebajar 2,4 MB en cada actualización, y
   en campo con poca señal se siente. Candidatos: sacar ExcelJS a su propio trozo
   y revisar `jszip`, que sigue en `package.json` pero ya no se usa en `src/`.
-- **`npm install` después de cada pull que traiga dependencias nuevas.** En la
-  laptop faltaban `jsqr`, `qrcode` y `puppeteer-core` y la compilación fallaba.
+- **`npm install` después de cada pull que traiga dependencias nuevas**, en la raíz
+  y también dentro de `functions/` si cambió su `package-lock.json`. En la laptop
+  faltaban `jsqr`, `qrcode` y `puppeteer-core` y la compilación fallaba.
 - **La credencial del remoto de git va en la URL en texto plano** (en la otra PC).
   Conviene quitarla y autenticar por el gestor de credenciales de Windows o
   `gh auth login`.
-- **Cloud Functions a Node 24: código listo, falta desplegar.** Node.js 20 deja de
-  estar soportado el 30/10/2026. El 14/09 `functions/package.json` pasó a Node 24
-  (GA hasta el 30/04/2028), `firebase-functions` 7.3.2 y `firebase-admin` 13.10.0.
-  Verificado en local: las 13 funciones cargan con definiciones idénticas a las de
-  antes (triggers, memoria, tiempos) y `firebase deploy --only functions --dry-run`
-  pasa. Falta `firebase deploy --only functions --project kipo-d29af` y probar una
-  exportación. No se tomó `firebase-admin` 14: elimina `admin.firestore()`,
-  `admin.storage()` y `admin.auth()`, que usa todo `functions/index.js`, y cambia
-  el manejo de errores; pasar a 14 es reescribir las importaciones.
+- **Cloud Functions en Node 24 desde el 14/09: falta probar una exportación real.**
+  Node.js 20 dejaba de estar soportado el 30/10/2026. Se desplegaron las 13
+  funciones con Node 24 (GA hasta el 30/04/2028), `firebase-functions` 7.3.2 y
+  `firebase-admin` 13.10.0; `firebase functions:list` las muestra en `nodejs24`.
+  Antes, en local, cargaron con definiciones idénticas (triggers, memoria, tiempos).
+  No se tomó `firebase-admin` 14: elimina `admin.firestore()`, `admin.storage()` y
+  `admin.auth()`, que usa todo `functions/index.js`, y cambia el manejo de errores;
+  pasar a 14 es reescribir las importaciones.
 - Ferretería automática (cálculo de materiales), pausado.
 - Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
 - El aviso de actualización recarga la página: conviene que no aparezca mientras
