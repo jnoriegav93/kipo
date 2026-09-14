@@ -265,11 +265,15 @@ pudo guardarse ninguno. Cualquier otro error sí hace fallar la liquidación.
 - **La credencial del remoto de git va en la URL en texto plano** (en la otra PC).
   Conviene quitarla y autenticar por el gestor de credenciales de Windows o
   `gh auth login`.
-- **Node.js 20 en las Cloud Functions deja de estar soportado el 30/10/2026.**
-  Después de esa fecha no se puede volver a desplegar `functions/` sin subir el
-  runtime (`engines.node` en `functions/package.json`). El despliegue del 14/09
-  avisó además que `firebase-functions` está desactualizado y que actualizarlo trae
-  cambios que rompen compatibilidad: conviene hacerlo con calma y antes de esa fecha.
+- **Cloud Functions a Node 24: código listo, falta desplegar.** Node.js 20 deja de
+  estar soportado el 30/10/2026. El 14/09 `functions/package.json` pasó a Node 24
+  (GA hasta el 30/04/2028), `firebase-functions` 7.3.2 y `firebase-admin` 13.10.0.
+  Verificado en local: las 13 funciones cargan con definiciones idénticas a las de
+  antes (triggers, memoria, tiempos) y `firebase deploy --only functions --dry-run`
+  pasa. Falta `firebase deploy --only functions --project kipo-d29af` y probar una
+  exportación. No se tomó `firebase-admin` 14: elimina `admin.firestore()`,
+  `admin.storage()` y `admin.auth()`, que usa todo `functions/index.js`, y cambia
+  el manejo de errores; pasar a 14 es reescribir las importaciones.
 - Ferretería automática (cálculo de materiales), pausado.
 - Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
 - El aviso de actualización recarga la página: conviene que no aparezca mientras

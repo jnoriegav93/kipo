@@ -14,7 +14,7 @@ Guía para dejar el proyecto funcionando (build + deploy) en otra PC con Windows
 | **Firebase CLI**    | 15.x (acá v15.8)              | se instala con npm (ver abajo)                          |
 | **Extensión Claude**| última                        | en VS Code: Extensions → buscar "Claude Code"           |
 
-> El runtime de las Cloud Functions es **Node 20** (definido en `functions/package.json`). Para solo *deployar* no importa tu Node local; para correr el emulador conviene Node 20.
+> El runtime de las Cloud Functions es **Node 24** (definido en `functions/package.json`). Para solo *deployar* no importa tu Node local; para correr el emulador conviene Node 24.
 
 ---
 
@@ -87,7 +87,7 @@ Datos del proyecto:
 
 ## 6) Prompt para pegarle a Claude en la máquina nueva
 
-> Estoy en una máquina nueva con el proyecto **app-fibra-pwa** (PWA "Kipo", Firebase project `kipo-d29af`). Stack: React 19 + Vite 7 + Firebase 12 + Tailwind 3; Cloud Functions en `functions/` (Node 20). Acabo de copiar la carpeta del proyecto pero todavía no instalé dependencias. Guiame paso a paso para dejarlo listo para build y deploy: verificá que estén Node, Git y Firebase CLI instalados, ayudame a correr `npm install` en raíz y en `functions/`, y a hacer `firebase login` y `firebase use kipo-d29af`. Después confirmá que `npm run build` compila y que puedo deployar con `firebase deploy --only hosting`. El build se sube a hosting sin necesidad de commitear. Tené en cuenta que la memoria del proyecto (MEMORY.md y notas) vive en la carpeta `.claude` del usuario y puede no estar en esta máquina — si no la tenés, pedímela o reconstruí contexto leyendo el código y este archivo SETUP_NUEVA_MAQUINA.md.
+> Estoy en una máquina nueva con el proyecto **app-fibra-pwa** (PWA "Kipo", Firebase project `kipo-d29af`). Stack: React 19 + Vite 7 + Firebase 12 + Tailwind 3; Cloud Functions en `functions/` (Node 24). Acabo de copiar la carpeta del proyecto pero todavía no instalé dependencias. Guiame paso a paso para dejarlo listo para build y deploy: verificá que estén Node, Git y Firebase CLI instalados, ayudame a correr `npm install` en raíz y en `functions/`, y a hacer `firebase login` y `firebase use kipo-d29af`. Después confirmá que `npm run build` compila y que puedo deployar con `firebase deploy --only hosting`. El build se sube a hosting sin necesidad de commitear. Tené en cuenta que la memoria del proyecto (MEMORY.md y notas) vive en la carpeta `.claude` del usuario y puede no estar en esta máquina — si no la tenés, pedímela o reconstruí contexto leyendo el código y este archivo SETUP_NUEVA_MAQUINA.md.
 
 ---
 
