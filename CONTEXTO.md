@@ -233,11 +233,12 @@ usuario el 14/09.
   restaura si los dos postes existen). Copiar/cortar puntos los lleva si van sus
   dos postes. Borrar proyecto (lista, equipos, admin) los incluye. Salir de un
   equipo los copia.
-- **Despliegue.** Tres partes, en este orden: reglas (`cablesAcero`), hosting y la
-  función `procesarExportacion` (Excel y KMZ del servidor). Sin las reglas, guardar
-  un cable falla por permisos; los reportes del cliente no se rompen porque cuentan
-  cero cables. **La laptop no tiene sesión de Firebase**: antes de desplegar desde
-  ella hace falta `firebase login`, que abre el navegador.
+- **Despliegue.** **Todo en producción el 14/09/26**, desde la laptop (que ya tiene
+  `firebase login` hecho): reglas, hosting (**SELLO: 14/09/26, 16:00**) y la función
+  `procesarExportacion`. Antes de desplegar las reglas se comparó lo publicado con el
+  repo y no había nada que existiera solo en producción. El orden importa: sin las
+  reglas, guardar un cable falla por permisos (los reportes del cliente no se
+  rompen: cuentan cero cables).
 
 Probado con Node (regla de metros), con lint (ningún error nuevo en los 22 archivos
 tocados) y compilando. También en Chrome con una página local (`harness-diseno/acero.html`,
@@ -264,6 +265,11 @@ pudo guardarse ninguno. Cualquier otro error sí hace fallar la liquidación.
 - **La credencial del remoto de git va en la URL en texto plano** (en la otra PC).
   Conviene quitarla y autenticar por el gestor de credenciales de Windows o
   `gh auth login`.
+- **Node.js 20 en las Cloud Functions deja de estar soportado el 30/10/2026.**
+  Después de esa fecha no se puede volver a desplegar `functions/` sin subir el
+  runtime (`engines.node` en `functions/package.json`). El despliegue del 14/09
+  avisó además que `firebase-functions` está desactualizado y que actualizarlo trae
+  cambios que rompen compatibilidad: conviene hacerlo con calma y antes de esa fecha.
 - Ferretería automática (cálculo de materiales), pausado.
 - Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
 - El aviso de actualización recarga la página: conviene que no aparezca mientras
