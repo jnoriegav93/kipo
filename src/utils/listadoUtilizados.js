@@ -4,7 +4,7 @@ import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
 import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
 import { equiposDePunto } from './equiposPasivos';
-import { esPorMetro, metrosAceroPorPoste } from './cablesAcero';
+import { esCableAcero, metrosAceroPorPoste } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/LISTADO_DE_POSTES_UTILIZADOS.xlsx';
 const PRIMER_FILA = 10;
@@ -48,7 +48,7 @@ const getConsolidado = (datos) => {
 const elementosTexto = (datos, catalogo, acero = {}) => {
   const cons = getConsolidado(datos);
   Object.entries(acero).forEach(([id, m]) => { cons[id] = (cons[id] || 0) + m; });
-  return catalogo.filter(f => (cons[f.id] || 0) > 0).map(f => `${cons[f.id]}${esPorMetro(f) ? ' m' : ''} ${f.nombre}`).join(', ');
+  return catalogo.filter(f => (cons[f.id] || 0) > 0).map(f => `${cons[f.id]}${esCableAcero(f.id) ? ' m' : ''} ${f.nombre}`).join(', ');
 };
 
 export async function descargarListadoUtilizados(proyecto, puntos, config) {

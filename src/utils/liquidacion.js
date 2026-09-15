@@ -11,7 +11,7 @@ import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
-import { metrosPorItem } from './cablesAcero';
+import { metrosPorItem, esCableAcero } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/LIQUIDACION_DE_MATERIALES.xlsx';
 const HOJA = 'FORMATO LIQ';
@@ -76,7 +76,8 @@ export async function descargarLiquidacion(proyecto, puntos, config) {
     const rv = normV(recibido[id]);
     return {
       nombre: f.nombre || id,
-      unidad: f.unidad || '',
+      // El cable de acero va siempre en metros, diga lo que diga el catálogo
+      unidad: esCableAcero(id) ? 'mts' : (f.unidad || ''),
       paquetes: rv.cant,
       unidades: rv.cant * (rv.factor || 1),
       instalado: consolidado[id] || 0,

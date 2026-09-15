@@ -1,25 +1,39 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair } from 'lucide-react';
+import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair, Pencil } from 'lucide-react';
+import { TIPOS_CABLE_ACERO, faltaEnTrazoAcero, deshacerTrazoAcero, hayTrazoAcero } from '../utils/cablesAcero';
+import { getColorFibra } from '../utils/fibraUtils';
 
 // Barra del CABLE DE ACERO. Se abre desde la barra de fibra (selector FIBRA | ACERO),
-// pero no comparte nada con ella: el trazo son exactamente dos postes, se guarda en
-// otra colección y se liquida como ferretería, por metro (distancia + 1 m, al metro
-// superior). Los tipos de cable son los ítems del catálogo marcados "por metro".
+// pero no comparte nada con ella: el cable va entre dos postes, lleva las fibras que
+// se apoyan en él y el medio tramo donde se apoyan, se guarda en otra colección y se
+// liquida como ferretería, por metro (distancia + 1 m, al metro superior). Los tipos
+// son fijos, como las capacidades de la fibra.
+
+// Qué se pide según lo primero que falta (faltaEnTrazoAcero)
+const AVISOS = {
+  poste1: 'TOCA EL PRIMER POSTE',
+  poste2: 'TOCA EL SEGUNDO POSTE',
+  fibras: 'TOCA LAS FIBRAS QUE SE APOYAN',
+  medioTramo: 'TOCA EL MEDIO TRAMO DONDE SE APOYAN',
+};
+
 export default function BarraAcero({
   theme,
   isDark,
   selector = null,
-  trazo = [],
+  trazo,                    // { id, ferrId, postes, fibras, medioTramo }: lo tocado antes de guardar
   setTrazo,
   descripcionTrazo = null,  // { etiqueta: 'P12 → P13', metros: 25 } con los dos postes elegidos
-  tipos = [],
+  fibrasTrazo = [],         // fibras marcadas, ya resueltas: { id, nombre, capacidad }
+  medioTramoTrazo = null,   // número del medio tramo marcado
   tipoId,
   setTipoId,
   onGuardar,
-  cables = [],              // visibles, ya resueltos: { id, ferrId, nombreTipo, etiqueta, metros, timestamp }
+  cables = [],              // visibles, ya resueltos: { id, ferrId, nombreTipo, etiqueta, metros, fibras, timestamp }
   cableSeleccionado,
   setCableSeleccionado,
   onCambiarTipo,
+  onEditar,
   onEliminar,
   onCentrar,
   visibles,
@@ -40,11 +54,13 @@ export default function BarraAcero({
     return () => document.removeEventListener('pointerdown', handler);
   }, [panel]);
 
-  const puedeGuardar = trazo.length === 2;
+  const falta = faltaEnTrazoAcero(trazo);
+  const editando = trazo.id != null;
+  const puedeDeshacer = hayTrazoAcero(trazo) || editando;
 
-  // Arranca con el último tipo usado, si sigue en el catálogo
+  // Arranca con el tipo del cable que se edita, o con el último usado
   const abrirGuardar = () => {
-    setTipoElegido(tipos.some(t => t.id === tipoId) ? tipoId : (tipos[0]?.id || null));
+    setTipoElegido(trazo.ferrId || (TIPOS_CABLE_ACERO.some(t => t.id === tipoId) ? tipoId : TIPOS_CABLE_ACERO[0].id));
     setPanel('guardar');
   };
 
@@ -63,16 +79,13 @@ export default function BarraAcero({
     ? 'bg-slate-700 border-slate-600 text-slate-500'
     : 'bg-white border-slate-400 text-slate-400';
   const btnActivo = 'bg-slate-800 text-white border-slate-950';
+  const btnChico = isDark ? 'bg-slate-700 text-slate-200 border-slate-600' : 'bg-white text-slate-700 border-slate-400';
   const panelBase = `pointer-events-auto mt-1 rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 shadow-xl backdrop-blur-sm`;
   const rotulo = `block text-[9px] font-black tracking-widest mb-1 ${theme.text} opacity-60`;
 
   // Los más nuevos arriba
   const ordenados = [...cables].sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
   const metrosTotal = cables.reduce((t, c) => t + (c.metros || 0), 0);
-
-  const aviso = trazo.length === 0 ? 'TOCA EL PRIMER POSTE'
-    : trazo.length === 1 ? 'TOCA EL SEGUNDO POSTE'
-    : descripcionTrazo ? `${descripcionTrazo.etiqueta} · ${descripcionTrazo.metros} M` : '';
 
   return (
     <div className="relative shrink-0 flex flex-col items-center justify-center w-full pointer-events-none" ref={refBarra}>
@@ -81,21 +94,21 @@ export default function BarraAcero({
       {/* Barra principal flotante */}
       <div className={`pointer-events-auto mt-1.5 rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 px-2 py-1.5 flex items-center gap-1.5 shadow-xl backdrop-blur-sm`}>
 
-        {/* ATRÁS — suelta el último poste elegido */}
+        {/* ATRÁS — deshace lo último: medio tramo, fibra o poste */}
         <button
-          onClick={() => setTrazo?.(prev => prev.slice(0, -1))}
-          disabled={trazo.length === 0}
-          className={`${btnBase} border-2 ${trazo.length > 0 ? `${btnNormal} active:scale-95` : `${btnDisabled} opacity-40 cursor-not-allowed`}`}
-          title="Quitar el último poste"
+          onClick={() => setTrazo?.(deshacerTrazoAcero)}
+          disabled={!puedeDeshacer}
+          className={`${btnBase} border-2 ${puedeDeshacer ? `${btnNormal} active:scale-95` : `${btnDisabled} opacity-40 cursor-not-allowed`}`}
+          title="Deshacer lo último"
         >
           <Undo2 size={18} />
         </button>
 
-        {/* GUARDAR — pide el tipo de cable */}
+        {/* GUARDAR — con el trazo completo, pide el tipo de cable */}
         <button
           onClick={() => (panel === 'guardar' ? setPanel(null) : abrirGuardar())}
-          disabled={!puedeGuardar}
-          className={`${btnBase} border-2 ${puedeGuardar ? `${btnActivo} active:scale-95` : `${btnDisabled} opacity-40 cursor-not-allowed`}`}
+          disabled={!!falta}
+          className={`${btnBase} border-2 ${!falta ? `${btnActivo} active:scale-95` : `${btnDisabled} opacity-40 cursor-not-allowed`}`}
           title="Guardar cable de acero"
         >
           <Save size={18} />
@@ -146,10 +159,24 @@ export default function BarraAcero({
         </button>
       </div>
 
-      {/* Qué falta para cerrar el tramo, o cuánto se va a liquidar */}
-      {!panel && aviso && (
-        <div className={`${panelBase} px-3 py-1.5`}>
-          <p className={`text-[10px] font-black tracking-widest ${theme.text}`}>{aviso}</p>
+      {/* Qué falta para poder guardar, y lo que ya se marcó */}
+      {!panel && (
+        <div className={`${panelBase} px-3 py-1.5 max-w-[92vw]`}>
+          <p className={`text-[10px] font-black tracking-widest ${theme.text}`}>
+            {editando && 'EDITANDO · '}{falta ? AVISOS[falta] : 'LISTO PARA GUARDAR'}
+          </p>
+          {hayTrazoAcero(trazo) && (
+            <div className={`mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] font-bold ${theme.text} opacity-80`}>
+              {descripcionTrazo && <span>{descripcionTrazo.etiqueta} · {descripcionTrazo.metros} m</span>}
+              {fibrasTrazo.map(f => (
+                <span key={f.id} className="flex items-center gap-1" title={f.nombre}>
+                  <span className="w-2.5 h-2.5 rounded-full border border-black/40 shrink-0" style={{ backgroundColor: getColorFibra(f.capacidad) }} />
+                  {f.capacidad} FO
+                </span>
+              ))}
+              {medioTramoTrazo && <span>MEDIO TRAMO {medioTramoTrazo}</span>}
+            </div>
+          )}
         </div>
       )}
 
@@ -157,31 +184,26 @@ export default function BarraAcero({
       {panel === 'guardar' && (
         <div className={`${panelBase} px-3 py-2.5 w-[min(92vw,340px)]`}>
           <label className={rotulo}>TIPO DE CABLE</label>
-          {tipos.length === 0 ? (
-            <p className={`text-[11px] font-bold py-2 ${theme.text} opacity-70`}>
-              Tu catálogo no tiene cables por metro. Márcalos en Configuración → Ferretería.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-1.5 mb-2.5">
-              {tipos.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTipoElegido(t.id)}
-                  className={`w-full px-3 py-2 rounded-xl text-[11px] font-black text-left uppercase border-2 transition-all ${tipoElegido === t.id
-                    ? btnActivo
-                    : isDark ? 'bg-slate-700 text-slate-200 border-slate-500' : 'bg-white text-slate-700 border-slate-400'}`}
-                >
-                  {t.nombre}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+            {TIPOS_CABLE_ACERO.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTipoElegido(t.id)}
+                className={`px-2 py-2 rounded-xl text-[11px] font-black uppercase border-2 transition-all ${tipoElegido === t.id ? btnActivo : btnChico}`}
+              >
+                {t.nombre}
+              </button>
+            ))}
+          </div>
 
           {descripcionTrazo && (
-            <p className={`text-[10px] font-bold mb-2.5 ${theme.text} opacity-70`}>
+            <p className={`text-[10px] font-bold mb-1 ${theme.text} opacity-70`}>
               {descripcionTrazo.etiqueta} · se liquidan <b>{descripcionTrazo.metros} m</b> (distancia + 1 m)
             </p>
           )}
+          <p className={`text-[10px] font-bold mb-2.5 ${theme.text} opacity-70`}>
+            {fibrasTrazo.length} fibra{fibrasTrazo.length === 1 ? '' : 's'} apoyada{fibrasTrazo.length === 1 ? '' : 's'} en el medio tramo {medioTramoTrazo}
+          </p>
 
           <div className="flex gap-2">
             <button
@@ -195,13 +217,13 @@ export default function BarraAcero({
               disabled={!tipoElegido}
               className={`flex-1 py-2 rounded-xl border-2 text-[11px] font-black tracking-widest ${tipoElegido ? `${btnActivo} active:scale-95` : `${btnDisabled} opacity-40`}`}
             >
-              GUARDAR
+              {editando ? 'ACTUALIZAR' : 'GUARDAR'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Lista de cables: consultar, elegir cuál borrar, cambiarle el tipo y centrar */}
+      {/* Lista de cables: consultar, elegir cuál borrar, cambiarle el tipo, editarlo y centrar */}
       {panel === 'lista' && (
         <div className={`${panelBase} w-[min(92vw,360px)] max-h-[55vh] overflow-y-auto p-1.5`}>
           <div className={`flex items-center justify-between px-2 pb-1.5 mb-1 border-b-2 ${isDark ? 'border-slate-700' : 'border-slate-300'}`}>
@@ -241,20 +263,26 @@ export default function BarraAcero({
                   </button>
                 </div>
 
-                {/* Cambiar el tipo: se guarda al tocar, no hay nada pendiente */}
-                {sel && tipos.length > 0 && (
-                  <div className={`px-2 pb-2 pt-1 border-t-2 flex flex-wrap gap-1 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
-                    {tipos.map(t => (
+                {/* Cambiar el tipo se guarda al tocar; EDITAR devuelve el cable al trazo para
+                    corregir postes, fibras o medio tramo */}
+                {sel && (
+                  <div className={`px-2 pb-2 pt-1 border-t-2 flex flex-wrap items-center gap-1 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                    {TIPOS_CABLE_ACERO.map(t => (
                       <button
                         key={t.id}
                         onClick={() => { if (t.id !== c.ferrId) onCambiarTipo?.(c, t.id); }}
-                        className={`px-2 py-1.5 rounded-lg text-[10px] font-black uppercase border-2 ${t.id === c.ferrId
-                          ? btnActivo
-                          : isDark ? 'bg-slate-700 text-slate-200 border-slate-600' : 'bg-white text-slate-700 border-slate-400'}`}
+                        className={`px-2 py-1.5 rounded-lg text-[10px] font-black uppercase border-2 ${t.id === c.ferrId ? btnActivo : btnChico}`}
                       >
                         {t.nombre}
                       </button>
                     ))}
+                    <button
+                      onClick={() => { setPanel(null); onEditar?.(c); }}
+                      className={`ml-auto px-2 py-1.5 rounded-lg text-[10px] font-black uppercase border-2 flex items-center gap-1 ${btnChico}`}
+                    >
+                      <Pencil size={11} strokeWidth={3} />
+                      EDITAR
+                    </button>
                   </div>
                 )}
               </div>

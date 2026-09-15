@@ -10,7 +10,7 @@ import { TABS_CONFIG, esFotoMiniatura } from '../components/PhotoManager';
 import { MiniMapaRevision } from '../components/Mapas';
 import useIsDesktop from '../hooks/useIsDesktop';
 import { compartirODescargar, perteneceAProyecto } from '../utils/helpers';
-import { metrosPorItem } from '../utils/cablesAcero';
+import { metrosPorItem, esMedioTramo, fibrasApoyadasEn } from '../utils/cablesAcero';
 import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
 import BloqueoHerramienta from '../components/BloqueoHerramienta';
 import { equiposDePunto } from '../utils/equiposPasivos';
@@ -2624,9 +2624,11 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
               { tipo: 'mapa', label: 'MAPA' },
             ].filter(s => s.tipo !== 'foto' || hayFoto(s.foto));
             // Fibras que tocan este poste, dentro de 3 m: cuáles se apoyan y cuáles
-            // terminan aquí. Se calcula al vuelo, no se guarda.
+            // terminan aquí. En un medio tramo, los apoyos son las fibras marcadas en
+            // sus cables de acero. Se calcula al vuelo, no se guarda.
+            const apoyosElegidos = esMedioTramo(punto) ? fibrasApoyadasEn(punto.id, cablesAceroProyecto) : null;
             const resumenFibras = punto?.coords?.lat != null
-              ? resumenFibrasEnPoste({ lat: punto.coords.lat, lng: punto.coords.lng }, conexiones, 3)
+              ? resumenFibrasEnPoste({ lat: punto.coords.lat, lng: punto.coords.lng }, conexiones, 3, apoyosElegidos)
               : [];
             const slideIdx = Math.min(fotoIdx, slides.length - 1);
             const slideActual = slides[slideIdx];

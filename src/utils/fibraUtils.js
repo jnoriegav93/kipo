@@ -178,13 +178,23 @@ export const fibrasEnPoste = (punto, conexiones = [], umbral = 3) => {
 
 // Lo anterior agrupado por capacidad, de mayor a menor:
 // [{ capacidad: 48, apoyos: 1, extremos: 0 }, …]
-export const resumenFibrasEnPoste = (punto, conexiones = [], umbral = 3) => {
+// En un medio tramo los apoyos no salen de la cercanía, que también cuenta las fibras
+// que pasan de frente: son las marcadas en sus cables de acero (`apoyosElegidos`, un
+// Set de ids). Los extremos se miden igual en todos los puntos.
+export const resumenFibrasEnPoste = (punto, conexiones = [], umbral = 3, apoyosElegidos = null) => {
   const mapa = new Map();
+  const sumar = (capacidad, campo) => {
+    if (!mapa.has(capacidad)) mapa.set(capacidad, { capacidad, apoyos: 0, extremos: 0 });
+    mapa.get(capacidad)[campo]++;
+  };
   fibrasEnPoste(punto, conexiones, umbral).forEach(f => {
-    if (!mapa.has(f.capacidad)) mapa.set(f.capacidad, { capacidad: f.capacidad, apoyos: 0, extremos: 0 });
-    const e = mapa.get(f.capacidad);
-    if (f.tipo === 'extremo') e.extremos++; else e.apoyos++;
+    // Una fibra elegida como apoyo no cuenta además como extremo
+    if (f.tipo === 'extremo') { if (!apoyosElegidos?.has(String(f.id))) sumar(f.capacidad, 'extremos'); }
+    else if (!apoyosElegidos) sumar(f.capacidad, 'apoyos');
   });
+  if (apoyosElegidos) {
+    conexiones.forEach(c => { if (apoyosElegidos.has(String(c.id))) sumar(c.capacidad || 12, 'apoyos'); });
+  }
   return [...mapa.values()].sort((a, b) => b.capacidad - a.capacidad);
 };
 

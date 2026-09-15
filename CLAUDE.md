@@ -93,10 +93,12 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
 `configuraciones`, `usuarios`, `exportaciones`, y las subcolecciones
 `proyectos/{id}/fotosProyecto` y `proyectos/{id}/diseno`.
 
-- `cablesAcero`: mensajero de poste a poste. **No va en `conexiones`**: todo lo que
-  lee fibras lo contaría como fibra. Se liquida por metro contra los ítems
-  `porMetro` del catálogo (`src/utils/cablesAcero.js`). Cualquier código nuevo que
-  borre, copie o mueva puntos o proyectos tiene que llevar también sus cables.
+- `cablesAcero`: mensajero de poste a poste, con las fibras que se apoyan en él y el
+  medio tramo donde se apoyan. **No va en `conexiones`**: todo lo que lee fibras lo
+  contaría como fibra. Los tipos son fijos (`TIPOS_CABLE_ACERO` en
+  `src/utils/cablesAcero.js`) y se liquidan por metro. Cualquier código nuevo que
+  borre, copie o mueva puntos, fibras o proyectos tiene que llevar también sus cables:
+  postes, medio tramo y fibras.
 
 - `puntos` y `conexiones`: lectura y escritura para cualquier autenticado. La
   regla estricta rompía con puntos viejos que traen `proyectoId` numérico o sin

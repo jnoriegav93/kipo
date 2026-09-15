@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
 
 export const useUIState = () => {
     // Estados UI
@@ -16,7 +17,7 @@ export const useUIState = () => {
     const [conexionesOcultas, setConexionesOcultas] = useState([]);
     // Cable de acero: se dibuja desde la misma barra que la fibra, pero es otra capa
     const [modoLinea, setModoLinea] = useState('fibra');          // 'fibra' | 'acero'
-    const [trazoAcero, setTrazoAcero] = useState([]);             // ids de los dos postes
+    const [trazoAcero, setTrazoAcero] = useState(TRAZO_ACERO_VACIO); // postes, fibras y medio tramo tocados
     const [cableAceroSeleccionado, setCableAceroSeleccionado] = useState(null);
     const [acerosVisibles, setAcerosVisibles] = useState(true);
     const [tipoAceroId, setTipoAceroId] = useState(null);         // último tipo usado

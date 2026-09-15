@@ -4,6 +4,7 @@ import { enviarMensajeSistema, detectarCambiosFotos, detectarCambiosCaracteristi
 import { uploadImage } from '../utils/storage';
 import { quitarCandidatasPorUrls } from '../utils/fotoHuerfanas';
 import { validarPunto } from '../utils/validarPunto';
+import { nombreTipoAcero } from '../utils/cablesAcero';
 
 // 👇 EL GANCHO (HOOK) RECIBE TODO EL ESTADO NECESARIO
 export const usePuntosLogic = ({
@@ -47,8 +48,10 @@ export const usePuntosLogic = ({
       const ids = (c.puntos?.length >= 2 ? c.puntos : [c.from, c.to]).filter(Boolean).map(String);
       return ids.includes(idSel);
     });
-    // Un cable de acero sin uno de sus dos postes deja de existir: se va con el poste
-    const cablesDelPunto = (cablesAcero || []).filter(c => (c.puntos || []).map(String).includes(idSel));
+    // Un cable de acero sin uno de sus dos postes o sin su medio tramo deja de existir:
+    // se va con el punto
+    const cablesDelPunto = (cablesAcero || []).filter(c =>
+      (c.puntos || []).map(String).includes(idSel) || (c.medioTramo != null && String(c.medioTramo) === idSel));
     const conectados = [
       fibrasDelPunto.length > 0 ? `${fibrasDelPunto.length} fibra${fibrasDelPunto.length !== 1 ? 's' : ''} conectada${fibrasDelPunto.length !== 1 ? 's' : ''}` : '',
       cablesDelPunto.length > 0 ? `${cablesDelPunto.length} cable${cablesDelPunto.length !== 1 ? 's' : ''} de acero` : '',
@@ -105,7 +108,7 @@ export const usePuntosLogic = ({
             await enviarCableAceroAPapelera({
               uid: user.uid, cable: c,
               proyectoNombre: (proyectoDe(c.proyectoId) || proyectoActual)?.nombre || '',
-              nombre: `${(config?.catalogoFerreteria || []).find(f => f.id === c.ferrId)?.nombre || 'Cable de acero'} (con ${identificador || 'el poste'})`,
+              nombre: `${nombreTipoAcero(c.ferrId)} (con ${identificador || 'el poste'})`,
             });
           }
         } catch (e) { console.error('Papelera:', e); }

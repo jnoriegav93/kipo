@@ -2,9 +2,22 @@
 // de dirección y se liquida como ferretería, por metro. No es fibra: vive en su
 // propia colección (cablesAcero) para que nada de lo que lee fibras lo cuente.
 //
-// Un cable guarda solo sus dos postes y el ítem del catálogo. El largo se calcula
-// siempre con la posición actual de los postes: si uno se corrige, los metros también.
+// Un cable guarda sus dos postes, su tipo, las fibras que se apoyan en él y el medio
+// tramo donde se apoyan. El largo se calcula siempre con la posición actual de los
+// postes: si uno se corrige, los metros también.
 import { distanciaMetros } from './fibraUtils.js';
+
+// Tipos fijos, como las capacidades de la fibra: no se agregan ni se quitan desde la
+// app. El id es el ítem del catálogo base con el que se liquida.
+export const TIPOS_CABLE_ACERO = [
+  { id: 'b13', nombre: 'MENSAJERO 1/8' },
+  { id: 'b38', nombre: 'MENSAJERO 3/16' },
+];
+
+// ¿Es cable de acero este ítem del catálogo? Se tiende en el mapa y se cuenta por
+// metro, nunca como ferretería de un poste.
+export const esCableAcero = (ferrId) => TIPOS_CABLE_ACERO.some(t => t.id === String(ferrId));
+export const nombreTipoAcero = (ferrId) => TIPOS_CABLE_ACERO.find(t => t.id === String(ferrId))?.nombre || 'CABLE DE ACERO';
 
 // Se liquida la distancia entre postes más un metro, redondeado al metro superior
 export const METRO_EXTRA_ACERO = 1;
@@ -15,9 +28,72 @@ export const metrosCableAcero = (a, b) => {
   return Math.ceil(Math.round(d * 100) / 100);
 };
 
-// Ítems del catálogo que se tienden como cable: se cuentan por metro, nunca por poste
-export const esPorMetro = (item) => item?.porMetro === true;
-export const tiposCableAcero = (catalogo = []) => catalogo.filter(esPorMetro);
+// Medio tramo: se reconoce por su tipo de elemento, igual que en el mapa
+export const esMedioTramo = (punto) => {
+  const te = punto?.datos?.tipoElemento;
+  return (Array.isArray(te) ? te : (te ? [te] : [])).includes('medioTramo');
+};
+
+// ── Trazo en curso ──────────────────────────────────────────────────────────
+// Lo que se va tocando antes de guardar, con los ids como texto. `id` y `ferrId`
+// solo vienen al editar un cable ya guardado.
+export const TRAZO_ACERO_VACIO = { id: null, ferrId: null, postes: [], fibras: [], medioTramo: null };
+
+export const hayTrazoAcero = (t) => t.postes.length > 0 || t.fibras.length > 0 || t.medioTramo != null;
+
+// Tocar un punto. El medio tramo es donde se apoyan las fibras: tocar otro lo cambia y
+// tocar el mismo lo suelta. Cualquier otro punto es poste: van dos, y un tercero
+// cambia el segundo, que es donde suele estar el error.
+export const tocarPuntoAcero = (trazo, puntoId, medioTramo) => {
+  const id = String(puntoId);
+  if (medioTramo) return { ...trazo, medioTramo: trazo.medioTramo === id ? null : id };
+  if (trazo.postes.includes(id)) return trazo;
+  return { ...trazo, postes: trazo.postes.length < 2 ? [...trazo.postes, id] : [trazo.postes[0], id] };
+};
+
+// Tocar una fibra la marca como apoyada en el cable, o la desmarca
+export const tocarFibraAcero = (trazo, fibraId) => {
+  const id = String(fibraId);
+  return { ...trazo, fibras: trazo.fibras.includes(id) ? trazo.fibras.filter(f => f !== id) : [...trazo.fibras, id] };
+};
+
+// ATRÁS deshace en el orden inverso al que se pide: medio tramo, fibras y postes. Sin
+// nada más que quitar, suelta también el cable que se estaba editando.
+export const deshacerTrazoAcero = (trazo) => {
+  if (trazo.medioTramo != null) return { ...trazo, medioTramo: null };
+  if (trazo.fibras.length) return { ...trazo, fibras: trazo.fibras.slice(0, -1) };
+  if (trazo.postes.length) return { ...trazo, postes: trazo.postes.slice(0, -1) };
+  return TRAZO_ACERO_VACIO;
+};
+
+// Lo primero que falta para poder guardar, en el orden en que se pide; null si nada
+export const faltaEnTrazoAcero = (trazo) => {
+  if (trazo.postes.length === 0) return 'poste1';
+  if (trazo.postes.length === 1) return 'poste2';
+  if (trazo.fibras.length === 0) return 'fibras';
+  if (trazo.medioTramo == null) return 'medioTramo';
+  return null;
+};
+
+// Un cable guardado, de vuelta a trazo para editarlo
+export const trazoDesdeCable = (cable) => ({
+  id: String(cable.id),
+  ferrId: cable.ferrId || null,
+  postes: (cable.puntos || []).map(String),
+  fibras: (cable.fibras || []).map(String),
+  medioTramo: cable.medioTramo != null ? String(cable.medioTramo) : null,
+});
+
+// Fibras apoyadas en un medio tramo: las marcadas en los cables de acero que lo usan.
+// Una fibra marcada en dos cables del mismo medio tramo cuenta una vez. Ids como texto.
+export const fibrasApoyadasEn = (puntoId, cables = []) => {
+  const ids = new Set();
+  cables.forEach(c => {
+    if (c.medioTramo == null || String(c.medioTramo) !== String(puntoId)) return;
+    (c.fibras || []).forEach(f => ids.add(String(f)));
+  });
+  return ids;
+};
 
 // Los dos postes de un cable, o null si alguno no está (borrado u oculto)
 export const postesDeCable = (cable, porId) => {

@@ -1,3 +1,5 @@
+import { tocarPuntoAcero } from './cablesAcero';
+
 export const mapInteractions = {
   handleMapaClick(params) {
     const {
@@ -66,7 +68,7 @@ export const mapInteractions = {
   handlePuntoClick(params) {
     const {
       e, puntoId, puntoCoords, modoFibra, dibujandoFibra, modoLinea, setPuntosRecorrido,
-      setTrazoAcero, ajustarVertice, setPuntoSeleccionado, setPuntoTemporal
+      setTrazoAcero, puntoEsMedioTramo, ajustarVertice, setPuntoSeleccionado, setPuntoTemporal
     } = params;
 
     if (e && typeof e.stopPropagation === 'function') {
@@ -75,14 +77,10 @@ export const mapInteractions = {
       e.originalEvent.stopPropagation();
     }
 
-    // Cable de acero: exactamente dos postes. Un tercer toque cambia el segundo
-    // poste, que es donde suele estar el error; el primero se quita con ATRÁS.
+    // Cable de acero: un poste es una de sus dos puntas y un medio tramo es donde se
+    // apoyan las fibras (las reglas están en tocarPuntoAcero)
     if (modoFibra && dibujandoFibra && modoLinea === 'acero') {
-      const id = String(puntoId);
-      setTrazoAcero?.(prev => {
-        if (prev.includes(id)) return prev;
-        return prev.length < 2 ? [...prev, id] : [prev[0], id];
-      });
+      setTrazoAcero?.(prev => tocarPuntoAcero(prev, puntoId, puntoEsMedioTramo));
       return;
     }
 

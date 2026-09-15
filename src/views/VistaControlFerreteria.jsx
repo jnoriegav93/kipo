@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
-import { metrosPorItem } from '../utils/cablesAcero';
+import { metrosPorItem, esCableAcero } from '../utils/cablesAcero';
 
 // ─── Consolidado de ferretería de los puntos de un proyecto ──────────────────
 const consolidarFerreteria = (puntosProyecto) => {
@@ -41,7 +41,9 @@ const MODO_BTN = { cjs: 'CJS', bls: 'BLS', rlls: 'RLL' };
 // ─── Fila de una ferretería en el Recibido ────────────────────────────────────
 function FilaRecibido({ item, valor, onChange, isDark, theme, muted, card }) {
   const v = norm(valor);
-  const esMts = (item.unidad || '').toLowerCase().includes('mt');
+  // El cable de acero va siempre en metros, diga lo que diga el catálogo
+  const unidad = esCableAcero(item.id) ? 'mts' : item.unidad;
+  const esMts = (unidad || '').toLowerCase().includes('mt');
   const modosDisp = esMts ? ['rlls'] : ['cjs', 'bls'];
   const [editando, setEditando] = useState(false);   // mostrando input de factor
   const [modoEdit, setModoEdit] = useState(null);     // modo que se está editando
@@ -60,7 +62,7 @@ function FilaRecibido({ item, valor, onChange, isDark, theme, muted, card }) {
   };
   const setCant = (n) => onChange({ modo: v.modo, factor: v.factor, cant: Math.max(0, n) });
 
-  const unitLabel = v.modo ? `${item.unidad} /${v.factor} x ${MODO_LABEL[v.modo]}` : item.unidad;
+  const unitLabel = v.modo ? `${unidad} /${v.factor} x ${MODO_LABEL[v.modo]}` : unidad;
 
   return (
     <div className={`${card} border-2 rounded-xl px-2.5 py-2 flex items-center gap-2`}>

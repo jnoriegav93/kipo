@@ -38,7 +38,7 @@ import { ConfirmModal, AlertModal, ExportModal } from './components/UI';
 import VerDetalle from './components/VerDetalle';
 import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bitacoraAuto';
 import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } from './utils/fibraUtils';
-import { tiposCableAcero, postesDeCable, metrosCableAcero } from './utils/cablesAcero';
+import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, faltaEnTrazoAcero, tocarFibraAcero, trazoDesdeCable } from './utils/cablesAcero';
 import { perteneceAProyecto } from './utils/helpers';
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
@@ -623,7 +623,8 @@ function App() {
       const ids = c.puntos?.length >= 2 ? c.puntos : [c.from, c.to].filter(Boolean);
       return ids.length >= 2 && ids.every(id => idsSet.has(id));
     });
-    // Cables de acero con sus DOS postes entre los elegidos: sin uno de ellos no existen
+    // Cables de acero con sus DOS postes entre los elegidos: sin uno de ellos no existen.
+    // Al copiar, su medio tramo y sus fibras apoyadas pasan a las copias si también van.
     const idsTexto = new Set([...idsSet].map(String));
     const cablesSel = cablesAcero.filter(c => (c.puntos || []).length === 2 && c.puntos.every(id => idsTexto.has(String(id))));
 
@@ -705,6 +706,7 @@ function App() {
         puntosAIndependizar = nuevosPuntos.map(np => np.id);
 
         const conexLocal = [];
+        const mapaConex = {};
         for (const c of conexionesSel) {
           const { id: _ocid, ...rest } = c;
           const data = {
@@ -718,11 +720,12 @@ function App() {
             timestamp: new Date().toISOString(),
           };
           const ref = await addDoc(collection(db, 'conexiones'), data);
+          mapaConex[c.id] = ref.id;
           conexLocal.push({ id: ref.id, ...data });
         }
         if (conexLocal.length) setConexiones(prev => [...prev, ...conexLocal]);
 
-        // Cables de acero, con sus dos postes cambiados por las copias
+        // Cables de acero, con sus postes, su medio tramo y sus fibras cambiados por las copias
         const cablesLocal = [];
         for (const c of cablesSel) {
           const { id: _idCable, ...rest } = c;
@@ -732,6 +735,8 @@ function App() {
             diaId: diaCable[c.id],
             ownerId: user.uid,
             puntos: c.puntos.map(pid => mapaIds[pid] || pid),
+            fibras: (c.fibras || []).map(fid => mapaConex[fid] || fid),
+            medioTramo: c.medioTramo != null ? (mapaIds[c.medioTramo] || c.medioTramo) : null,
             timestamp: new Date().toISOString(),
           };
           const ref = await addDoc(collection(db, 'cablesAcero'), data);
@@ -1615,18 +1620,13 @@ function App() {
   }, [conexiones, proyectoActual]);
 
   // ── CABLE DE ACERO ────────────────────────────────────────────────────────
-  // Otra capa, aunque se dibuje desde la barra de fibra. Los tipos son los ítems
-  // "por metro" del catálogo del dueño del proyecto, como el resto de la ferretería.
-  const tiposAcero = React.useMemo(
-    () => tiposCableAcero(configParaDetalle.catalogoFerreteria),
-    [configParaDetalle]
-  );
+  // Otra capa, aunque se dibuje desde la barra de fibra. Los tipos son fijos, como las
+  // capacidades de la fibra (src/utils/cablesAcero.js).
 
   // Cables visibles, con sus dos postes ya resueltos y los metros que se liquidan
   const lineasAcero = React.useMemo(() => {
     if (!acerosVisibles) return [];
     const porId = new Map(todosLosPuntos.map(p => [String(p.id), p]));
-    const nombreTipo = (ferrId) => configParaDetalle.catalogoFerreteria.find(f => f.id === ferrId)?.nombre || 'CABLE DE ACERO';
     return filtrosVisibilidad.getConexionesVisibles(cablesAcero, diasVisibles, proyectos.filter(p => !p.archivado))
       .map(c => {
         const postes = postesDeCable(c, porId);
@@ -1634,13 +1634,13 @@ function App() {
         const [a, b] = postes;
         return {
           ...c, a, b,
-          nombreTipo: nombreTipo(c.ferrId),
+          nombreTipo: nombreTipoAcero(c.ferrId),
           etiqueta: `${a.datos?.numero || 'S/N'} → ${b.datos?.numero || 'S/N'}`,
           metros: metrosCableAcero(a.coords, b.coords),
         };
       })
       .filter(Boolean);
-  }, [acerosVisibles, cablesAcero, todosLosPuntos, diasVisibles, proyectos, configParaDetalle]);
+  }, [acerosVisibles, cablesAcero, todosLosPuntos, diasVisibles, proyectos]);
 
   if (!user) return <Login onLogin={() => { }} initialBlocked={deviceBlocked} />;
 
@@ -1682,34 +1682,52 @@ function App() {
             }).catch(e => console.error("Error eliminando fibra:", e));
   };
 
-  // ── Cable de acero: guardar, cambiar tipo, borrar y cambiar de modo ─────────
+  // ── Cable de acero: trazar, guardar, editar, borrar y cambiar de modo ────────
   const descripcionTrazoAcero = (() => {
-    if (trazoAcero.length !== 2) return null;
-    const [a, b] = trazoAcero.map(id => todosLosPuntos.find(p => String(p.id) === id));
+    if (trazoAcero.postes.length !== 2) return null;
+    const [a, b] = trazoAcero.postes.map(id => todosLosPuntos.find(p => String(p.id) === id));
     if (a?.coords?.lat == null || b?.coords?.lat == null) return null;
     return { etiqueta: `${a.datos?.numero || 'S/N'} → ${b.datos?.numero || 'S/N'}`, metros: metrosCableAcero(a.coords, b.coords) };
   })();
+  // Las fibras y el medio tramo marcados, con lo que la barra necesita para mostrarlos
+  const fibrasTrazoAcero = trazoAcero.fibras
+    .map(id => (conexiones || []).find(c => String(c.id) === id))
+    .filter(Boolean)
+    .map(c => ({ id: String(c.id), nombre: c.nombre || '', capacidad: c.capacidad || 12 }));
+  const medioTramoTrazoAcero = trazoAcero.medioTramo
+    ? (todosLosPuntos.find(p => String(p.id) === trazoAcero.medioTramo)?.datos?.numero || 'S/N')
+    : null;
 
   const guardarCableAcero = async (ferrId) => {
-    if (trazoAcero.length !== 2 || !ferrId || !diaActual || !proyectoActual) return;
-    const [idA, idB] = trazoAcero;
-    const posteA = todosLosPuntos.find(p => String(p.id) === idA);
-    const datos = {
-      puntos: [idA, idB],
-      ferrId,
-      diaId: posteA?.diaId || diaActual,
-      proyectoId: String(posteA?.proyectoId || proyectoActual.id),
-      ownerId: user.uid,
-      timestamp: new Date().toISOString(),
-    };
-    // Se limpia el trazo pero no se sale del modo: se sigue con el próximo tramo
-    setTrazoAcero([]);
+    if (faltaEnTrazoAcero(trazoAcero) || !ferrId || !diaActual || !proyectoActual) return;
+    const { id, postes, fibras, medioTramo } = trazoAcero;
+    const cambios = { puntos: postes, ferrId, fibras, medioTramo };
+    // Se limpia el trazo pero no se sale del modo: se sigue con el próximo cable
+    setTrazoAcero(TRAZO_ACERO_VACIO);
     try {
-      await addDoc(collection(db, 'cablesAcero'), datos);
+      if (id) {
+        setCablesAcero(prev => prev.map(c => String(c.id) === id ? { ...c, ...cambios } : c));
+        await fbUpdateDoc(doc(db, 'cablesAcero', id), cambios);
+        return;
+      }
+      const posteA = todosLosPuntos.find(p => String(p.id) === postes[0]);
+      await addDoc(collection(db, 'cablesAcero'), {
+        ...cambios,
+        diaId: posteA?.diaId || diaActual,
+        proyectoId: String(posteA?.proyectoId || proyectoActual.id),
+        ownerId: user.uid,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       console.error('Error guardando cable de acero:', error);
       setAlertData({ title: 'Error', message: 'No se pudo guardar el cable de acero.' });
     }
+  };
+
+  // Un cable guardado vuelve al trazo: al guardar se actualiza en vez de crear otro
+  const editarCableAcero = (cable) => {
+    setCableAceroSeleccionado(null);
+    setTrazoAcero(trazoDesdeCable(cable));
   };
 
   const cambiarTipoCableAcero = async (cable, ferrId) => {
@@ -1752,13 +1770,13 @@ function App() {
     if (nuevo === modoLinea) return;
     const cambiar = () => {
       setPuntosRecorrido([]);
-      setTrazoAcero([]);
+      setTrazoAcero(TRAZO_ACERO_VACIO);
       setConexionSeleccionada(null);
       setCableAceroSeleccionado(null);
       setModoAjuste(false);
       setModoLinea(nuevo);
     };
-    const hayTrazo = modoLinea === 'acero' ? trazoAcero.length > 0 : puntosRecorrido.length > 0;
+    const hayTrazo = modoLinea === 'acero' ? hayTrazoAcero(trazoAcero) : puntosRecorrido.length > 0;
     if (!hayTrazo) { cambiar(); return; }
     setConfirmData({
       title: 'Trazo sin guardar',
@@ -1881,6 +1899,7 @@ function App() {
               e, puntoId,
               puntoCoords: todosLosPuntos.find(p => String(p.id) === String(puntoId))?.coords,
               modoFibra, dibujandoFibra, modoLinea, setPuntosRecorrido, setTrazoAcero,
+              puntoEsMedioTramo: esMedioTramo(todosLosPuntos.find(p => String(p.id) === String(puntoId))),
               ajustarVertice: ajustarVerticeFibra,
               setPuntoSeleccionado, setPuntoTemporal
             })
@@ -2066,18 +2085,21 @@ function App() {
             trazo: trazoAcero,
             setTrazo: setTrazoAcero,
             descripcionTrazo: descripcionTrazoAcero,
-            tipos: tiposAcero,
+            fibrasTrazo: fibrasTrazoAcero,
+            medioTramoTrazo: medioTramoTrazoAcero,
+            onTocarFibra: (id) => setTrazoAcero(prev => tocarFibraAcero(prev, id)),
             tipoId: tipoAceroId,
             setTipoId: setTipoAceroId,
             onGuardar: guardarCableAcero,
             seleccionado: cableAceroSeleccionado,
             setSeleccionado: setCableAceroSeleccionado,
             onCambiarTipo: cambiarTipoCableAcero,
+            onEditar: editarCableAcero,
             onEliminar: pedirBorrarCableAcero,
             visibles: acerosVisibles,
             setVisibles: setAcerosVisibles,
             total: proyectoActual ? cablesAcero.filter(c => String(c.proyectoId) === String(proyectoActual.id)).length : 0,
-            onCerrar: () => { setTrazoAcero([]); setCableAceroSeleccionado(null); setModoLinea('fibra'); },
+            onCerrar: () => { setTrazoAcero(TRAZO_ACERO_VACIO); setCableAceroSeleccionado(null); setModoLinea('fibra'); },
           }}
           modoSupervision={!!mapaSupervision}
           onVolverSupervision={() => {

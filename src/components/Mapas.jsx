@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPinOff } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
+import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -223,7 +224,8 @@ export const MapaReal = ({
   // Cable de acero: otra capa, que se dibuja desde la misma barra que la fibra
   modoLinea = 'fibra',
   lineasAcero = [],
-  trazoAcero = [],
+  trazoAcero = TRAZO_ACERO_VACIO,
+  onTocarFibraAcero,
   cableAceroSeleccionado = null,
 }) => {
 
@@ -438,7 +440,13 @@ export const MapaReal = ({
     const p = puntosVisiblesMapa.find(x => String(x.id) === String(id));
     return p?.coords?.lat != null ? [p.coords.lat, p.coords.lng] : null;
   };
-  const tramoAceroEnCurso = modoAcero && trazoAcero.length === 2 ? trazoAcero.map(coordPoste) : null;
+  const tramoAceroEnCurso = modoAcero && trazoAcero.postes.length === 2 ? trazoAcero.postes.map(coordPoste) : null;
+  // Fibras apoyadas: las del cable elegido en la lista o, si no hay, las que se van
+  // marcando en el trazo. Se ven gruesas y sin puntear.
+  const trazandoAcero = modoAcero && dibujandoFibra;
+  const fibrasApoyadas = new Set(!modoAcero ? []
+    : cableAceroSeleccionado ? (cableAceroSeleccionado.fibras || []).map(String)
+    : trazoAcero.fibras);
   const capaAcero = (
     <>
       {lineasAcero.map(c => {
@@ -550,25 +558,45 @@ export const MapaReal = ({
             : (f.capacidad || 12);
           const colorFibra = getColorFibra(capacidad);
 
-          return <Polyline
-            key={f.id}
-            positions={f.positions}
-            pathOptions={{
-              // Seleccionada = más gruesa, nunca de otro color: el color ES el dato
-              // (la capacidad), y pintarla de rojo tapaba justo lo que se está editando.
-              color: colorFibra,
-              weight: isSelCon ? 7 : (modoFibraLinea ? 4 : 3),
-              dashArray: modoFibraLinea ? undefined : '8,8',
-              opacity: isSelCon ? 1 : (modoFibraLinea ? 0.95 : 1.0),
-              ...(modoFibraLinea && (capacidad === 1) ? { className: 'fibra-blanca' } : {})
-            }}
-            eventHandlers={modoFibraLinea && !dibujandoFibra ? {
-              click: (e) => {
-                L.DomEvent.stopPropagation(e);
-                if (handleConexionClick) handleConexionClick({ ...f.datos, id: f.id });
-              }
-            } : {}}
-          />
+          // Apoyada en el cable de acero que se traza (o en el elegido): gruesa y continua
+          const apoyada = fibrasApoyadas.has(String(f.id));
+
+          return (
+            <React.Fragment key={f.id}>
+              <Polyline
+                positions={f.positions}
+                pathOptions={{
+                  // Seleccionada = más gruesa, nunca de otro color: el color ES el dato
+                  // (la capacidad), y pintarla de rojo tapaba justo lo que se está editando.
+                  color: colorFibra,
+                  weight: isSelCon || apoyada ? 7 : (modoFibraLinea ? 4 : 3),
+                  dashArray: modoFibraLinea || apoyada ? undefined : '8,8',
+                  opacity: isSelCon || apoyada ? 1 : (modoFibraLinea ? 0.95 : 1.0),
+                  ...(modoFibraLinea && (capacidad === 1) ? { className: 'fibra-blanca' } : {})
+                }}
+                eventHandlers={modoFibraLinea && !dibujandoFibra ? {
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    if (handleConexionClick) handleConexionClick({ ...f.datos, id: f.id });
+                  }
+                } : {}}
+              />
+              {/* Trazando acero, la fibra se toca para marcarla como apoyada. La línea
+                  visible es fina y punteada: esta, invisible y ancha, recibe el toque. */}
+              {trazandoAcero && (
+                <Polyline
+                  positions={f.positions}
+                  pathOptions={{ color: '#000', opacity: 0, weight: 22 }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e);
+                      onTocarFibraAcero?.(f.id);
+                    }
+                  }}
+                />
+              )}
+            </React.Fragment>
+          );
         })}
 
         <Pane name="acero-sobre" style={{ zIndex: 405 }}>{modoAcero && capaAcero}</Pane>
@@ -594,9 +622,9 @@ export const MapaReal = ({
             ? (coloresArmado[p.datos?.armadoSeleccionadoId] || '#9ca3af')
             : obtenerColorDia(p.diaId);
           const isSelected = !modoMoverPuntos && puntoSeleccionado === p.id;
-          // En el trazo en curso: vértice de la fibra, o uno de los dos postes del acero
+          // En el trazo en curso: vértice de la fibra, o poste o medio tramo del acero
           const isInRecorrido = modoFibra && dibujandoFibra && (modoAcero
-            ? trazoAcero.includes(String(p.id))
+            ? (trazoAcero.postes.includes(String(p.id)) || trazoAcero.medioTramo === String(p.id))
             : puntosRecorrido.some(v => v && String(v.puntoId) === String(p.id)));
           const isEnSeleccion = modoMoverPuntos && puntosSeleccionadosMover.includes(p.id);
           // Corrigiendo: TODOS los puntos muestran su posición actual (hace falta para

@@ -198,28 +198,43 @@ con datos falsos interceptando la petición.
 
 Mensajero de acero **de poste a poste**, para sostener la fibra en los cambios de
 dirección. **No es fibra: es ferretería que se liquida por metro.** Decidido con el
-usuario el 14/09.
+usuario el 14/09; ese mismo día pasó a tipos fijos y a registrar qué fibras se apoyan
+en el cable y en qué medio tramo.
 
 - **Dónde se dibuja.** Selector FIBRA | ACERO arriba de la barra que abre el botón
   FIBRA. En ACERO la barra es otra (`src/components/BarraAcero.jsx`) y no comparte
-  nada con la de fibra: trazo de **exactamente dos postes** (tocar el mapa vacío no
-  hace nada; un tercer poste cambia el segundo), lista, borrar y ver/ocultar.
+  nada con la de fibra. Un cable lleva **dos postes** (sus puntas; un tercer poste
+  cambia el segundo), **las fibras que se apoyan** (se tocan en el mapa; otro toque
+  las desmarca) y **el medio tramo donde se apoyan** (tocar un medio tramo nunca lo
+  toma como poste). GUARDAR se habilita con todo eso y pide el tipo. ATRÁS deshace en
+  orden inverso: medio tramo, fibras y postes. La lista cambia el tipo, EDITA (el
+  cable vuelve al trazo y al guardar se actualiza) y borra. Tocar el mapa vacío no
+  hace nada. Las reglas del trazo son funciones puras en `src/utils/cablesAcero.js`
+  (`tocarPuntoAcero`, `tocarFibraAcero`, `deshacerTrazoAcero`, `faltaEnTrazoAcero`).
 - **Datos.** Colección propia `cablesAcero`:
-  `{ puntos: [A, B], ferrId, proyectoId, diaId, ownerId, timestamp }`. Va aparte de
-  `conexiones` a propósito: todo lo que lee fibras (metros por capacidad, reparto
-  de postes en ramales, KMZ) lo contaría como fibra de 12 hilos, y las versiones
-  viejas de la app lo verían como fibra. No guarda geometría: se mide siempre con
-  la posición actual de sus dos postes.
+  `{ puntos: [A, B], ferrId, fibras: [idConexion…], medioTramo, proyectoId, diaId, ownerId, timestamp }`.
+  Va aparte de `conexiones` a propósito: todo lo que lee fibras (metros por capacidad,
+  reparto de postes en ramales, KMZ) lo contaría como fibra de 12 hilos, y las
+  versiones viejas de la app lo verían como fibra. No guarda geometría: se mide
+  siempre con la posición actual de sus dos postes.
 - **Metros a liquidar.** Distancia entre postes **+ 1 m, redondeado al metro
   superior** (`metrosCableAcero` en `src/utils/cablesAcero.js`, probado con Node).
-- **Tipos de cable.** Ítems del catálogo marcados `porMetro` (en la semilla: CABLE
-  MENSAJERO 1/8 y 3/16, con unidad `mts`). Se marcan en Configuración → Ferretería
-  (botón de regla) o en la ferretería base del admin. Salen del catálogo del
-  dueño del proyecto, como el resto de la ferretería.
-- **Fuera de la ferretería por poste.** Los ítems `porMetro` no se ofrecen en los
-  contadores del punto ni en los armados, y al aplicar un armado se ignoran. Solo
-  aparecen si un punto ya traía cantidad, para poder quitarla: las cantidades
-  viejas las corrige el usuario, el código no las compensa.
+- **Tipos de cable: fijos**, como las capacidades de la fibra (`TIPOS_CABLE_ACERO`):
+  MENSAJERO 1/8 (ítem `b13`) y MENSAJERO 3/16 (`b38`). El usuario no agrega ni quita
+  tipos, y el `ferrId` es el ítem con el que se liquida. Ya no existen la marca
+  `porMetro` ni el botón de regla de Configuración o de la base del admin.
+- **Fuera de la ferretería por poste.** `b13` y `b38` no se ofrecen en los contadores
+  del punto ni en los armados, y al aplicar un armado se ignoran. Solo aparecen si un
+  punto ya traía cantidad, para poder quitarla: las cantidades viejas las corrige el
+  usuario, el código no las compensa. En la liquidación y en Control Ferretería van
+  siempre en `mts`, aunque el catálogo del usuario diga `und`.
+- **Apoyos en medio tramo.** En Liquidación → Revisión (la etiqueta sobre la foto) un
+  **poste** sigue contando apoyos y extremos por cercanía (3 m). En un **medio tramo**
+  los apoyos son solo las fibras marcadas en los cables de acero que lo usan
+  (`fibrasApoyadasEn` y el cuarto parámetro de `resumenFibrasEnPoste`), porque la
+  cercanía contaba también las fibras que pasan de frente. Un medio tramo sin cable no
+  tiene apoyos; los extremos se miden igual que siempre. Las columnas de apoyos de los
+  listados (utilizados, col. L; postes eléctricos, col. O) siguen vacías.
 - **Dónde suma.** Excel de liquidación de materiales, Control Ferretería
   (consolidado), comparativo de ferretería del proyecto y, en el reporte de tendido
   del servidor, una tabla "CABLE DE ACERO" en metros dentro del RESUMEN, aparte del
@@ -229,24 +244,27 @@ usuario el 14/09.
   distancia al poste anterior. En el KMZ (cliente y servidor) va una carpeta
   "Cables de acero". No entra en la hoja DATOS del servidor ni en el RF de ferretería.
   La regla de metros está copiada en `functions/index.js`: si cambia, cambia en los dos.
-- **Ciclo de vida.** Borrar un poste borra sus cables (papelera tipo `acero`, que
-  restaura si los dos postes existen). Copiar/cortar puntos los lleva si van sus
-  dos postes. Borrar proyecto (lista, equipos, admin) los incluye. Salir de un
-  equipo los copia.
-- **Despliegue.** **Todo en producción el 14/09/26**, desde la laptop (que ya tiene
-  `firebase login` hecho): reglas, hosting (**SELLO: 14/09/26, 16:00**) y la función
-  `procesarExportacion`. Antes de desplegar las reglas se comparó lo publicado con el
-  repo y no había nada que existiera solo en producción. El orden importa: sin las
-  reglas, guardar un cable falla por permisos (los reportes del cliente no se
-  rompen: cuentan cero cables).
+- **Ciclo de vida.** Borrar un poste **o el medio tramo** de un cable borra el cable
+  (papelera tipo `acero`, que restaura si existen sus dos postes y su medio tramo).
+  Borrar una fibra no toca los cables: esa fibra deja de contar como apoyo.
+  Copiar/cortar puntos los lleva si van sus dos postes; al copiar, el medio tramo y las
+  fibras pasan a las copias si también van. Borrar proyecto (lista, equipos, admin)
+  los incluye. Salir de un equipo los copia con postes, medio tramo y fibras remapeados.
+- **Despliegue.** La primera versión (tipos por catálogo, sin fibras ni medio tramo)
+  quedó en producción el 14/09/26: reglas, hosting (**SELLO: 14/09/26, 16:00**) y
+  `procesarExportacion`. **Tipos fijos, fibras apoyadas y medio tramo: en el repo,
+  sin desplegar todavía.** Para eso basta el hosting: las reglas no cambian y el
+  servidor solo lee `puntos` y `ferrId` de cada cable.
 
-Probado con Node (regla de metros), con lint (ningún error nuevo en los 22 archivos
-tocados) y compilando. También en Chrome con una página local (`harness-diseno/acero.html`,
-fuera de git): VistaMapa real con el mismo cableado que App sobre tres postes
-falsos. Se probó el selector, que el mapa vacío no agrega nada, dos postes →
-31 m, tipos solo por metro, guardar, tercer poste, ATRÁS, lista, cambio de tipo,
-borrar y vuelta a FIBRA. **No probado todavía en la app real con Firestore**:
-tocar dos postes, guardar, recargar, ver la lista y liquidar.
+Probado con Node (23 casos: metros, tipos, trazo, apoyos y reparto por poste) y la
+copia del servidor contra el cliente; con lint (ningún error nuevo en los 22 archivos
+tocados) y compilando. También en Chrome con una página local
+(`harness-diseno/acero.html`, fuera de git): VistaMapa real con el mismo cableado que
+App sobre tres postes, un medio tramo y dos fibras falsos. 15 casos: mapa vacío, el
+medio tramo no es poste, dos postes → 31 m, marcar y desmarcar fibras, medio tramo,
+tipos fijos, guardar, tercer poste, ATRÁS, lista, cambio de tipo, EDITAR/ACTUALIZAR,
+borrar, vuelta a FIBRA y consola sin errores. **No probado todavía en la app real con
+Firestore**: trazar, guardar, recargar, editar, ver los apoyos en Revisión y liquidar.
 
 La liquidación no se rompe si se sube el hosting antes que las reglas: un "sin
 permiso" al leer `cablesAcero` cuenta como cero cables, porque sin reglas tampoco

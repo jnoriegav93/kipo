@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
 import { VINCULOS_FERRETERIA } from '../data/constantes';
-import { esPorMetro } from '../utils/cablesAcero';
+import { esCableAcero } from '../utils/cablesAcero';
 
 // Editor de los materiales de un armado: selección con cantidades, vínculos entre
 // ferreterías que van juntas y reordenado de la lista. Estaba dentro del
@@ -14,10 +14,10 @@ export default function EditorArmadoItems({ tempData, setTempData, config, theme
   const guardarArmadoConItems = () => onGuardar?.();
         const itemsSeleccion = tempData.itemsSeleccion || {};
         const listaOrden = tempData.listaOrden || config.catalogoFerreteria.map(f => f.id);
-        // Lo que se tiende por metro no va en armados: solo se ve si el armado ya lo
-        // traía, para poder quitarlo
+        // El cable de acero no va en armados: solo se ve si el armado ya lo traía, para
+        // poder quitarlo
         let listaDisplay = listaOrden.map(id => config.catalogoFerreteria.find(f => f.id === id))
-          .filter(f => f && (!esPorMetro(f) || (itemsSeleccion[f.id]?.cant || 0) > 0));
+          .filter(f => f && (!esCableAcero(f.id) || (itemsSeleccion[f.id]?.cant || 0) > 0));
 
         // VÍNCULOS "van juntas": al ponerle cantidad a una del grupo, las demás se JUNTAN a
         // su lado (aunque estén en 0) y salen resaltadas como SUGERENCIA (no obliga cantidad).

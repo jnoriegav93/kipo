@@ -109,10 +109,11 @@ export const restaurarFibra = async (entrada, puntosActuales) => {
   return { ok: true };
 };
 
-// Cable de acero: vuelve si sus dos postes existen. No hace falta que sigan en el
-// mismo sitio: el cable no guarda geometría, se mide siempre desde sus postes.
+// Cable de acero: vuelve si sus dos postes y su medio tramo existen. No hace falta que
+// sigan en el mismo sitio: el cable no guarda geometría, se mide siempre desde sus postes.
 export const restaurarCableAcero = async (entrada, puntosActuales) => {
-  const faltantes = (entrada.snapshot?.puntos || []).map(String)
+  const { puntos = [], medioTramo = null } = entrada.snapshot || {};
+  const faltantes = [...puntos, medioTramo].filter(id => id != null).map(String)
     .filter(id => !(puntosActuales || []).some(p => String(p.id) === id))
     .map(id => ({ id, motivo: 'no existe' }));
   if (faltantes.length) return { ok: false, faltantes };

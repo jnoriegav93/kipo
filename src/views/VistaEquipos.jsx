@@ -905,11 +905,15 @@ export default function VistaEquipos({
           });
         await Promise.all(puntosOps);
 
-        // c. Copiar conexiones remapeando los IDs de puntos
+        // c. Copiar conexiones remapeando los IDs de puntos, y anotar el id nuevo de cada
+        // una: los cables de acero lo necesitan para sus fibras apoyadas
         const conexSnap = await getDocs(query(collection(db, 'conexiones'), where('proyectoId', '==', _oldProyId)));
+        const mapaConex = {};
         const conexOps = conexSnap.docs.map(cd => {
           const { id: _oldCId, ...cData } = { id: cd.id, ...cd.data() };
-          return setDoc(doc(collection(db, 'conexiones')), {
+          const nuevaRef = doc(collection(db, 'conexiones'));
+          mapaConex[cd.id] = nuevaRef.id;
+          return setDoc(nuevaRef, {
             ...cData,
             proyectoId: nuevoProyId,
             ownerId: equipo.ownerId,
@@ -920,14 +924,19 @@ export default function VistaEquipos({
         });
         await Promise.all(conexOps);
 
-        // d. Copiar cables de acero, también con sus postes remapeados
+        // d. Copiar cables de acero, con sus postes, su medio tramo y sus fibras remapeados
         const aceroSnap = await getDocs(query(collection(db, 'cablesAcero'), where('proyectoId', '==', _oldProyId)));
-        await Promise.all(aceroSnap.docs.map(ad => setDoc(doc(collection(db, 'cablesAcero')), {
-          ...ad.data(),
-          proyectoId: nuevoProyId,
-          ownerId: equipo.ownerId,
-          puntos: (ad.data().puntos || []).map(pid => mapaIds[pid] || pid),
-        })));
+        await Promise.all(aceroSnap.docs.map(ad => {
+          const cable = ad.data();
+          return setDoc(doc(collection(db, 'cablesAcero')), {
+            ...cable,
+            proyectoId: nuevoProyId,
+            ownerId: equipo.ownerId,
+            puntos: (cable.puntos || []).map(pid => mapaIds[pid] || pid),
+            fibras: (cable.fibras || []).map(fid => mapaConex[fid] || fid),
+            medioTramo: cable.medioTramo != null ? (mapaIds[cable.medioTramo] || cable.medioTramo) : null,
+          });
+        }));
       }
 
       // 2. Quitar acceso de proyectos donde era editor/supervisor
