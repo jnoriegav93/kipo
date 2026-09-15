@@ -10,7 +10,7 @@ import { TABS_CONFIG, esFotoMiniatura } from '../components/PhotoManager';
 import { MiniMapaRevision } from '../components/Mapas';
 import useIsDesktop from '../hooks/useIsDesktop';
 import { compartirODescargar, perteneceAProyecto } from '../utils/helpers';
-import { metrosPorItem, esMedioTramo, fibrasApoyadasEn, quitarCableAcero } from '../utils/cablesAcero';
+import { metrosPorItem, esMedioTramo, fibrasApoyadasEn, quitarCableAcero, sugeridasPorAcero } from '../utils/cablesAcero';
 import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
 import BloqueoHerramienta from '../components/BloqueoHerramienta';
 import { equiposDePunto } from '../utils/equiposPasivos';
@@ -2724,6 +2724,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                       theme={theme}
                       disabled={!puedeEditar}
                       subirConValor={subirActivas}
+                      sugeridasAcero={sugeridasPorAcero(punto?.id, cablesAceroProyecto)}
                     />
                   </div>
                 </div>

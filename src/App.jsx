@@ -38,7 +38,7 @@ import { ConfirmModal, AlertModal, ExportModal } from './components/UI';
 import VerDetalle from './components/VerDetalle';
 import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bitacoraAuto';
 import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } from './utils/fibraUtils';
-import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, faltaEnTrazoAcero, tocarFibraAcero, trazoDesdeCable } from './utils/cablesAcero';
+import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, faltaEnTrazoAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero } from './utils/cablesAcero';
 import { perteneceAProyecto } from './utils/helpers';
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
@@ -67,6 +67,7 @@ import { useLogo } from './hooks/useLogo';
 import { useFirebaseData } from './hooks/useFirebaseData';
 import { useProjectLogic } from './hooks/useProjectLogic';
 import { usePuntosLogic } from './hooks/usePuntosLogic';
+import { useCablesAceroProyecto } from './hooks/useCablesAceroProyecto';
 import { useSync } from './context/SyncContext';
 
 // Utilidades
@@ -1642,6 +1643,16 @@ function App() {
       .filter(Boolean);
   }, [acerosVisibles, cablesAcero, todosLosPuntos, diasVisibles, proyectos]);
 
+  // Ferretería que sugieren los cables de acero del punto abierto en el formulario. Se
+  // leen los del proyecto del punto, los haya trazado quien sea.
+  const idPuntoAbierto = puntoSeleccionado || tempPuntoId;
+  const proyectoPuntoAbierto = todosLosPuntos.find(p => String(p.id) === String(idPuntoAbierto))?.proyectoId || proyectoActual?.id;
+  const cablesProyectoPunto = useCablesAceroProyecto(proyectoPuntoAbierto);
+  const sugeridasAceroPunto = React.useMemo(
+    () => sugeridasPorAcero(idPuntoAbierto, cablesProyectoPunto),
+    [idPuntoAbierto, cablesProyectoPunto]
+  );
+
   if (!user) return <Login onLogin={() => { }} initialBlocked={deviceBlocked} />;
 
   // Cada ramal reserva un pasillo de 2 m: no se deja poner un vértice que haría
@@ -2394,6 +2405,7 @@ function App() {
 
       {vista === 'formulario' && (
         <Formulario
+          sugeridasAcero={sugeridasAceroPunto}
           theme={theme}
           isDesktop={isDesktop}
           perfilActivo={perfilActivo}

@@ -65,7 +65,7 @@ export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols,
 
 
 // --- COMPONENTE DE LISTA CON CONTADORES ---
-export const ListaContadores = ({ config, datos, setDatos, theme, disabled, armadoSeleccionado, subirConValor }) => {
+export const ListaContadores = ({ config, datos, setDatos, theme, disabled, armadoSeleccionado, subirConValor, sugeridasAcero = {} }) => {
   // El cable de acero no es ferretería del poste: se tiende en el mapa y se liquida por
   // metro. No aparece aunque el punto traiga una cantidad de antes, que ya no suma.
   const itemsVisibles = config.catalogoFerreteria.filter(f => f.visible !== false && !esCableAcero(f.id));
@@ -84,15 +84,20 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
   let itemsOrdenados = [...primarias, ...secundarias, ...resto];
   // Subir al inicio las ferreterías con valor mayor a cero (sort estable)
   if (subirConValor) itemsOrdenados = [...itemsOrdenados].sort((a, b) => ((datos[b.id] || 0) > 0 ? 1 : 0) - ((datos[a.id] || 0) > 0 ? 1 : 0));
+  // Lo que sugieren los cables de acero del punto va primero ({ ferrId: motivo })
+  if (Object.keys(sugeridasAcero).length) {
+    itemsOrdenados = [...itemsOrdenados.filter(f => sugeridasAcero[f.id]), ...itemsOrdenados.filter(f => !sugeridasAcero[f.id])];
+  }
 
   // VÍNCULOS ("van juntas"): pares INTERNOS (constantes.js, por nombre). Al tener cantidad
-  // UNA del grupo, las demás se JUNTAN a su lado (aunque estén en 0) como SUGERENCIA.
+  // UNA del grupo, o al sugerirla un cable de acero, las demás se JUNTAN a su lado (aunque
+  // estén en 0) como SUGERENCIA.
   const norm = (s) => String(s || '').trim().toLowerCase();
   const vinculoDe = {};
   VINCULOS_FERRETERIA.forEach((grupo, gi) => {
     itemsVisibles.forEach(f => { if (grupo.includes(norm(f.nombre))) vinculoDe[f.id] = `vg${gi}`; });
   });
-  const gruposActivos = new Set(itemsVisibles.filter(f => (datos[f.id] || 0) > 0 && vinculoDe[f.id]).map(f => vinculoDe[f.id]));
+  const gruposActivos = new Set(itemsVisibles.filter(f => ((datos[f.id] || 0) > 0 || sugeridasAcero[f.id]) && vinculoDe[f.id]).map(f => vinculoDe[f.id]));
   if (gruposActivos.size) {
     const res = []; const done = new Set();
     for (const f of itemsOrdenados) {
@@ -104,7 +109,7 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
     }
     itemsOrdenados = res;
   }
-  const esSugerida = (id) => vinculoDe[id] && gruposActivos.has(vinculoDe[id]) && (datos[id] || 0) === 0;
+  const esSugerida = (id) => (datos[id] || 0) === 0 && (!!sugeridasAcero[id] || (!!vinculoDe[id] && gruposActivos.has(vinculoDe[id])));
 
   const actualizarCantidad = (itemId, delta) => {
     if (disabled) return;
@@ -135,7 +140,7 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
             <div className="flex-1 pl-2">
               <div className={`font-bold text-sm leading-tight ${theme.text} flex items-center gap-1.5`}>
                 {item.nombre}
-                {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">sugerida</span>}              </div>
+                {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">{sugeridasAcero[item.id] ? `sugerida · ${sugeridasAcero[item.id]}` : 'sugerida'}</span>}              </div>
             </div>
             <div className="flex items-center gap-2 bg-slate-900/5 rounded-lg p-1">
               <button

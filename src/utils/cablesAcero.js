@@ -10,8 +10,8 @@ import { distanciaMetros } from './fibraUtils.js';
 // Tipos fijos, como las capacidades de la fibra: no se agregan ni se quitan desde la
 // app. El id es el ítem del catálogo base con el que se liquida.
 export const TIPOS_CABLE_ACERO = [
-  { id: 'b13', nombre: 'MENSAJERO 1/8' },
-  { id: 'b38', nombre: 'MENSAJERO 3/16' },
+  { id: 'b13', nombre: 'MENSAJERO 1/8', medida: '1/8' },
+  { id: 'b38', nombre: 'MENSAJERO 3/16', medida: '3/16' },
 ];
 
 // ¿Es cable de acero este ítem del catálogo? Se tiende en el mapa y se cuenta por
@@ -24,6 +24,33 @@ export const nombreTipoAcero = (ferrId) => TIPOS_CABLE_ACERO.find(t => t.id === 
 // antes de existir el cable de acero dejan de sumar.
 export const quitarCableAcero = (totales = {}) =>
   Object.fromEntries(Object.entries(totales).filter(([id]) => !esCableAcero(id)));
+
+// Ferretería que se sugiere en los puntos de un cable de acero, según su tipo: en sus dos
+// postes y en su medio tramo. Solo sugiere, sin cantidad, como las que "van juntas".
+// Son ids del catálogo base.
+export const SUGERIDAS_CABLE_ACERO = {
+  b13: { postes: ['b12'], medioTramo: ['b15'] },  // 1/8: grillete tipo candado · chapa braquelita
+  b38: { postes: ['b40'], medioTramo: ['b37'] },  // 3/16: preformado rojo 3/16 · chapa 3 huecos
+};
+
+// Qué sugieren los cables de acero en un punto: lo de sus postes si el punto es una de sus
+// puntas y lo de su medio tramo si es donde se apoyan las fibras. Devuelve
+// { ferrId: 'ACERO 1/8' }, con el tipo que lo sugiere para mostrar el motivo.
+export const sugeridasPorAcero = (puntoId, cables = []) => {
+  const sugeridas = {};
+  if (puntoId == null) return sugeridas;
+  const id = String(puntoId);
+  cables.forEach(c => {
+    const regla = SUGERIDAS_CABLE_ACERO[c.ferrId];
+    if (!regla) return;
+    const motivo = `ACERO ${TIPOS_CABLE_ACERO.find(t => t.id === c.ferrId).medida}`;
+    [
+      ...((c.puntos || []).map(String).includes(id) ? regla.postes : []),
+      ...(c.medioTramo != null && String(c.medioTramo) === id ? regla.medioTramo : []),
+    ].forEach(ferrId => { if (!sugeridas[ferrId]) sugeridas[ferrId] = motivo; });
+  });
+  return sugeridas;
+};
 
 // Se liquida la distancia entre postes más un metro, redondeado al metro superior
 export const METRO_EXTRA_ACERO = 1;

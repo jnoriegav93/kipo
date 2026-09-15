@@ -13,6 +13,7 @@ export default function Formulario({
   datosFormulario,
   setDatosFormulario,
   config,
+  sugeridasAcero = {},   // ferretería que sugieren los cables de acero de este punto
   proyectoActual,
   modoLectura,
   modoEdicion,
@@ -202,6 +203,7 @@ export default function Formulario({
           {/* CONTENIDO POR PESTAÑA */}
           {tabActiva === 'ferreteria' && hasFerreteriaTab && (
             <BloqueLiquidacion
+              sugeridasAcero={sugeridasAcero}
               config={config}
               datosFormulario={datosFormulario}
               setDatosFormulario={setDatosFormulario}
@@ -485,7 +487,7 @@ export const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulari
 };
 
 // 2. BLOQUE LIQUIDACIÓN
-export const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario, theme, disabled, subirConValor }) => {
+export const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario, theme, disabled, subirConValor, sugeridasAcero = {} }) => {
   const armadoSeleccionadoId = datosFormulario.armadoSeleccionadoId || null;
   const armadoObj = config.armados.find(a => a.id === armadoSeleccionadoId) || null;
 
@@ -529,6 +531,7 @@ export const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario,
         disabled={disabled}
         armadoSeleccionado={armadoObj}
         subirConValor={subirConValor}
+        sugeridasAcero={sugeridasAcero}
       />
     </div>
   );

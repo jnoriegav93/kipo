@@ -237,6 +237,13 @@ en el cable y en qué medio tramo.
   cercanía contaba también las fibras que pasan de frente. Un medio tramo sin cable no
   tiene apoyos; los extremos se miden igual que siempre. Las columnas de apoyos de los
   listados (utilizados, col. L; postes eléctricos, col. O) siguen vacías.
+- **Ferretería sugerida (15/09).** En la ferretería de un punto (formulario y
+  FERRETERÍA → REVISIÓN) los cables de acero sugieren, sin cantidad y al inicio de la
+  lista: **3/16** → PREFORMADO ROJO 3/16 en sus dos postes y CHAPA 3 HUECOS en su medio
+  tramo; **1/8** → GRLLETE (grillete tipo candado) en sus postes y CHAPA BRAQUELITA en
+  su medio tramo, que por su vínculo "van juntas" jala a CHAPA Q. La etiqueta dice el
+  motivo ("SUGERIDA · ACERO 1/8"). Regla fija en `SUGERIDAS_CABLE_ACERO`
+  (`src/utils/cablesAcero.js`), por id del catálogo base.
 - **Dónde suma.** Excel de liquidación de materiales, Control Ferretería
   (consolidado), comparativo de ferretería del proyecto y, en el reporte de tendido
   del servidor, una tabla "CABLE DE ACERO" en metros dentro del RESUMEN, aparte del
