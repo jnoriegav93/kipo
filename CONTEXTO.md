@@ -331,7 +331,8 @@ y no se puede cerrar. Se quita al terminar con un "Listo", o con un aviso si alg
 sincronización: escribe directo y espera cada documento; sin señal, Firestore lo guarda
 en el equipo y la pantalla sigue bloqueada avisando "Sin señal". Las fotos se
 independizan esperando al servidor, de a 10 puntos por llamada para no pasar los 9
-minutos de la función; sin señal se espera a que vuelva y se reintenta la tanda.
+minutos de la función; sin señal se espera a que vuelva y se reintenta la tanda. En
+producción desde el 15/09/26 (**SELLO: 15/09/26, 11:49**).
 
 ---
 
