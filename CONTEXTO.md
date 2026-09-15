@@ -317,7 +317,8 @@ posición y lo que se movió) y el resto queda sin posición, como se ve en el m
 (`posicionesAGuardar` en `src/utils/ordenTendido.js`, probado con Node). Si guardar
 quitaría la posición a puntos que ya la tenían, se pide confirmación y se sugiere
 RETOMAR. El editor de posición de la lista de puntos (VistaProyectos) sigue numerando
-todos, porque ahí se ven todos numerados.
+todos, porque ahí se ven todos numerados. En producción desde el 15/09/26 (**SELLO:
+15/09/26, 09:07**).
 
 ---
 
