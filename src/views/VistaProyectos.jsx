@@ -1633,7 +1633,8 @@ const VistaProyectos = ({
                                   setMapViewState({ center: [punto.coords.lat, punto.coords.lng], zoom: 19 });
                                 }
                                 setPuntoSeleccionado(punto.id);
-                                setDiaActual(punto.diaId);
+                                // Un punto viejo sin día no deja el mapa sin día elegido
+                                if (punto.diaId) setDiaActual(punto.diaId);
                                 setMostrarOverlayGPS(modalLocalOpen);
                                 setModalLocalOpen(null);
                                 setVista('mapa');

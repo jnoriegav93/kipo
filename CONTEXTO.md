@@ -211,6 +211,10 @@ en el cable y en qué medio tramo.
   cable vuelve al trazo y al guardar se actualiza) y borra. Tocar el mapa vacío no
   hace nada. Las reglas del trazo son funciones puras en `src/utils/cablesAcero.js`
   (`tocarPuntoAcero`, `tocarFibraAcero`, `deshacerTrazoAcero`, `faltaEnTrazoAcero`).
+  Al guardar, el cable toma el proyecto y el día de su **primer poste**, no del día
+  elegido en el mapa: hasta el 15/09, sin día elegido (por ejemplo, tras "Ver en Mapa"
+  desde un punto viejo sin día) no se guardaba y no avisaba. La fibra tenía el mismo
+  problema y se corrigió igual; si falta de dónde sacarlo, ahora sale un aviso.
 - **Datos.** Colección propia `cablesAcero`:
   `{ puntos: [A, B], ferrId, fibras: [idConexion…], medioTramo, proyectoId, diaId, ownerId, timestamp }`.
   Va aparte de `conexiones` a propósito: todo lo que lee fibras (metros por capacidad,

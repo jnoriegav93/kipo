@@ -1710,9 +1710,18 @@ function App() {
     : null;
 
   const guardarCableAcero = async (ferrId) => {
-    if (faltaEnTrazoAcero(trazoAcero) || !ferrId || !diaActual || !proyectoActual) return;
+    if (faltaEnTrazoAcero(trazoAcero) || !ferrId) return;
     const { id, postes, fibras, medioTramo } = trazoAcero;
     const cambios = { puntos: postes, ferrId, fibras, medioTramo };
+    // El cable va en el proyecto y el día de su primer poste. No depende del día elegido en
+    // el mapa: sin día elegido no se guardaba, y sin avisar.
+    const posteA = todosLosPuntos.find(p => String(p.id) === postes[0]);
+    const diaId = posteA?.diaId || diaActual;
+    const proyectoId = posteA?.proyectoId || proyectoActual?.id;
+    if (!id && (!diaId || !proyectoId)) {
+      setAlertData({ title: 'No se pudo guardar', message: 'No se encontró el día o el proyecto del primer poste del cable.' });
+      return;
+    }
     // Se limpia el trazo pero no se sale del modo: se sigue con el próximo cable
     setTrazoAcero(TRAZO_ACERO_VACIO);
     try {
@@ -1721,11 +1730,10 @@ function App() {
         await fbUpdateDoc(doc(db, 'cablesAcero', id), cambios);
         return;
       }
-      const posteA = todosLosPuntos.find(p => String(p.id) === postes[0]);
       await addDoc(collection(db, 'cablesAcero'), {
         ...cambios,
-        diaId: posteA?.diaId || diaActual,
-        proyectoId: String(posteA?.proyectoId || proyectoActual.id),
+        diaId,
+        proyectoId: String(proyectoId),
         ownerId: user.uid,
         timestamp: new Date().toISOString(),
       });
@@ -2043,7 +2051,7 @@ function App() {
           totalPuntosProyecto={mapaSupervision ? mapaSupervision.puntos.length : (modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto)}
           proyectoEsCompartido={!!proyectoActual?.esCompartido}
           onGuardarFibra={async ({ nombre = '', capacidad } = {}) => {
-            if (puntosRecorrido.length < 2 || !diaActual || !proyectoActual) return;
+            if (puntosRecorrido.length < 2) return;
             const capFinal = capacidad || capacidadFibra;
 
             // La fibra guarda su PROPIA geometría: una lista de vértices con coordenadas.
@@ -2059,14 +2067,22 @@ function App() {
             // retirando conforme esos consumidores aprendan a leer 'vertices'.
             const idsPostes = vertices.filter(v => v.puntoId).map(v => v.puntoId);
             const puntoInicialFibra = todosLosPuntos.find(x => String(x.id) === String(idsPostes[0]));
+            // Como el cable de acero: el día y el proyecto salen del primer poste, y solo si
+            // no toca ninguno, del día elegido en el mapa. Si no hay de dónde, se avisa.
+            const diaFibra = puntoInicialFibra?.diaId || diaActual;
+            const proyectoFibra = puntoInicialFibra?.proyectoId || proyectoActual?.id;
+            if (!diaFibra || !proyectoFibra) {
+              setAlertData({ title: 'No se pudo guardar', message: 'Toca al menos un poste al trazar la fibra, o elige un día en el mapa.' });
+              return;
+            }
             const datos = {
               vertices,                    // ← geometría real, manda esta
               nombre: (nombre || '').trim(),
               puntos: idsPostes,           // legado
               from: idsPostes[0] || null,
               to: idsPostes[idsPostes.length - 1] || null,
-              diaId: puntoInicialFibra?.diaId || diaActual,
-              proyectoId: String(puntoInicialFibra?.proyectoId || proyectoActual.id),
+              diaId: diaFibra,
+              proyectoId: String(proyectoFibra),
               ownerId: user.uid,
               capacidad: capFinal,
               tipo: 'trazo',
