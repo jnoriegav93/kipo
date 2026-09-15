@@ -70,11 +70,8 @@ export default function VistaPapelera({ theme, isDark, onVolver, user, puntos, p
       if (it.tipo === 'punto') {
         await restaurarPunto(it);
       } else if (it.tipo === 'fibra') {
-        const r = await restaurarFibra(it, puntos || []);
-        if (!r.ok) {
-          const det = (r.faltantes || []).map(f => `• ${f.id} (${f.motivo === 'movido' ? 'se movió de lugar' : 'no existe'})`).join('\n');
-          setAlertData?.({ title: 'No se puede restaurar la fibra', message: `La fibra solo se restaura si TODOS sus puntos existen en su ubicación original.\n\n${det}\n\nRestaura esos puntos primero.`, theme });
-        }
+        // Vuelve sola, aunque sus postes ya no existan: tiene trazo propio
+        await restaurarFibra(it, puntos || []);
       } else if (it.tipo === 'acero') {
         const r = await restaurarCableAcero(it, puntos || []);
         if (!r.ok) {

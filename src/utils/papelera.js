@@ -3,6 +3,7 @@
 // lo elimine (junto con sus archivos de Storage). NUNCA borra archivos aquí.
 import { collection, addDoc, deleteDoc, doc, setDoc, updateDoc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { soltarDePostesBorrados } from './fibraUtils';
 
 // Extrae recursivamente los paths de Storage (_path/_pathHD) de las fotos de un punto,
 // para que la purga (a los 15 días) pueda borrar también los archivos.
@@ -92,19 +93,12 @@ export const restaurarPunto = async (entrada) => {
   return { ok: true };
 };
 
-// Fibra: SOLO si TODOS sus puntos existen y en la MISMA ubicación de cuando se borró.
+// Fibra: vuelve sola, siempre, con su mismo id. Tiene trazo propio, así que no depende
+// de sus postes: de los que ya no existen se suelta al volver. meta.puntos guarda las
+// coordenadas de sus postes al borrarla ([{id, coords:{lat,lng}}]).
 export const restaurarFibra = async (entrada, puntosActuales) => {
-  const requeridos = (entrada.meta && entrada.meta.puntos) || []; // [{id, coords:{lat,lng}}]
-  const faltantes = [];
-  for (const req of requeridos) {
-    const actual = (puntosActuales || []).find(p => String(p.id) === String(req.id));
-    if (!actual) { faltantes.push({ id: req.id, motivo: 'no existe' }); continue; }
-    const c1 = actual.coords || {}, c2 = req.coords || {};
-    const igual = Math.abs((c1.lat || 0) - (c2.lat || 0)) < 1e-9 && Math.abs((c1.lng || 0) - (c2.lng || 0)) < 1e-9;
-    if (!igual) faltantes.push({ id: req.id, motivo: 'movido' });
-  }
-  if (faltantes.length) return { ok: false, faltantes };
-  await setDoc(doc(db, entrada.coleccionOriginal || 'conexiones', String(entrada.idOriginal)), entrada.snapshot || {});
+  const fibra = soltarDePostesBorrados(entrada.snapshot || {}, puntosActuales || [], (entrada.meta && entrada.meta.puntos) || []);
+  await setDoc(doc(db, entrada.coleccionOriginal || 'conexiones', String(entrada.idOriginal)), fibra);
   await quitarDePapelera(entrada.id);
   return { ok: true };
 };

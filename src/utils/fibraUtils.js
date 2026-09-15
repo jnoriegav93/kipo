@@ -159,6 +159,21 @@ export const soltarFibraDePunto = (con, puntoId, buscarPunto) => {
   return { vertices, puntos, from: puntos[0] || null, to: puntos[puntos.length - 1] || null };
 };
 
+// Una fibra que vuelve de la papelera no depende de sus postes: se suelta de los que ya
+// no existen, igual que si se hubieran borrado con ella afuera. A una fibra vieja sin
+// trazo propio le sirven las coordenadas que tenían sus postes al borrarla.
+export const soltarDePostesBorrados = (fibra, puntosActuales = [], puntosAlBorrar = []) => {
+  const actuales = new Map(puntosActuales.map(p => [String(p.id), p]));
+  const alBorrar = new Map(puntosAlBorrar.map(p => [String(p.id), p]));
+  const buscarPunto = (id) => actuales.get(String(id)) || alBorrar.get(String(id));
+  const ids = new Set([...(fibra.puntos || []), fibra.from, fibra.to, ...(fibra.vertices || []).map(v => v?.puntoId)]
+    .filter(id => id != null).map(String));
+  return [...ids].filter(id => !actuales.has(id)).reduce((f, id) => {
+    const cambios = soltarFibraDePunto(f, id, buscarPunto);
+    return cambios ? { ...f, ...cambios } : f;
+  }, fibra);
+};
+
 // ── QUÉ FIBRAS TOCAN UN POSTE ───────────────────────────────────────────────
 
 // Distancia mínima de un punto a toda la polilínea: se mide contra cada vértice y

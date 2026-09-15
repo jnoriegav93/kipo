@@ -279,7 +279,7 @@ pudo guardarse ninguno. Cualquier otro error sí hace fallar la liquidación.
 
 ---
 
-## Borrar un poste no borra fibras (15/09)
+## Postes y fibras, independientes (15/09)
 
 Desde el 30/08 la fibra guarda su propio trazo, pero borrar un poste seguía borrando
 completas las fibras que lo tocaban: era la regla del modelo viejo, cuando la fibra
@@ -287,9 +287,10 @@ era solo una lista de postes. Decidido con el usuario: **la fibra se queda**.
 `soltarFibraDePunto` (`src/utils/fibraUtils.js`, probado con Node) deja el vértice del
 poste como vértice libre en su sitio y saca el poste de `puntos`/`from`/`to`; una fibra
 vieja sin trazo propio toma antes el de sus postes. El aviso al borrar lo dice ("2
-fibras se quedan en su sitio"). Sin decidir: restaurar una fibra desde la papelera
-sigue exigiendo que todos sus postes existan en su lugar original, que es la misma
-lógica vieja.
+fibras se quedan en su sitio"). En la papelera también es cada cosa por su lado: una
+fibra se restaura sola aunque sus postes ya no existan o se hayan movido
+(`soltarDePostesBorrados` la suelta de los que faltan; a una fibra vieja sin trazo le
+sirven las coordenadas guardadas al borrarla), y un poste se restaura solo.
 
 ---
 

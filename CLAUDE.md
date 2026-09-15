@@ -108,8 +108,10 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
 - `proyectos/{id}/diseno`: la lee cualquiera que vea el proyecto, la escribe solo
   el dueño. El diseño es el compromiso contra el que después se liquida la obra.
 - Los `armados` de un proyecto solo los cambia el dueño.
-- Las fibras guardan su propio trazo (`vertices`). **Borrar un punto no borra
-  fibras**: las suelta con `soltarFibraDePunto` y se quedan donde están.
+- Las fibras guardan su propio trazo (`vertices`). **Postes y fibras son
+  independientes**: borrar un punto no borra fibras (las suelta con
+  `soltarFibraDePunto`) y una fibra vuelve de la papelera aunque sus postes ya no
+  existan (`soltarDePostesBorrados`).
 
 **Puntos viejos:** pueden traer `ownerId` ajeno o ausente, y `proyectoId`/`diaId`
 numéricos. Por eso existe `perteneceAProyecto()` en `src/utils/helpers.js`, que
