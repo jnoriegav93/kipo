@@ -322,6 +322,19 @@ todos, porque ahí se ven todos numerados. En producción desde el 15/09/26 (**S
 
 ---
 
+## Copiar y cortar puntos: pantalla bloqueada hasta terminar (15/09)
+
+Al confirmar copiar o cortar puntos a otro proyecto, `PantallaMigracion` bloquea toda la
+app con el avance ("Puntos, fibras y cables: 32 de 58" y luego "Fotos: 20 de 50 puntos")
+y no se puede cerrar. Se quita al terminar con un "Listo", o con un aviso si algo falla
+(si fallan las fotos, dice que los puntos ya pasaron). Cortar ya no usa la cola de
+sincronización: escribe directo y espera cada documento; sin señal, Firestore lo guarda
+en el equipo y la pantalla sigue bloqueada avisando "Sin señal". Las fotos se
+independizan esperando al servidor, de a 10 puntos por llamada para no pasar los 9
+minutos de la función; sin señal se espera a que vuelva y se reintenta la tanda.
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un

@@ -43,6 +43,7 @@ import { perteneceAProyecto } from './utils/helpers';
 import { posicionesAGuardar } from './utils/ordenTendido';
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
+import PantallaMigracion from './components/PantallaMigracion';
 
 // Vistas
 import VistaMapa from './views/VistaMapa';
@@ -637,6 +638,9 @@ function App() {
     ? posicionesAGuardar({ puntos: todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar)), ordenTrabajo, movidos: movidosCorreccion }).orden
     : ordenTrabajo), [modoCorregir, ordenTrabajo, movidosCorreccion, todosLosPuntos, proyOrdenar]);
 
+  // Avance de copiar/cortar puntos: mientras no es null, PantallaMigracion bloquea la app
+  const [migracion, setMigracion] = React.useState(null);
+
   // Copiar o cortar puntos seleccionados hacia un proyecto destino (existente o nuevo).
   // modo: 'copiar' (duplica, deja originales) | 'cortar' (reasigna, los saca del origen).
   // Preserva la fecha de cada punto (crea/usa el día por fecha en el destino) e incluye las fibras.
@@ -691,6 +695,17 @@ function App() {
     const diaConex = {}; conexionesSel.forEach(c => { diaConex[c.id] = asegurarDia(fechaDeDia(c.diaId)); });
     const diaCable = {}; cablesSel.forEach(c => { diaCable[c.id] = asegurarDia(fechaDeDia(c.diaId)); });
 
+    // Pantalla bloqueada hasta que estén los datos y las fotos (PantallaMigracion)
+    const nombreDestino = proyectoDestinoArg === 'NUEVO' ? 'nuevo' : (proyectoDestinoArg?.nombre || '');
+    const avanzar = () => setMigracion(m => (m ? { ...m, hechos: m.hechos + 1 } : m));
+    setMigracion({
+      modo, n: puntosSel.length, destino: nombreDestino, etapa: 'datos',
+      hechos: 0, total: puntosSel.length + conexionesSel.length + cablesSel.length,
+      fotosHechos: 0, fotosTotal: 0,
+    });
+    let etapa = 'datos';
+    let erroresFotos = 0;
+
     try {
       // Persistir el proyecto destino con sus días (crear o actualizar)
       if (esNuevo) {
@@ -711,9 +726,19 @@ function App() {
         setPuntos(prev => prev.map(p => idsSet.has(p.id) ? { ...p, proyectoId: proyectoDestino.id, diaId: diaPunto[p.id] } : p));
         setConexiones(prev => prev.map(c => (c.id in diaConex) ? { ...c, proyectoId: proyectoDestino.id, diaId: diaConex[c.id] } : c));
         setCablesAcero(prev => prev.map(c => (c.id in diaCable) ? { ...c, proyectoId: proyectoDestino.id, diaId: diaCable[c.id] } : c));
-        puntosSel.forEach(p => agregarTarea('reasignar_punto', { coleccion: 'puntos', idDoc: String(p.id), proyectoId: proyectoDestino.id, diaId: diaPunto[p.id], ownerId: user.uid }));
-        conexionesSel.forEach(c => agregarTarea('reasignar_punto', { coleccion: 'conexiones', idDoc: String(c.id), proyectoId: proyectoDestino.id, diaId: diaConex[c.id], ownerId: user.uid }));
-        cablesSel.forEach(c => agregarTarea('reasignar_punto', { coleccion: 'cablesAcero', idDoc: String(c.id), proyectoId: proyectoDestino.id, diaId: diaCable[c.id], ownerId: user.uid }));
+        // Se escribe directo y se espera cada uno, para mostrar el avance y desbloquear solo
+        // al final. Sin señal, Firestore lo guarda en el equipo y lo manda al volver. Al
+        // mover, el punto pasa a ser del usuario, igual que en la tarea reasignar_punto.
+        const reasignar = (coleccion, id, diaId) => {
+          const campos = { proyectoId: proyectoDestino.id, ownerId: user.uid };
+          if (diaId) campos.diaId = diaId;
+          return fbUpdateDoc(doc(db, coleccion, String(id)), campos).then(avanzar);
+        };
+        await Promise.all([
+          ...puntosSel.map(p => reasignar('puntos', p.id, diaPunto[p.id])),
+          ...conexionesSel.map(c => reasignar('conexiones', c.id, diaConex[c.id])),
+          ...cablesSel.map(c => reasignar('cablesAcero', c.id, diaCable[c.id])),
+        ]);
         puntosAIndependizar = puntosSel.map(p => String(p.id));
       } else {
         // COPIAR: crear puntos nuevos (ids numéricos propios) y fibras remapeadas
@@ -727,7 +752,7 @@ function App() {
           nuevosPuntos.push({ ...rest, id: nuevoId, proyectoId: proyectoDestino.id, diaId: diaPunto[p.id], ownerId: user.uid });
         }
         setPuntos(prev => [...prev, ...nuevosPuntos]);
-        await Promise.all(nuevosPuntos.map(np => setDoc(doc(db, 'puntos', np.id), np)));
+        await Promise.all(nuevosPuntos.map(np => setDoc(doc(db, 'puntos', np.id), np).then(avanzar)));
         puntosAIndependizar = nuevosPuntos.map(np => np.id);
 
         const conexLocal = [];
@@ -745,6 +770,7 @@ function App() {
             timestamp: new Date().toISOString(),
           };
           const ref = await addDoc(collection(db, 'conexiones'), data);
+          avanzar();
           mapaConex[c.id] = ref.id;
           conexLocal.push({ id: ref.id, ...data });
         }
@@ -765,6 +791,7 @@ function App() {
             timestamp: new Date().toISOString(),
           };
           const ref = await addDoc(collection(db, 'cablesAcero'), data);
+          avanzar();
           cablesLocal.push({ id: ref.id, ...data });
         }
         if (cablesLocal.length) setCablesAcero(prev => [...prev, ...cablesLocal]);
@@ -772,23 +799,56 @@ function App() {
 
       // Independizar las fotos: copiar los archivos al proyecto destino y re-vincular URLs
       // (server-side). Así el punto deja de depender de las fotos del proyecto origen y la
-      // verificación no las marca "caídas". Corre en segundo plano; las URLs viejas siguen
-      // funcionando mientras tanto.
+      // verificación no las marca "caídas". Se espera con la pantalla bloqueada, por tandas
+      // para mostrar el avance y no pasar el tiempo máximo de la función (9 min); sin
+      // señal, se espera a que vuelva y se reintenta la tanda.
       if (puntosAIndependizar.length) {
-        import('./services/exportacionService')
-          .then(({ independizarFotosPuntos }) => independizarFotosPuntos(puntosAIndependizar, proyectoDestino.id))
-          .then(r => console.log('Fotos independizadas:', r))
-          .catch(e => console.error('No se pudo independizar fotos:', e));
+        etapa = 'fotos';
+        setMigracion(m => (m ? { ...m, etapa: 'fotos', fotosHechos: 0, fotosTotal: puntosAIndependizar.length } : m));
+        const { independizarFotosPuntos } = await import('./services/exportacionService');
+        const esperarConexion = () => new Promise(listo => {
+          if (navigator.onLine) listo();
+          else window.addEventListener('online', listo, { once: true });
+        });
+        const TANDA = 10; // puntos por llamada
+        for (let i = 0; i < puntosAIndependizar.length; i += TANDA) {
+          const tanda = puntosAIndependizar.slice(i, i + TANDA);
+          for (let intento = 1; ; intento++) {
+            try {
+              const r = await independizarFotosPuntos(tanda, proyectoDestino.id);
+              erroresFotos += r?.errores || 0;
+              break;
+            } catch (e) {
+              if (!navigator.onLine) { await esperarConexion(); continue; }
+              if (intento >= 3) throw e;
+            }
+          }
+          setMigracion(m => (m ? { ...m, fotosHechos: Math.min(m.fotosTotal, i + tanda.length) } : m));
+        }
       }
+
+      setMigracion(null);
+      const n = puntosSel.length;
+      setAlertData({
+        title: 'Listo',
+        message: `${n} punto${n === 1 ? '' : 's'} ${modo === 'copiar' ? 'copiado' : 'movido'}${n === 1 ? '' : 's'} a "${nombreDestino}", con sus fibras, cables y fotos.`
+          + (erroresFotos ? ` Ojo: en ${erroresFotos} punto${erroresFotos === 1 ? '' : 's'} no se pudieron copiar las fotos; se siguen viendo desde el proyecto de origen.` : ''),
+      });
     } catch (e) {
       console.error('Error en copiar/cortar puntos:', e);
-      setAlertData({ title: 'Error', message: 'No se pudo completar la operación.' });
+      setMigracion(null);
+      setAlertData({
+        title: 'Error',
+        message: etapa === 'fotos'
+          ? 'Los puntos ya están en el proyecto destino, pero no se pudieron copiar todas sus fotos. Mientras tanto se siguen viendo desde el proyecto de origen.'
+          : 'No se pudo completar la operación.',
+      });
     }
 
     setModoMoverPuntos(false);
     setPuntosSeleccionadosMover([]);
     setMoverProyId(null);
-  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, cablesAcero, proyMover, user, config, setPuntos, setConexiones, setCablesAcero, setProyectos, setProyectoActual, agregarTarea, setAlertData]);
+  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, cablesAcero, proyMover, user, config, setPuntos, setConexiones, setCablesAcero, setProyectos, setProyectoActual, setAlertData]);
 
   // Resetear modoMover y pendingCoords al deseleccionar punto
   React.useEffect(() => {
@@ -2512,6 +2572,8 @@ function App() {
         />
       )}
 
+
+      <PantallaMigracion migracion={migracion} isOnline={isOnline} theme={theme} />
 
       <ConfirmModal
         isOpen={!!confirmData}
