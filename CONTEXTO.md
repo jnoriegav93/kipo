@@ -268,7 +268,9 @@ en el cable y en qué medio tramo.
   producción desde el 15/09/26**: tipos fijos, fibras apoyadas, medio tramo, el cable
   fuera de la ferretería por poste, y postes y fibras independientes al borrar y al
   restaurar. Se subieron el hosting (**SELLO: 15/09/26, 00:31**) y la función
-  `procesarExportacion`; las reglas no cambiaron.
+  `procesarExportacion`; las reglas no cambiaron. Después, solo hosting (**SELLO:
+  15/09/26, 02:14**): el total de metros sin "(distancia + 1 m)" al guardar y la
+  ferretería sugerida por los cables de acero.
 
 Probado con Node (23 casos: metros, tipos, trazo, apoyos y reparto por poste) y la
 copia del servidor contra el cliente; con lint (ningún error nuevo en los 22 archivos
