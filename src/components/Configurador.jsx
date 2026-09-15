@@ -486,12 +486,12 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
                 )}
 
                 <div className="space-y-2">
-                  {config.catalogoFerreteria.map(f => (
+                  {/* El cable de acero no es ferretería: sus tipos son fijos y se trazan en el mapa */}
+                  {config.catalogoFerreteria.filter(f => !esCableAcero(f.id)).map(f => (
                     <div key={f.id} className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 flex items-center justify-between transition-all hover:shadow-md`}>
 
                       <div className="flex items-center gap-2 overflow-hidden">
                         <span className={`font-bold text-sm ${theme.text} truncate`}>{f.nombre}</span>
-                        {esCableAcero(f.id) && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-800 text-white shrink-0">por metro</span>}
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
@@ -575,10 +575,10 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
               const userList = config.catalogoFerreteria;
               const enUser = (nom) => userList.some(f => (f.nombre || '').toLowerCase() === (nom || '').toLowerCase());
               // Coincidencias en TU lista (ya las tenés → "ya existe")
-              const matchesUser = userList.filter(f => (f.nombre || '').toLowerCase().includes(q));
+              const matchesUser = userList.filter(f => !esCableAcero(f.id) && (f.nombre || '').toLowerCase().includes(q));
               // Coincidencias en la BASE que borraste (no están en tu lista → se pueden re-agregar)
               const base = (ferreteriaBase && ferreteriaBase.length) ? ferreteriaBase : FERRETERIA_BASE_DEFAULT;
-              const matchesBase = base.filter(b => (b.nombre || '').toLowerCase().includes(q) && !enUser(b.nombre));
+              const matchesBase = base.filter(b => !esCableAcero(b.id) && (b.nombre || '').toLowerCase().includes(q) && !enUser(b.nombre));
               return (
                 <div className="mt-3 space-y-1.5 max-h-56 overflow-y-auto">
                   {matchesUser.map(f => (
@@ -608,10 +608,10 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
       <Modal isOpen={modalOpen === 'AGREGAR_MAT'} onClose={() => setModalOpen(null)} title="Agregar Ferretería" theme={theme} bottomSheet> 
         
         <div className={`max-h-60 overflow-y-auto rounded-xl border-2 ${theme.border} p-2 ${theme.card} mb-3`}> 
-          {config.catalogoFerreteria.map(f => ( 
+          {config.catalogoFerreteria.filter(f => !esCableAcero(f.id)).map(f => ( 
             <div 
               key={f.id} 
-              onClick={() => setTempData({...tempData, matId: f.id})} 
+              onClick={() => setTempData({...tempData, matId: f.id})}
               className={`p-3 rounded-lg text-sm font-medium cursor-pointer mb-1 transition-colors flex justify-between items-center ${tempData.matId === f.id ? 'bg-slate-900 text-white shadow-md' : `${theme.text} hover:bg-slate-100`}`}
             > 
               <span className="font-bold">{f.nombre}</span> 

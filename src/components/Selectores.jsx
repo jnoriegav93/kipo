@@ -66,10 +66,9 @@ export const SelectorGridMulti = ({ titulo, opciones, seleccion, onToggle, cols,
 
 // --- COMPONENTE DE LISTA CON CONTADORES ---
 export const ListaContadores = ({ config, datos, setDatos, theme, disabled, armadoSeleccionado, subirConValor }) => {
-  // El cable de acero se tiende en el mapa y se liquida por metro, no por poste.
-  // Solo aparece si el punto trae una cantidad de antes, para poder quitarla.
-  const itemsVisibles = config.catalogoFerreteria.filter(f =>
-    f.visible !== false && (!esCableAcero(f.id) || (datos[f.id] || 0) > 0));
+  // El cable de acero no es ferretería del poste: se tiende en el mapa y se liquida por
+  // metro. No aparece aunque el punto traiga una cantidad de antes, que ya no suma.
+  const itemsVisibles = config.catalogoFerreteria.filter(f => f.visible !== false && !esCableAcero(f.id));
 
   // Determinar tipo de cada ítem según el armado seleccionado
   const getTipo = (ferrId) => {
@@ -136,9 +135,7 @@ export const ListaContadores = ({ config, datos, setDatos, theme, disabled, arma
             <div className="flex-1 pl-2">
               <div className={`font-bold text-sm leading-tight ${theme.text} flex items-center gap-1.5`}>
                 {item.nombre}
-                {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">sugerida</span>}
-                {esCableAcero(item.id) && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 shrink-0">por metro</span>}
-              </div>
+                {sugerida && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 shrink-0">sugerida</span>}              </div>
             </div>
             <div className="flex items-center gap-2 bg-slate-900/5 rounded-lg p-1">
               <button

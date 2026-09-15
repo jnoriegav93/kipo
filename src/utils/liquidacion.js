@@ -11,7 +11,7 @@ import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
-import { metrosPorItem, esCableAcero } from './cablesAcero';
+import { metrosPorItem, esCableAcero, quitarCableAcero } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/LIQUIDACION_DE_MATERIALES.xlsx';
 const HOJA = 'FORMATO LIQ';
@@ -54,11 +54,12 @@ export async function descargarLiquidacion(proyecto, puntos, config) {
   } catch (e) { console.warn('Liquidación: sin lista de control vinculada', e); }
   const hayLista = Object.keys(recibido).length > 0;
 
-  // Consolidado (instalado) por ferretería
+  // Consolidado (instalado) por ferretería. El cable de acero no se cuenta por poste:
+  // sale solo de los cables trazados, justo debajo
   const consolidado = {};
   const ptsProy = await cargarPuntosProyecto(proyecto, puntos);
   ptsProy.forEach(p => {
-    Object.entries(getConsolidado(p.datos || {})).forEach(([id, c]) => { if (c) consolidado[id] = (consolidado[id] || 0) + c; });
+    Object.entries(quitarCableAcero(getConsolidado(p.datos || {}))).forEach(([id, c]) => { if (c) consolidado[id] = (consolidado[id] || 0) + c; });
   });
   // Cables de acero: se liquidan por metro, medidos con los postes donde están hoy
   const cablesAcero = await cargarCablesAceroProyecto(proyecto);

@@ -223,10 +223,12 @@ en el cable y en qué medio tramo.
   MENSAJERO 1/8 (ítem `b13`) y MENSAJERO 3/16 (`b38`). El usuario no agrega ni quita
   tipos, y el `ferrId` es el ítem con el que se liquida. Ya no existen la marca
   `porMetro` ni el botón de regla de Configuración o de la base del admin.
-- **Fuera de la ferretería por poste.** `b13` y `b38` no se ofrecen en los contadores
-  del punto ni en los armados, y al aplicar un armado se ignoran. Solo aparecen si un
-  punto ya traía cantidad, para poder quitarla: las cantidades viejas las corrige el
-  usuario, el código no las compensa. En la liquidación y en Control Ferretería van
+- **No es ferretería del poste (decidido el 15/09).** `b13` y `b38` no aparecen en los
+  contadores del punto, en su detalle, en los armados ni en Configuración →
+  Ferretería (la base del admin sí los muestra, marcados "cable de acero", porque
+  guardan nombre y código). Lo que se haya contado por poste antes **no suma en ningún
+  lado** (`quitarCableAcero` en el cliente, `sinCableAcero` en el servidor): los metros
+  salen solo de los cables trazados. En la liquidación y en Control Ferretería van
   siempre en `mts`, aunque el catálogo del usuario diga `und`.
 - **Apoyos en medio tramo.** En Liquidación → Revisión (la etiqueta sobre la foto) un
   **poste** sigue contando apoyos y extremos por cercanía (3 m). En un **medio tramo**
@@ -242,19 +244,24 @@ en el cable y en qué medio tramo.
   utilizados) cada cable va en la fila del **segundo de sus dos postes** según el
   orden de posición (`metrosAceroPorPoste`), así cuenta una sola vez, igual que la
   distancia al poste anterior. En el KMZ (cliente y servidor) va una carpeta
-  "Cables de acero". No entra en la hoja DATOS del servidor ni en el RF de ferretería.
-  La regla de metros está copiada en `functions/index.js`: si cambia, cambia en los dos.
-- **Ciclo de vida.** Borrar un poste **o el medio tramo** de un cable borra el cable
-  (papelera tipo `acero`, que restaura si existen sus dos postes y su medio tramo).
-  Borrar una fibra no toca los cables: esa fibra deja de contar como apoyo.
+  "Cables de acero". No entra en la hoja DATOS del servidor, en las tablas de ferretería
+  (del proyecto ni del ramal) ni en el RF de ferretería. La regla de metros y los ítems
+  de cable de acero (`IDS_CABLE_ACERO`) están copiados en `functions/index.js`: si
+  cambian, cambian en los dos.
+- **Ciclo de vida.** Borrar uno de sus dos postes borra el cable (papelera tipo
+  `acero`, que lo restaura si existen sus dos postes). Borrar su **medio tramo** no lo
+  borra: el cable se queda sin medio tramo, sale "SIN MEDIO TRAMO" en la lista y se
+  completa con EDITAR; un cable restaurado cuyo medio tramo ya no existe vuelve igual,
+  sin él. Borrar una fibra no toca los cables: esa fibra deja de contar como apoyo.
   Copiar/cortar puntos los lleva si van sus dos postes; al copiar, el medio tramo y las
   fibras pasan a las copias si también van. Borrar proyecto (lista, equipos, admin)
   los incluye. Salir de un equipo los copia con postes, medio tramo y fibras remapeados.
 - **Despliegue.** La primera versión (tipos por catálogo, sin fibras ni medio tramo)
   quedó en producción el 14/09/26: reglas, hosting (**SELLO: 14/09/26, 16:00**) y
-  `procesarExportacion`. **Tipos fijos, fibras apoyadas y medio tramo: en el repo,
-  sin desplegar todavía.** Para eso basta el hosting: las reglas no cambian y el
-  servidor solo lee `puntos` y `ferrId` de cada cable.
+  `procesarExportacion`. **Tipos fijos, fibras apoyadas, medio tramo y el cable fuera
+  de la ferretería por poste: en el repo, sin desplegar todavía.** Hace falta el
+  hosting y la función `procesarExportacion` (sus reportes dejan de sumar el cable
+  contado por poste); las reglas no cambian.
 
 Probado con Node (23 casos: metros, tipos, trazo, apoyos y reparto por poste) y la
 copia del servidor contra el cliente; con lint (ningún error nuevo en los 22 archivos
@@ -269,6 +276,20 @@ Firestore**: trazar, guardar, recargar, editar, ver los apoyos en Revisión y li
 La liquidación no se rompe si se sube el hosting antes que las reglas: un "sin
 permiso" al leer `cablesAcero` cuenta como cero cables, porque sin reglas tampoco
 pudo guardarse ninguno. Cualquier otro error sí hace fallar la liquidación.
+
+---
+
+## Borrar un poste no borra fibras (15/09)
+
+Desde el 30/08 la fibra guarda su propio trazo, pero borrar un poste seguía borrando
+completas las fibras que lo tocaban: era la regla del modelo viejo, cuando la fibra
+era solo una lista de postes. Decidido con el usuario: **la fibra se queda**.
+`soltarFibraDePunto` (`src/utils/fibraUtils.js`, probado con Node) deja el vértice del
+poste como vértice libre en su sitio y saca el poste de `puntos`/`from`/`to`; una fibra
+vieja sin trazo propio toma antes el de sus postes. El aviso al borrar lo dice ("2
+fibras se quedan en su sitio"). Sin decidir: restaurar una fibra desde la papelera
+sigue exigiendo que todos sus postes existan en su lugar original, que es la misma
+lógica vieja.
 
 ---
 

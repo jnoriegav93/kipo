@@ -4,7 +4,7 @@ import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
 import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
 import { equiposDePunto } from './equiposPasivos';
-import { esCableAcero, metrosAceroPorPoste } from './cablesAcero';
+import { esCableAcero, metrosAceroPorPoste, quitarCableAcero } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/LISTADO_DE_POSTES_UTILIZADOS.xlsx';
 const PRIMER_FILA = 10;
@@ -44,9 +44,10 @@ const getConsolidado = (datos) => {
 };
 
 // "1 CABLE PRECO 150, 31 m CABLE MENSAJERO 3/16…" — consolidado como texto, en orden del
-// catálogo. Lo que se tiende por metro (cable de acero) llega aparte y va con sus metros.
+// catálogo. El cable de acero no se cuenta por poste: llega aparte, con los metros de
+// los cables trazados.
 const elementosTexto = (datos, catalogo, acero = {}) => {
-  const cons = getConsolidado(datos);
+  const cons = quitarCableAcero(getConsolidado(datos));
   Object.entries(acero).forEach(([id, m]) => { cons[id] = (cons[id] || 0) + m; });
   return catalogo.filter(f => (cons[f.id] || 0) > 0).map(f => `${cons[f.id]}${esCableAcero(f.id) ? ' m' : ''} ${f.nombre}`).join(', ');
 };

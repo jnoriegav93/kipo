@@ -1132,6 +1132,12 @@ const metrosAceroPorPoste = (cables, puntosEnOrden) => {
   return resultado;
 };
 
+// Ítems del catálogo que son cable de acero (espejo de TIPOS_CABLE_ACERO). No son
+// ferretería del poste: lo que se haya contado por poste no suma, solo valen los metros
+// de los cables trazados.
+const IDS_CABLE_ACERO = new Set(['b13', 'b38']);
+const sinCableAcero = (totales) => Object.fromEntries(Object.entries(totales).filter(([id]) => !IDS_CABLE_ACERO.has(String(id))));
+
 // Croquis esquemático de un ramal: su recorrido y sus postes en negro, el resto
 // de la red del proyecto al fondo en gris, y una cuadrícula UTM de referencia.
 // Se dibuja al tamaño exacto del recuadro de Excel (por dos, para que no se vea
@@ -1432,7 +1438,7 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       Object.entries(datos.ferreteriaFinal).forEach(([id, cantidad]) => {
         if (cantidad !== 0) totals[id] = (totals[id] || 0) + cantidad;
       });
-      return totals;
+      return sinCableAcero(totals);
     }
     // Modelo legacy: armadosSeleccionados + ferreteriaExtra
     (datos.armadosSeleccionados || []).forEach(armado => {
@@ -1441,7 +1447,7 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
     Object.entries(datos.ferreteriaExtra || {}).forEach(([id, cantidad]) => {
       if (cantidad !== 0) totals[id] = (totals[id] || 0) + cantidad;
     });
-    return totals;
+    return sinCableAcero(totals);
   };
 
   const PHOTO_COL_WIDTH = 55;
@@ -1641,8 +1647,8 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
 
       const finFerr = tabla(filaTablas, 4, 2, "FERRETERÍA UTILIZADA", "FF1F4E78", paresF, "TOTAL DE PIEZAS");
       const finArm = tabla(filaTablas, 7, 2, "ARMADOS UTILIZADOS", "FFB45309", paresA, "TOTAL DE ARMADOS");
-      // El cable de acero es ferretería pero va en metros: su propia tabla, debajo,
-      // para no sumarse al total de piezas
+      // El cable de acero no es ferretería del poste: va en metros, con lo trazado en el
+      // mapa, en su propia tabla debajo
       const paresAcero = Object.entries(totAceroP).map(([id, m]) => [nomF(id), m]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
       const finAcero = paresAcero.length
         ? tabla(finFerr + 1, 4, 2, "CABLE DE ACERO (METROS)", "FF475569", paresAcero, "TOTAL DE METROS")
@@ -2542,7 +2548,7 @@ const generarReporteFerreteria = async (proy, puntosProyecto, logoBuffer, stampC
     Object.entries(d.ferreteriaExtra || {}).forEach(([id, c]) => { if (c) t[id] = (t[id] || 0) + c; });
     return t;
   };
-  const materialesTexto = (d) => Object.entries(getConsolidado(d))
+  const materialesTexto = (d) => Object.entries(sinCableAcero(getConsolidado(d)))
     .filter(([id, c]) => c > 0 && porId.has(id))
     .map(([id, c]) => `- ${c}  ${porId.get(id).nombre}`).join('\n');
 

@@ -96,7 +96,9 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
 - `cablesAcero`: mensajero de poste a poste, con las fibras que se apoyan en él y el
   medio tramo donde se apoyan. **No va en `conexiones`**: todo lo que lee fibras lo
   contaría como fibra. Los tipos son fijos (`TIPOS_CABLE_ACERO` en
-  `src/utils/cablesAcero.js`) y se liquidan por metro. Cualquier código nuevo que
+  `src/utils/cablesAcero.js`) y se liquidan por metro. **No es ferretería del poste**:
+  todo consolidado por poste pasa por `quitarCableAcero` (en el servidor,
+  `sinCableAcero`). Cualquier código nuevo que
   borre, copie o mueva puntos, fibras o proyectos tiene que llevar también sus cables:
   postes, medio tramo y fibras.
 
@@ -106,6 +108,8 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
 - `proyectos/{id}/diseno`: la lee cualquiera que vea el proyecto, la escribe solo
   el dueño. El diseño es el compromiso contra el que después se liquida la obra.
 - Los `armados` de un proyecto solo los cambia el dueño.
+- Las fibras guardan su propio trazo (`vertices`). **Borrar un punto no borra
+  fibras**: las suelta con `soltarFibraDePunto` y se quedan donde están.
 
 **Puntos viejos:** pueden traer `ownerId` ajeno o ausente, y `proyectoId`/`diaId`
 numéricos. Por eso existe `perteneceAProyecto()` en `src/utils/helpers.js`, que

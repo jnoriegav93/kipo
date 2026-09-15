@@ -6,6 +6,7 @@ import { db } from '../firebaseConfig';
 import { TABS_CONFIG, MAIN_TABS, EXTRAS_ITEMS } from './PhotoManager';
 import { estamparMetadatos, urlABase64, puedeCompartirArchivos, puedeCompartirTexto } from '../utils/helpers';
 import ZoomImage from './ZoomImage';
+import { esCableAcero } from '../utils/cablesAcero';
 
 // Componente fuera de VerDetalle para evitar remounts
 function FotoMini({ url, label, onClickPhoto }) {
@@ -73,11 +74,12 @@ export default function VerDetalle({
   proyectoActual,
 }) {
 
-  // Función para consolidar ferretería (nuevo modelo: ferreteriaFinal directo)
+  // Función para consolidar ferretería (nuevo modelo: ferreteriaFinal directo). El cable
+  // de acero no es ferretería del poste: aunque el punto traiga una cantidad, no sale.
   const consolidarFerreteria = () => {
     const catalogo = config?.catalogoFerreteria || [];
     return Object.entries(datos.ferreteriaFinal || {})
-      .filter(([_, cant]) => cant > 0)
+      .filter(([id, cant]) => cant > 0 && !esCableAcero(id))
       .map(([id, cant]) => {
         const ferr = catalogo.find(f => f.id === id);
         return ferr ? { nombre: ferr.nombre, cantidad: cant, unidad: ferr.unidad } : null;

@@ -6,7 +6,7 @@
 import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
 import { cargarPuntosProyecto, cargarCablesAceroProyecto } from './cargarPuntosExport';
-import { metrosAceroPorPoste } from './cablesAcero';
+import { metrosAceroPorPoste, quitarCableAcero } from './cablesAcero';
 
 const TEMPLATE_URL = '/templates/CUANTIFICADO_MATERIALES.xlsx';
 const SHEET = 'cuantificado';
@@ -117,8 +117,9 @@ export async function descargarCuantificado(proyecto, puntos, config) {
   const filas = ptsProy.map(p => {
     const d = p.datos || {};
     // Solo ferreterías que existen en el catálogo (igual que la vista por punto;
-    // se descartan IDs huérfanos de ferreterías borradas/renombradas).
-    const consolidado = Object.entries(getConsolidado(d))
+    // se descartan IDs huérfanos de ferreterías borradas/renombradas). El cable de
+    // acero no se cuenta por poste: sus metros se suman abajo, desde los cables.
+    const consolidado = Object.entries(quitarCableAcero(getConsolidado(d)))
       .filter(([id, c]) => c > 0 && porId.has(id))
       .map(([id, cant]) => ({ nombre: porId.get(id).nombre, cant }));
     const { calle, lote } = splitDireccion(d.direccion);

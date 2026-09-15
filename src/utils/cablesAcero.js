@@ -19,6 +19,12 @@ export const TIPOS_CABLE_ACERO = [
 export const esCableAcero = (ferrId) => TIPOS_CABLE_ACERO.some(t => t.id === String(ferrId));
 export const nombreTipoAcero = (ferrId) => TIPOS_CABLE_ACERO.find(t => t.id === String(ferrId))?.nombre || 'CABLE DE ACERO';
 
+// Lo contado por poste, sin el cable de acero: ese nunca es ferretería del poste y sus
+// metros salen solo de los cables trazados. Las cantidades que se cargaron por poste
+// antes de existir el cable de acero dejan de sumar.
+export const quitarCableAcero = (totales = {}) =>
+  Object.fromEntries(Object.entries(totales).filter(([id]) => !esCableAcero(id)));
+
 // Se liquida la distancia entre postes más un metro, redondeado al metro superior
 export const METRO_EXTRA_ACERO = 1;
 

@@ -109,15 +109,16 @@ export const restaurarFibra = async (entrada, puntosActuales) => {
   return { ok: true };
 };
 
-// Cable de acero: vuelve si sus dos postes y su medio tramo existen. No hace falta que
-// sigan en el mismo sitio: el cable no guarda geometría, se mide siempre desde sus postes.
+// Cable de acero: vuelve si sus dos postes existen. No hace falta que sigan en el mismo
+// sitio: el cable no guarda geometría, se mide siempre desde sus postes. Si su medio
+// tramo ya no existe vuelve sin él, igual que cuando se borra el medio tramo.
 export const restaurarCableAcero = async (entrada, puntosActuales) => {
+  const existe = (id) => (puntosActuales || []).some(p => String(p.id) === String(id));
   const { puntos = [], medioTramo = null } = entrada.snapshot || {};
-  const faltantes = [...puntos, medioTramo].filter(id => id != null).map(String)
-    .filter(id => !(puntosActuales || []).some(p => String(p.id) === id))
-    .map(id => ({ id, motivo: 'no existe' }));
+  const faltantes = puntos.map(String).filter(id => !existe(id)).map(id => ({ id, motivo: 'no existe' }));
   if (faltantes.length) return { ok: false, faltantes };
-  await setDoc(doc(db, entrada.coleccionOriginal || 'cablesAcero', String(entrada.idOriginal)), entrada.snapshot || {});
+  const cable = { ...(entrada.snapshot || {}), medioTramo: medioTramo != null && existe(medioTramo) ? medioTramo : null };
+  await setDoc(doc(db, entrada.coleccionOriginal || 'cablesAcero', String(entrada.idOriginal)), cable);
   await quitarDePapelera(entrada.id);
   return { ok: true };
 };

@@ -472,7 +472,7 @@ const FerreteriaBasePanel = ({ isDark }) => {
             {lista.map(it => (
               <div key={it.id} className={`rounded-lg border px-3 py-2 flex items-center gap-2 ${isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'}`}>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{it.nombre}{esCableAcero(it.id) && <span className="ml-1.5 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-700 text-white">por metro</span>}</p>
+                  <p className={`text-xs font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{it.nombre}{esCableAcero(it.id) && <span className="ml-1.5 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-700 text-white">cable de acero</span>}</p>
                   <p className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{it.codigo || 's/código'} · {it.detalle || 's/detalle'}</p>
                 </div>
                 <button onClick={() => abrirEdit(it)} className={`w-8 h-8 flex items-center justify-center rounded-lg border-2 ${isDark ? 'border-slate-600 text-slate-300' : 'border-slate-300 text-slate-600'} active:scale-95`}><span className="text-[10px] font-black">EDIT</span></button>

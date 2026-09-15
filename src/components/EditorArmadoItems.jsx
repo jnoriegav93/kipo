@@ -14,10 +14,9 @@ export default function EditorArmadoItems({ tempData, setTempData, config, theme
   const guardarArmadoConItems = () => onGuardar?.();
         const itemsSeleccion = tempData.itemsSeleccion || {};
         const listaOrden = tempData.listaOrden || config.catalogoFerreteria.map(f => f.id);
-        // El cable de acero no va en armados: solo se ve si el armado ya lo traía, para
-        // poder quitarlo
+        // El cable de acero no va en armados: no es ferretería del poste
         let listaDisplay = listaOrden.map(id => config.catalogoFerreteria.find(f => f.id === id))
-          .filter(f => f && (!esCableAcero(f.id) || (itemsSeleccion[f.id]?.cant || 0) > 0));
+          .filter(f => f && !esCableAcero(f.id));
 
         // VÍNCULOS "van juntas": al ponerle cantidad a una del grupo, las demás se JUNTAN a
         // su lado (aunque estén en 0) y salen resaltadas como SUGERENCIA (no obliga cantidad).

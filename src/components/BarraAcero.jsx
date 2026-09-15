@@ -251,6 +251,13 @@ export default function BarraAcero({
                   >
                     <div className="w-4 h-1.5 rounded-full bg-slate-400 border border-black/40 shrink-0" />
                     <span className={`flex-1 text-[11px] font-black uppercase truncate ${theme.text}`}>{c.nombreTipo}</span>
+                    {/* Incompleto: se borró su medio tramo, o es de antes y no tiene fibras.
+                        Se completa con EDITAR. */}
+                    {(c.medioTramo == null || !(c.fibras || []).length) && (
+                      <span className="text-[8px] font-black uppercase px-1 py-0.5 rounded bg-amber-400 text-black shrink-0">
+                        {c.medioTramo == null ? 'SIN MEDIO TRAMO' : 'SIN FIBRAS'}
+                      </span>
+                    )}
                     <span className={`text-[10px] font-bold shrink-0 ${theme.text} opacity-60`}>{c.etiqueta}</span>
                     <span className={`text-[10px] font-bold shrink-0 w-12 text-right ${theme.text} opacity-50`}>{c.metros} m</span>
                   </button>

@@ -79,7 +79,7 @@ export default function VistaPapelera({ theme, isDark, onVolver, user, puntos, p
         const r = await restaurarCableAcero(it, puntos || []);
         if (!r.ok) {
           const det = (r.faltantes || []).map(f => `• ${f.id}`).join('\n');
-          setAlertData?.({ title: 'No se puede restaurar el cable', message: `El cable de acero solo vuelve si sus dos postes y su medio tramo existen.\n\n${det}\n\nRestaura esos puntos primero.`, theme });
+          setAlertData?.({ title: 'No se puede restaurar el cable', message: `El cable de acero solo vuelve si sus dos postes existen.\n\n${det}\n\nRestaura esos postes primero.`, theme });
         }
       } else if (it.tipo === 'foto') {
         const r = await restaurarFoto(it);

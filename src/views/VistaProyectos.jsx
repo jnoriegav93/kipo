@@ -10,7 +10,7 @@ import { TABS_CONFIG, esFotoMiniatura } from '../components/PhotoManager';
 import { MiniMapaRevision } from '../components/Mapas';
 import useIsDesktop from '../hooks/useIsDesktop';
 import { compartirODescargar, perteneceAProyecto } from '../utils/helpers';
-import { metrosPorItem, esMedioTramo, fibrasApoyadasEn } from '../utils/cablesAcero';
+import { metrosPorItem, esMedioTramo, fibrasApoyadasEn, quitarCableAcero } from '../utils/cablesAcero';
 import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
 import BloqueoHerramienta from '../components/BloqueoHerramienta';
 import { equiposDePunto } from '../utils/equiposPasivos';
@@ -2213,9 +2213,10 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
         Object.entries(d.ferreteriaExtra || {}).forEach(([id, c]) => { if (c) t[id] = (t[id] || 0) + c; });
       }
     });
-    // Cables de acero: por metro, medidos entre sus postes
-    Object.entries(metrosPorItem(cablesAceroProyecto, puntos || [])).forEach(([id, m]) => { t[id] = (t[id] || 0) + m; });
-    return t;
+    // Cables de acero: no se cuentan por poste, solo los metros de los cables trazados
+    const sinAcero = quitarCableAcero(t);
+    Object.entries(metrosPorItem(cablesAceroProyecto, puntos || [])).forEach(([id, m]) => { sinAcero[id] = (sinAcero[id] || 0) + m; });
+    return sinAcero;
   }, [puntos, proyecto, cablesAceroProyecto]);
 
   const vincular = async (l) => {

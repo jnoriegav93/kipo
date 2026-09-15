@@ -137,6 +137,28 @@ export const verticesDeConexion = (con, buscarPunto) => {
   return ids.map(id => buscarPunto(id)).filter(p => p?.coords).map(p => ({ lat: p.coords.lat, lng: p.coords.lng }));
 };
 
+// Borrar un poste no borra las fibras que pasan por él: las suelta. El vértice que
+// estaba clavado en el poste se queda en su sitio como vértice libre y el poste sale
+// de la lista de postes por los que pasa. Una fibra vieja, sin trazo propio, toma
+// primero el trazo de sus postes para no perder la forma. Devuelve los campos a
+// guardar, o null si la fibra no toca ese punto.
+export const soltarFibraDePunto = (con, puntoId, buscarPunto) => {
+  const id = String(puntoId);
+  const idsPostes = (con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean).map(String);
+  const propios = Array.isArray(con.vertices) && con.vertices.length >= 2
+    ? con.vertices.filter(v => v && v.lat != null && v.lng != null)
+    : null;
+  const clavada = (propios || []).some(v => String(v.puntoId) === id);
+  if (!clavada && !idsPostes.includes(id)) return null;
+  const trazo = propios || idsPostes.map(pid => {
+    const p = buscarPunto(pid);
+    return p?.coords?.lat != null ? { lat: p.coords.lat, lng: p.coords.lng, puntoId: pid } : null;
+  }).filter(Boolean);
+  const vertices = trazo.map(v => (String(v.puntoId) === id ? { lat: v.lat, lng: v.lng } : v));
+  const puntos = vertices.filter(v => v.puntoId != null).map(v => String(v.puntoId));
+  return { vertices, puntos, from: puntos[0] || null, to: puntos[puntos.length - 1] || null };
+};
+
 // ── QUÉ FIBRAS TOCAN UN POSTE ───────────────────────────────────────────────
 
 // Distancia mínima de un punto a toda la polilínea: se mide contra cada vértice y

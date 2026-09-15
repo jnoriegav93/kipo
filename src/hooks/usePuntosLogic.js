@@ -5,6 +5,9 @@ import { uploadImage } from '../utils/storage';
 import { quitarCandidatasPorUrls } from '../utils/fotoHuerfanas';
 import { validarPunto } from '../utils/validarPunto';
 import { nombreTipoAcero } from '../utils/cablesAcero';
+import { soltarFibraDePunto } from '../utils/fibraUtils';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 
 // 👇 EL GANCHO (HOOK) RECIBE TODO EL ESTADO NECESARIO
 export const usePuntosLogic = ({
@@ -41,25 +44,27 @@ export const usePuntosLogic = ({
   const solicitarBorrarPunto = () => {
     const puntoABorrar = puntos.find(p => p.id === puntoSeleccionado);
     const identificador = formatId(puntoABorrar?.datos);
-    // Fibras que TOCAN el punto (extremo o intermedio): al borrar el punto se borran
-    // COMPLETAS (una fibra con un punto menos ya no es válida) y van a la papelera.
     const idSel = String(puntoSeleccionado);
-    const fibrasDelPunto = (conexiones || []).filter(c => {
-      const ids = (c.puntos?.length >= 2 ? c.puntos : [c.from, c.to]).filter(Boolean).map(String);
-      return ids.includes(idSel);
-    });
-    // Un cable de acero sin uno de sus dos postes o sin su medio tramo deja de existir:
-    // se va con el punto
-    const cablesDelPunto = (cablesAcero || []).filter(c =>
-      (c.puntos || []).map(String).includes(idSel) || (c.medioTramo != null && String(c.medioTramo) === idSel));
-    const conectados = [
-      fibrasDelPunto.length > 0 ? `${fibrasDelPunto.length} fibra${fibrasDelPunto.length !== 1 ? 's' : ''} conectada${fibrasDelPunto.length !== 1 ? 's' : ''}` : '',
-      cablesDelPunto.length > 0 ? `${cablesDelPunto.length} cable${cablesDelPunto.length !== 1 ? 's' : ''} de acero` : '',
-    ].filter(Boolean);
-    const notaFibras = conectados.length > 0 ? ` (y ${conectados.join(' y ')})` : '';
+    // Las fibras tienen trazo propio: borrar el punto no las borra, las suelta de él y
+    // se quedan donde están
+    const buscarPunto = (id) => puntos.find(p => String(p.id) === String(id));
+    const fibrasSueltas = (conexiones || [])
+      .map(c => ({ id: String(c.id), cambios: soltarFibraDePunto(c, idSel, buscarPunto) }))
+      .filter(f => f.cambios);
+    // Un cable de acero sin uno de sus dos postes no se puede medir: se va con el poste.
+    // Sin su medio tramo sí se queda; solo pierde dónde se apoyan las fibras.
+    const cablesDelPunto = (cablesAcero || []).filter(c => (c.puntos || []).map(String).includes(idSel));
+    const cablesSinMedioTramo = (cablesAcero || []).filter(c =>
+      c.medioTramo != null && String(c.medioTramo) === idSel && !cablesDelPunto.includes(c));
+    const cuantos = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+    const notaCables = cablesDelPunto.length > 0 ? ` (y ${cuantos(cablesDelPunto.length, 'cable de acero', 'cables de acero')})` : '';
+    const notaQuedan = [
+      fibrasSueltas.length > 0 ? ` ${cuantos(fibrasSueltas.length, 'fibra se queda', 'fibras se quedan')} en su sitio.` : '',
+      cablesSinMedioTramo.length > 0 ? ` ${cuantos(cablesSinMedioTramo.length, 'cable de acero se queda', 'cables de acero se quedan')} sin medio tramo.` : '',
+    ].join('');
     setConfirmData({
       title: '¿Eliminar Poste?',
-      message: `Irá a la Papelera por 15 días${notaFibras}. Puedes restaurarlo desde el menú principal.`,
+      message: `Irá a la Papelera por 15 días${notaCables}.${notaQuedan} Puedes restaurarlo desde el menú principal.`,
       actionText: 'ELIMINAR',
       theme,
       onConfirm: async () => {
@@ -67,13 +72,16 @@ export const usePuntosLogic = ({
         // el usuario volvía a presionar ELIMINAR y el punto se duplicaba en la papelera.
         setConfirmData(null);
         setPuntoSeleccionado(null);
-        const idsFibras = new Set(fibrasDelPunto.map(f => String(f.id)));
+        const cambiosFibra = new Map(fibrasSueltas.map(f => [f.id, f.cambios]));
         const idsCables = new Set(cablesDelPunto.map(c => String(c.id)));
+        const idsSinMedioTramo = new Set(cablesSinMedioTramo.map(c => String(c.id)));
         setPuntos(prev => prev.filter(p => p.id !== puntoSeleccionado));
-        setConexiones(prev => prev.filter(c => !idsFibras.has(String(c.id))));
-        setCablesAcero(prev => prev.filter(c => !idsCables.has(String(c.id))));
+        setConexiones(prev => prev.map(c => (cambiosFibra.has(String(c.id)) ? { ...c, ...cambiosFibra.get(String(c.id)) } : c)));
+        setCablesAcero(prev => prev
+          .filter(c => !idsCables.has(String(c.id)))
+          .map(c => (idsSinMedioTramo.has(String(c.id)) ? { ...c, medioTramo: null } : c)));
 
-        // 1. Snapshot a la papelera (punto + cada fibra y cable completos) ANTES de borrar
+        // 1. Snapshot a la papelera (punto y cada cable de acero completos) ANTES de borrar
         try {
           const { enviarAPapelera, enviarCableAceroAPapelera, extraerStoragePaths } = await import('../utils/papelera');
           if (puntoABorrar) {
@@ -87,23 +95,6 @@ export const usePuntosLogic = ({
               storagePaths: extraerStoragePaths(puntoABorrar.datos),
             });
           }
-          for (const f of fibrasDelPunto) {
-            const idsPts = (f.puntos?.length >= 2 ? f.puntos : [f.from, f.to]).filter(Boolean).map(String);
-            // Coordenadas de cada punto AL MOMENTO del borrado (para validar al restaurar)
-            const metaPuntos = idsPts.map(pid => {
-              const p = pid === idSel ? puntoABorrar : puntos.find(x => String(x.id) === pid);
-              return { id: pid, coords: { lat: p?.coords?.lat ?? null, lng: p?.coords?.lng ?? null } };
-            });
-            await enviarAPapelera({
-              uid: user.uid, tipo: 'fibra',
-              snapshot: JSON.parse(JSON.stringify(f)),
-              coleccionOriginal: 'conexiones', idOriginal: f.id,
-              proyectoId: f.proyectoId || proyectoActual?.id || null,
-              proyectoNombre: (proyectoDe(f.proyectoId) || proyectoDe(puntoABorrar?.proyectoId) || proyectoActual)?.nombre || '',
-              nombre: `Fibra ${f.capacidad || ''} (${idsPts.length} puntos)`.trim(),
-              meta: { puntos: metaPuntos },
-            });
-          }
           for (const c of cablesDelPunto) {
             await enviarCableAceroAPapelera({
               uid: user.uid, cable: c,
@@ -115,8 +106,14 @@ export const usePuntosLogic = ({
 
         // 2. Borrar de las colecciones (los archivos de Storage NO se tocan)
         agregarTarea('borrar_punto', { coleccion: 'puntos', idDoc: idSel });
-        fibrasDelPunto.forEach(f => agregarTarea('borrar_punto', { coleccion: 'conexiones', idDoc: String(f.id) }));
         cablesDelPunto.forEach(c => agregarTarea('borrar_punto', { coleccion: 'cablesAcero', idDoc: String(c.id) }));
+
+        // 3. Lo que se queda se actualiza: las fibras que se sueltan del punto y los cables
+        // de acero que pierden su medio tramo
+        fibrasSueltas.forEach(f => updateDoc(doc(db, 'conexiones', f.id), f.cambios)
+          .catch(e => console.error('Error soltando la fibra del punto borrado:', e)));
+        cablesSinMedioTramo.forEach(c => updateDoc(doc(db, 'cablesAcero', String(c.id)), { medioTramo: null })
+          .catch(e => console.error('Error quitando el medio tramo del cable de acero:', e)));
 
         const chatBorrar = puntoABorrar?.proyectoId || proyectoActual?.id;
         if (chatBorrar) {
