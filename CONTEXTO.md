@@ -4,7 +4,7 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 14 de septiembre de 2026.
+Última actualización: 15 de septiembre de 2026.
 
 > **Ahora:** el modo Diseño quedó en pausa el 14/09 para agregar el **cable de
 > acero** a la sección FIBRA. Ver la sección "Cable de acero" más abajo.
@@ -257,11 +257,11 @@ en el cable y en qué medio tramo.
   fibras pasan a las copias si también van. Borrar proyecto (lista, equipos, admin)
   los incluye. Salir de un equipo los copia con postes, medio tramo y fibras remapeados.
 - **Despliegue.** La primera versión (tipos por catálogo, sin fibras ni medio tramo)
-  quedó en producción el 14/09/26: reglas, hosting (**SELLO: 14/09/26, 16:00**) y
-  `procesarExportacion`. **Tipos fijos, fibras apoyadas, medio tramo y el cable fuera
-  de la ferretería por poste: en el repo, sin desplegar todavía.** Hace falta el
-  hosting y la función `procesarExportacion` (sus reportes dejan de sumar el cable
-  contado por poste); las reglas no cambian.
+  quedó en producción el 14/09/26 (**SELLO: 14/09/26, 16:00**). **Lo del 15/09 está en
+  producción desde el 15/09/26**: tipos fijos, fibras apoyadas, medio tramo, el cable
+  fuera de la ferretería por poste, y postes y fibras independientes al borrar y al
+  restaurar. Se subieron el hosting (**SELLO: 15/09/26, 00:31**) y la función
+  `procesarExportacion`; las reglas no cambiaron.
 
 Probado con Node (23 casos: metros, tipos, trazo, apoyos y reparto por poste) y la
 copia del servidor contra el cliente; con lint (ningún error nuevo en los 22 archivos
