@@ -198,7 +198,7 @@ export default function BarraAcero({
 
           {descripcionTrazo && (
             <p className={`text-[10px] font-bold mb-1 ${theme.text} opacity-70`}>
-              {descripcionTrazo.etiqueta} · se liquidan <b>{descripcionTrazo.metros} m</b> (distancia + 1 m)
+              {descripcionTrazo.etiqueta} · total <b>{descripcionTrazo.metros} m</b>
             </p>
           )}
           <p className={`text-[10px] font-bold mb-2.5 ${theme.text} opacity-70`}>
