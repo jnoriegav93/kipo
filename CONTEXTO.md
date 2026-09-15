@@ -308,6 +308,19 @@ sirven las coordenadas guardadas al borrarla), y un poste se restaura solo.
 
 ---
 
+## Editar posición: solo lo ordenado lleva posición (15/09)
+
+Al guardar "editar posición" desde el mapa se numeraban también los puntos no tocados,
+detrás de lo ordenado: con 10 de 50 tocados, los otros 40 quedaban del 11 al 50. Ahora
+solo lleva posición lo ordenado (lo retomado y lo tocado o, al CORREGIR, lo que ya tenía
+posición y lo que se movió) y el resto queda sin posición, como se ve en el mapa
+(`posicionesAGuardar` en `src/utils/ordenTendido.js`, probado con Node). Si guardar
+quitaría la posición a puntos que ya la tenían, se pide confirmación y se sugiere
+RETOMAR. El editor de posición de la lista de puntos (VistaProyectos) sigue numerando
+todos, porque ahí se ven todos numerados.
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un

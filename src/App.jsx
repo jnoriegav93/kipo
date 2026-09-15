@@ -40,6 +40,7 @@ import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bi
 import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } from './utils/fibraUtils';
 import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, faltaEnTrazoAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero } from './utils/cablesAcero';
 import { perteneceAProyecto } from './utils/helpers';
+import { posicionesAGuardar } from './utils/ordenTendido';
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
 
@@ -509,6 +510,7 @@ function App() {
   const [correccionSel, setCorreccionSel] = React.useState([]); // ids EN ORDEN DE TOQUE
   const [ordenTrabajo, setOrdenTrabajo] = React.useState([]);   // orden completo en edición
   const [huboCorreccion, setHuboCorreccion] = React.useState(false);
+  const [movidosCorreccion, setMovidosCorreccion] = React.useState([]); // ids movidos: quedan con posición
 
   // Orden de partida: el ordenTendido guardado; los puntos que nunca se ordenaron
   // van al final por id. Mismo criterio que usa la lista de puntos.
@@ -527,11 +529,12 @@ function App() {
     setOrdenTrabajo(ordenBaseTendido());
     setCorreccionSel([]);
     setHuboCorreccion(false);
+    setMovidosCorreccion([]);
     setModoCorregir('seleccion');
   }, [ordenBaseTendido]);
 
   const limpiarCorreccion = React.useCallback(() => {
-    setModoCorregir(null); setCorreccionSel([]); setOrdenTrabajo([]); setHuboCorreccion(false);
+    setModoCorregir(null); setCorreccionSel([]); setOrdenTrabajo([]); setHuboCorreccion(false); setMovidosCorreccion([]);
   }, []);
 
   // Saca los marcados de donde estén y los reinserta justo después del ancla,
@@ -547,6 +550,7 @@ function App() {
       resto.splice(idx + 1, 0, ...sel);
       return resto;
     });
+    setMovidosCorreccion(prev => [...new Set([...prev, ...correccionSel.map(String)])]);
     setCorreccionSel([]);
     setHuboCorreccion(true);
     setModoCorregir('seleccion'); // vuelve al inicio, listo para otra corrección
@@ -556,7 +560,7 @@ function App() {
   const reiniciarOrden = React.useCallback(() => {
     if (!modoCorregir) { setOrdenSeleccion([]); setRetomarOrden(false); return; }
     if (correccionSel.length > 0) { setCorreccionSel([]); return; }
-    if (huboCorreccion) { setOrdenTrabajo(ordenBaseTendido()); setHuboCorreccion(false); return; }
+    if (huboCorreccion) { setOrdenTrabajo(ordenBaseTendido()); setHuboCorreccion(false); setMovidosCorreccion([]); return; }
     limpiarCorreccion();
   }, [modoCorregir, correccionSel, huboCorreccion, ordenBaseTendido, limpiarCorreccion]);
 
@@ -572,46 +576,66 @@ function App() {
       .map(p => p.id);
   }, [retomarOrden, todosLosPuntos, proyOrdenar]);
 
-  const guardarOrdenTendido = React.useCallback(async () => {
+  const guardarOrdenTendido = React.useCallback(() => {
     if (guardandoOrden || !proyOrdenar?.id) return;
-    setGuardandoOrden(true);
-    try {
-      const ptsProy = todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar));
-      // Al retomar, el bloque ya ordenado va primero y conserva su numeración.
-      const enPrefijo = new Set(prefijoOrden.map(String));
-      const seleccionados = ordenSeleccion.filter(id => ptsProy.some(p => p.id === id) && !enPrefijo.has(String(id)));
-      const usados = new Set([...prefijoOrden.map(String), ...seleccionados.map(String)]);
-      const restantes = ptsProy.filter(p => !usados.has(String(p.id)))
-        .sort((a, b) => parseInt(a.id) - parseInt(b.id)).map(p => p.id);
-      // Con correcciones se guarda el orden de trabajo completo; sin ellas, el
-      // comportamiento de siempre (lo tocado primero, el resto detrás).
-      const ordenFinal = (huboCorreccion && ordenTrabajo.length)
-        ? ordenTrabajo.filter(id => ptsProy.some(p => String(p.id) === String(id)))
-        : [...prefijoOrden, ...seleccionados, ...restantes];
-      const { doc: docRef, updateDoc } = await import('firebase/firestore');
-      const { db: fireDb } = await import('./firebaseConfig');
-      for (let i = 0; i < ordenFinal.length; i++) {
-        await updateDoc(docRef(fireDb, 'puntos', String(ordenFinal[i])), { 'datos.ordenTendido': i + 1 });
+    const ptsProy = todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar));
+    // Solo lleva posición lo ordenado: lo retomado y lo tocado o, al corregir, lo que ya la
+    // tenía y lo movido. Lo demás queda sin posición, como se ve en el mapa. Antes se
+    // numeraban también los puntos no tocados, detrás de lo ordenado.
+    const { orden, sinPosicion } = posicionesAGuardar({
+      puntos: ptsProy, prefijo: prefijoOrden, seleccion: ordenSeleccion,
+      ordenTrabajo: modoCorregir ? ordenTrabajo : null, movidos: movidosCorreccion,
+    });
+    const guardar = async () => {
+      setGuardandoOrden(true);
+      try {
+        for (let i = 0; i < orden.length; i++) {
+          await fbUpdateDoc(doc(db, 'puntos', String(orden[i])), { 'datos.ordenTendido': i + 1 });
+        }
+        for (const id of sinPosicion) {
+          await fbUpdateDoc(doc(db, 'puntos', String(id)), { 'datos.ordenTendido': deleteField() });
+        }
+        const posicion = new Map(orden.map((id, i) => [String(id), i + 1]));
+        const quitar = new Set(sinPosicion.map(String));
+        setPuntos(prev => prev.map(p => {
+          if (posicion.has(String(p.id))) return { ...p, datos: { ...p.datos, ordenTendido: posicion.get(String(p.id)) } };
+          if (!quitar.has(String(p.id))) return p;
+          const datos = { ...(p.datos || {}) };
+          delete datos.ordenTendido;
+          return { ...p, datos };
+        }));
+        setModoOrdenar(false);
+        setOrdenSeleccion([]);
+        setRetomarOrden(false);
+        limpiarCorreccion();
+        setOrdenarProyId(null);
+        setModalPendiente(`LISTA_PUNTOS_${proyOrdenar.id}`);
+        setVista('proyectos');
+        setAlertData({ title: 'Orden guardado', message: 'La lista quedó ordenada por la nueva posición.' });
+      } catch (e) {
+        console.error('Error guardando orden de tendido:', e);
+        setAlertData({ title: 'Error', message: 'No se pudo guardar el orden.' });
+      } finally {
+        setGuardandoOrden(false);
       }
-      setPuntos(prev => prev.map(p => {
-        const idx = ordenFinal.indexOf(p.id);
-        return idx >= 0 ? { ...p, datos: { ...p.datos, ordenTendido: idx + 1 } } : p;
-      }));
-      setModoOrdenar(false);
-      setOrdenSeleccion([]);
-      setRetomarOrden(false);
-      limpiarCorreccion();
-      setOrdenarProyId(null);
-      setModalPendiente(`LISTA_PUNTOS_${proyOrdenar.id}`);
-      setVista('proyectos');
-      setAlertData({ title: 'Orden guardado', message: 'La lista quedó ordenada por la nueva posición.' });
-    } catch (e) {
-      console.error('Error guardando orden de tendido:', e);
-      setAlertData({ title: 'Error', message: 'No se pudo guardar el orden.' });
-    } finally {
-      setGuardandoOrden(false);
-    }
-  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, prefijoOrden, huboCorreccion, ordenTrabajo, limpiarCorreccion, setPuntos, setModalPendiente, setVista, setAlertData]);
+    };
+    if (sinPosicion.length === 0) { guardar(); return; }
+    // Puntos que ya tenían posición y no se ordenaron ahora la perderían: se pregunta antes
+    const n = sinPosicion.length;
+    setConfirmData({
+      title: 'Quitar posiciones',
+      message: `${n} ${n === 1 ? 'punto que ya tenía posición no se ordenó y quedará' : 'puntos que ya tenían posición no se ordenaron y quedarán'} sin posición. Para conservar las posiciones guardadas, usa RETOMAR antes de tocar puntos.`,
+      actionText: 'GUARDAR',
+      theme,
+      onConfirm: () => { setConfirmData(null); guardar(); },
+    });
+  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, prefijoOrden, modoCorregir, ordenTrabajo, movidosCorreccion, limpiarCorreccion, setPuntos, setModalPendiente, setVista, setAlertData, setConfirmData, theme]);
+
+  // Corrigiendo, el mapa numera solo lo que va a quedar con posición: lo que ya la tenía y
+  // lo que se movió. Lo demás se ve en blanco, igual que después de guardar.
+  const ordenTrabajoVisible = React.useMemo(() => (modoCorregir
+    ? posicionesAGuardar({ puntos: todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar)), ordenTrabajo, movidos: movidosCorreccion }).orden
+    : ordenTrabajo), [modoCorregir, ordenTrabajo, movidosCorreccion, todosLosPuntos, proyOrdenar]);
 
   // Copiar o cortar puntos seleccionados hacia un proyecto destino (existente o nuevo).
   // modo: 'copiar' (duplica, deja originales) | 'cortar' (reasigna, los saca del origen).
@@ -2181,7 +2205,7 @@ function App() {
           modoCorregir={modoCorregir}
           correccionSel={correccionSel}
           setCorreccionSel={setCorreccionSel}
-          ordenTrabajo={ordenTrabajo}
+          ordenTrabajo={ordenTrabajoVisible}
           huboCorreccion={huboCorreccion}
           onIniciarCorreccion={iniciarCorreccion}
           onPedirDestino={() => setModoCorregir('destino')}
