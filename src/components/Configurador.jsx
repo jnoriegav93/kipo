@@ -93,12 +93,16 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
 
   const guardarArmadoConItems = () => {
     const { nuevoArmadoId, nuevoArmadoNombre, itemsSeleccion = {}, modoEdicion, listaOrden } = tempData;
+    // El nombre se escribe en la cabecera del editor: sin él no se guarda, y al editar
+    // sirve además para renombrar el armado (antes el cambio de nombre se perdía).
+    const nombre = String(nuevoArmadoNombre || '').trim();
+    if (!nombre) { setAlertData?.({ title: 'Falta el nombre', message: 'Ponle un nombre al armado.', theme }); return; }
     const items = construirItems({ itemsSeleccion, listaOrden }, config.catalogoFerreteria);
     if (modoEdicion) {
-      const nuevosArmados = config.armados.map(a => a.id === nuevoArmadoId ? { ...a, items } : a);
+      const nuevosArmados = config.armados.map(a => a.id === nuevoArmadoId ? { ...a, nombre, items } : a);
       saveConfig({ ...config, armados: nuevosArmados });
     } else {
-      const nuevo = { id: nuevoArmadoId, nombre: nuevoArmadoNombre, items, visible: true };
+      const nuevo = { id: nuevoArmadoId, nombre, items, visible: true };
       saveConfig({ ...config, armados: [...config.armados, nuevo] });
     }
     setModalOpen(null);

@@ -90,7 +90,16 @@ export default function EditorArmadoItems({ tempData, setTempData, config, theme
               <button onClick={handleVolver}>
                 <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
               </button>
-              <span className={`font-black ${theme.text} text-base uppercase truncate mx-2`}>{tempData.nuevoArmadoNombre}</span>
+              {/* El nombre se escribe aquí. Creado desde el proyecto llega vacío y antes no
+                  había dónde ponerlo: al guardar pedía un nombre que no se podía escribir. */}
+              <input
+                type="text"
+                value={tempData.nuevoArmadoNombre || ''}
+                onChange={e => setTempData({ ...tempData, nuevoArmadoNombre: e.target.value })}
+                autoFocus={!tempData.nuevoArmadoNombre}
+                placeholder="Nombre del armado"
+                className={`flex-1 min-w-0 mx-2 px-3 py-1.5 rounded-lg border-2 ${theme.border} ${theme.bg} ${theme.text} font-black uppercase text-center placeholder:normal-case placeholder:font-bold placeholder:text-slate-400 focus:border-blue-500 focus:outline-none`}
+              />
               <button
                 onClick={aplicarOrden}
                 className="text-[11px] font-black px-3 py-1.5 rounded-lg border-2 border-black bg-slate-900 text-white transition-all shrink-0 active:scale-95"
@@ -167,9 +176,10 @@ export default function EditorArmadoItems({ tempData, setTempData, config, theme
             <div className={`shrink-0 border-t-2 ${theme.border} p-3`} style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}>
               <button
                 onClick={guardarArmadoConItems}
-                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-lg"
+                disabled={!String(tempData.nuevoArmadoNombre || '').trim()}
+                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-lg disabled:opacity-40 disabled:active:scale-100"
               >
-                GUARDAR ARMADO
+                {String(tempData.nuevoArmadoNombre || '').trim() ? 'GUARDAR ARMADO' : 'PONLE UN NOMBRE ARRIBA'}
               </button>
             </div>
           </div>

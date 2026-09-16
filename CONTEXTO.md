@@ -336,6 +336,17 @@ producción desde el 15/09/26 (**SELLO: 15/09/26, 11:49**).
 
 ---
 
+## Armados del proyecto: el nombre se escribe en el editor (16/09)
+
+Crear un armado desde el proyecto (pestaña ARMADOS → + NUEVO) abría el editor sin
+ningún sitio para el nombre: solo el buscador de ferretería, y al guardar pedía un
+nombre que no se podía escribir. Ahora la cabecera de `EditorArmadoItems` es un campo
+escribible —el mismo editor que usa Configuración—, GUARDAR queda deshabilitado
+mientras el nombre esté vacío ("PONLE UN NOMBRE ARRIBA") y, al editar desde
+Configuración, el nombre cambiado también se guarda: antes se perdía.
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
