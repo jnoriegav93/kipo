@@ -359,8 +359,8 @@ en la raíz: compacto bajo 800 px de alto o 1200 de ancho, y vuelve a normal rec
 achica rellenos, altos de filas y botones y las tipografías grandes, todo desde un bloque
 de `src/index.css`, que es donde hay que afinarlo si algo queda raro. En equipos con
 mouse los campos bajan a 14 px; en táctil se quedan en 16 para que iPhone no haga zoom al
-escribir. Sin decidir con el usuario: REVISIÓN (cuántas filas de ferretería y qué tan
-grande la foto).
+escribir. En producción desde el 16/09/26 (**SELLO: 16/09/26, 15:44**). Sin decidir con
+el usuario: REVISIÓN (cuántas filas de ferretería y qué tan grande la foto).
 
 ---
 
