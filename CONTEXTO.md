@@ -374,7 +374,8 @@ sigue dibujando todo lo visible —para ver cómo se conecta con los proyectos v
 la **lista** de fibra (`conexionesLista`) y la de cables de acero (`lineasProyecto`) son
 solo del proyecto activo, con el contador contando exactamente eso. La comparación usa
 `perteneceAProyecto`, así que aguanta los `proyectoId` numéricos de los puntos viejos;
-antes era `===` y con un id numérico no casaba.
+antes era `===` y con un id numérico no casaba. En producción desde el 16/09/26
+(**SELLO: 16/09/26, 18:07**).
 
 ---
 
