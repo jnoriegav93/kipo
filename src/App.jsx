@@ -61,6 +61,7 @@ const VistaDiseno = React.lazy(() => import('./views/VistaDiseno'));
 // Hooks personalizados
 import { useAuth, ADMIN_UID } from './hooks/useAuth';
 import useIsDesktop from './hooks/useIsDesktop';
+import usePantallaCompacta from './hooks/usePantallaCompacta';
 import { useTheme } from './hooks/useTheme';
 import { useMapState } from './hooks/useMapState';
 import { useUIState } from './hooks/useUIState';
@@ -116,6 +117,8 @@ function App() {
   // Tema
   const { isDark, setIsDark, theme } = useTheme();
   const isDesktop = useIsDesktop();
+  // Ventana chica (laptop): mismo diseño, medidas más chicas (clase `compacto` en index.css)
+  const pantallaCompacta = usePantallaCompacta();
 
   // ── Perfil empresarial ──────────────────────────────────────────────
   // El admin puede previsualizar la app como cualquier perfil (base/claro).
@@ -1892,7 +1895,7 @@ function App() {
 
 
   return (
-    <div className={`h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
+    <div className={`${pantallaCompacta ? 'compacto ' : ''}h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
 
       {/* Indicador de perfil activo — solo admin (para saber qué perfil se está previsualizando) */}
       {esAdmin && (

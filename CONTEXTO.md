@@ -348,6 +348,22 @@ desde el 16/09/26 (**SELLO: 16/09/26, 12:47**).
 
 ---
 
+## Modo compacto automático en pantallas chicas (16/09)
+
+En una laptop de 1366×768 los botones, formularios y listas no entraban: la app ocupa
+justo el alto de la ventana y no se desplaza, así que lo que sobra se corta.
+`usePantallaCompacta` mide en vivo el alto y el ancho útiles y pone la clase `compacto`
+en la raíz: compacto bajo 800 px de alto o 1200 de ancho, y vuelve a normal recién sobre
+840/1240 (histéresis para que no baile en el límite; la regla es pura, está en
+`src/utils/pantalla.js` y se prueba con Node). **No cambia el diseño ni el mapa**: solo
+achica rellenos, altos de filas y botones y las tipografías grandes, todo desde un bloque
+de `src/index.css`, que es donde hay que afinarlo si algo queda raro. En equipos con
+mouse los campos bajan a 14 px; en táctil se quedan en 16 para que iPhone no haga zoom al
+escribir. Sin decidir con el usuario: REVISIÓN (cuántas filas de ferretería y qué tan
+grande la foto).
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
