@@ -343,7 +343,8 @@ ningún sitio para el nombre: solo el buscador de ferretería, y al guardar ped�
 nombre que no se podía escribir. Ahora la cabecera de `EditorArmadoItems` es un campo
 escribible —el mismo editor que usa Configuración—, GUARDAR queda deshabilitado
 mientras el nombre esté vacío ("PONLE UN NOMBRE ARRIBA") y, al editar desde
-Configuración, el nombre cambiado también se guarda: antes se perdía.
+Configuración, el nombre cambiado también se guarda: antes se perdía. En producción
+desde el 16/09/26 (**SELLO: 16/09/26, 12:47**).
 
 ---
 
