@@ -278,7 +278,9 @@ en el cable y en qué medio tramo.
   `procesarExportacion`; las reglas no cambiaron. Después, solo hosting (**SELLO:
   15/09/26, 02:14**): el total de metros sin "(distancia + 1 m)" al guardar y la
   ferretería sugerida por los cables de acero. Y luego (**SELLO: 15/09/26, 02:32**) la
-  corrección del guardado sin día elegido en el mapa.
+  corrección del guardado sin día elegido en el mapa. Y el 16/09/26 (**SELLO: 16/09/26,
+  18:24**): guardar un cable solo con sus dos postes, con las fibras y el medio tramo
+  como opcionales.
 
 Probado con Node (23 casos: metros, tipos, trazo, apoyos y reparto por poste) y la
 copia del servidor contra el cliente; con lint (ningún error nuevo en los 22 archivos
