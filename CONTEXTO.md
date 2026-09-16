@@ -364,6 +364,20 @@ el usuario: REVISIÓN (cuántas filas de ferretería y qué tan grande la foto).
 
 ---
 
+## Las listas de la barra son del proyecto activo (16/09)
+
+La lista de la barra de FIBRA mostraba **todas** las fibras de los días visibles, de
+todos los proyectos, mientras su contador contaba solo las del proyecto activo: no
+cuadraban y parecía que se cruzaban los ramales. Venía así desde el inicio (no lo trajo
+el cable de acero, que solo reusó el mismo filtro de visibilidad). Ahora el **mapa**
+sigue dibujando todo lo visible —para ver cómo se conecta con los proyectos vecinos— y
+la **lista** de fibra (`conexionesLista`) y la de cables de acero (`lineasProyecto`) son
+solo del proyecto activo, con el contador contando exactamente eso. La comparación usa
+`perteneceAProyecto`, así que aguanta los `proyectoId` numéricos de los puntos viejos;
+antes era `===` y con un id numérico no casaba.
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un

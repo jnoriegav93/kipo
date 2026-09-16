@@ -1563,6 +1563,9 @@ function App() {
   }, [proyectoActual, mapaSupervision, todosLosPuntos]);
   const conexionesVisiblesBase = filtrosVisibilidad.getConexionesVisibles(conexiones, diasVisibles, proyectos.filter(p => !p.archivado));
   const conexionesVisiblesMapa = fibrasVisibles ? conexionesVisiblesBase : [];
+  // El MAPA dibuja lo visible de todos los proyectos; la LISTA de la barra de fibra es
+  // solo del proyecto activo. Antes listaba las de todos y no cuadraba con su contador.
+  const conexionesProyecto = conexionesVisiblesBase.filter(c => perteneceAProyecto(c, proyectoActual));
 
   // ── AJUSTAR POSTES A LA FIBRA ─────────────────────────────────────────────
   // Jala los postes cercanos hasta apoyarlos sobre la línea, perpendicularmente.
@@ -1729,6 +1732,13 @@ function App() {
       })
       .filter(Boolean);
   }, [acerosVisibles, cablesAcero, todosLosPuntos, diasVisibles, proyectos]);
+
+  // Igual que las fibras: la barra lista solo los cables del proyecto activo, aunque el
+  // mapa siga dibujando los de todos los proyectos visibles.
+  const lineasAceroProyecto = React.useMemo(
+    () => lineasAcero.filter(c => perteneceAProyecto(c, proyectoActual)),
+    [lineasAcero, proyectoActual]
+  );
 
   // Ferretería que sugieren los cables de acero del punto abierto en el formulario. Se
   // leen los del proyecto del punto, los haya trazado quien sea.
@@ -2123,6 +2133,7 @@ function App() {
           puntosRecorrido={mapaSupervision ? [] : puntosRecorrido}
           setPuntosRecorrido={setPuntosRecorrido}
           conexionesVisiblesMapa={mapaSupervision ? [] : conexionesVisiblesMapa}
+          conexionesLista={mapaSupervision ? [] : conexionesProyecto}
           conexionSeleccionada={conexionSeleccionada}
           setConexionSeleccionada={setConexionSeleccionada}
           handleConexionClick={(con) => {
@@ -2133,7 +2144,7 @@ function App() {
               setCapacidadFibra(con.capacidad || 12);
             }
           }}
-          totalFibras={proyectoActual ? conexionesVisiblesBase.filter(c => c.proyectoId === proyectoActual.id).length : 0}
+          totalFibras={mapaSupervision ? 0 : conexionesProyecto.length}
           nombreProyecto={mapaSupervision ? mapaSupervision.proyecto?.nombre : proyectoActual?.nombre}
           totalPuntosProyecto={mapaSupervision ? mapaSupervision.puntos.length : (modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto)}
           proyectoEsCompartido={!!proyectoActual?.esCompartido}
@@ -2196,6 +2207,7 @@ function App() {
           onCambiarModoLinea={cambiarModoLinea}
           acero={mapaSupervision ? null : {
             lineas: lineasAcero,
+            lineasProyecto: lineasAceroProyecto,
             trazo: trazoAcero,
             setTrazo: setTrazoAcero,
             descripcionTrazo: descripcionTrazoAcero,
@@ -2212,7 +2224,7 @@ function App() {
             onEliminar: pedirBorrarCableAcero,
             visibles: acerosVisibles,
             setVisibles: setAcerosVisibles,
-            total: proyectoActual ? cablesAcero.filter(c => String(c.proyectoId) === String(proyectoActual.id)).length : 0,
+            total: lineasAceroProyecto.length,
             onCerrar: () => { setTrazoAcero(TRAZO_ACERO_VACIO); setCableAceroSeleccionado(null); setModoLinea('fibra'); },
           }}
           modoSupervision={!!mapaSupervision}

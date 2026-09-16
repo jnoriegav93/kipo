@@ -37,6 +37,7 @@ const VistaMapa = ({
   puntosRecorrido,
   setPuntosRecorrido,
   conexionesVisiblesMapa,
+  conexionesLista = [],   // las del proyecto activo: lo que muestra la lista de la barra
   conexionSeleccionada,
   setConexionSeleccionada,
   handleConexionClick,
@@ -334,7 +335,7 @@ const VistaMapa = ({
                 tipoId={acero.tipoId}
                 setTipoId={acero.setTipoId}
                 onGuardar={acero.onGuardar}
-                cables={acero.lineas}
+                cables={acero.lineasProyecto || acero.lineas}
                 cableSeleccionado={acero.seleccionado}
                 setCableSeleccionado={acero.setSeleccionado}
                 onCambiarTipo={acero.onCambiarTipo}
@@ -387,7 +388,7 @@ const VistaMapa = ({
                 const p = (puntosVisiblesMapa || []).find(x => ids.some(id => String(id) === String(x.id)) && x.coords);
                 if (p) irACoord(p.coords.lat, p.coords.lng);
               }}
-              conexiones={conexionesVisiblesMapa}
+              conexiones={conexionesLista}
               conexionSeleccionada={conexionSeleccionada}
               setConexionSeleccionada={setConexionSeleccionada}
               onEliminarConexion={onEliminarConexion}
