@@ -206,7 +206,10 @@ en el cable y en qué medio tramo.
   nada con la de fibra. Un cable lleva **dos postes** (sus puntas; un tercer poste
   cambia el segundo), **las fibras que se apoyan** (se tocan en el mapa; otro toque
   las desmarca) y **el medio tramo donde se apoyan** (tocar un medio tramo nunca lo
-  toma como poste). GUARDAR se habilita con todo eso y pide el tipo. ATRÁS deshace en
+  toma como poste). Para GUARDAR basta con **los dos postes**: si faltan las fibras o el
+  medio tramo, el panel lo avisa y deja guardar igual ("GUARDAR ASÍ"), y se completan
+  después con EDITAR (en la lista salen marcados "SIN MEDIO TRAMO" o "SIN FIBRAS"). Las
+  sugerencias de ferretería siguen saliendo de los postes. ATRÁS deshace en
   orden inverso: medio tramo, fibras y postes. La lista cambia el tipo, EDITA (el
   cable vuelve al trazo y al guardar se actualiza) y borra. Tocar el mapa vacío no
   hace nada. Las reglas del trazo son funciones puras en `src/utils/cablesAcero.js`

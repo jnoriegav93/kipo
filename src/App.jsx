@@ -38,7 +38,7 @@ import { ConfirmModal, AlertModal, ExportModal } from './components/UI';
 import VerDetalle from './components/VerDetalle';
 import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bitacoraAuto';
 import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } from './utils/fibraUtils';
-import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, faltaEnTrazoAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero } from './utils/cablesAcero';
+import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, puedeGuardarAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero } from './utils/cablesAcero';
 import { perteneceAProyecto } from './utils/helpers';
 import { posicionesAGuardar } from './utils/ordenTendido';
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
@@ -1807,7 +1807,7 @@ function App() {
     : null;
 
   const guardarCableAcero = async (ferrId) => {
-    if (faltaEnTrazoAcero(trazoAcero) || !ferrId) return;
+    if (!puedeGuardarAcero(trazoAcero) || !ferrId) return;
     const { id, postes, fibras, medioTramo } = trazoAcero;
     const cambios = { puntos: postes, ferrId, fibras, medioTramo };
     // El cable va en el proyecto y el día de su primer poste. No depende del día elegido en

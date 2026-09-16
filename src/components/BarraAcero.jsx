@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair, Pencil } from 'lucide-react';
-import { TIPOS_CABLE_ACERO, faltaEnTrazoAcero, deshacerTrazoAcero, hayTrazoAcero } from '../utils/cablesAcero';
+import { TIPOS_CABLE_ACERO, faltaEnTrazoAcero, puedeGuardarAcero, faltanOpcionalesAcero, deshacerTrazoAcero, hayTrazoAcero } from '../utils/cablesAcero';
 import { getColorFibra } from '../utils/fibraUtils';
 
 // Barra del CABLE DE ACERO. Se abre desde la barra de fibra (selector FIBRA | ACERO),
@@ -55,6 +55,9 @@ export default function BarraAcero({
   }, [panel]);
 
   const falta = faltaEnTrazoAcero(trazo);
+  // Con los dos postes ya se guarda; lo que falte se avisa en el panel de guardado
+  const puedeGuardar = puedeGuardarAcero(trazo);
+  const faltanOpcionales = faltanOpcionalesAcero(trazo);
   const editando = trazo.id != null;
   const puedeDeshacer = hayTrazoAcero(trazo) || editando;
 
@@ -104,11 +107,11 @@ export default function BarraAcero({
           <Undo2 size={18} />
         </button>
 
-        {/* GUARDAR — con el trazo completo, pide el tipo de cable */}
+        {/* GUARDAR — con los dos postes ya se puede; pide el tipo de cable */}
         <button
           onClick={() => (panel === 'guardar' ? setPanel(null) : abrirGuardar())}
-          disabled={!!falta}
-          className={`${btnBase} border-2 ${!falta ? `${btnActivo} active:scale-95` : `${btnDisabled} opacity-40 cursor-not-allowed`}`}
+          disabled={!puedeGuardar}
+          className={`${btnBase} border-2 ${puedeGuardar ? `${btnActivo} active:scale-95` : `${btnDisabled} opacity-40 cursor-not-allowed`}`}
           title="Guardar cable de acero"
         >
           <Save size={18} />
@@ -201,9 +204,15 @@ export default function BarraAcero({
               {descripcionTrazo.etiqueta} · total <b>{descripcionTrazo.metros} m</b>
             </p>
           )}
-          <p className={`text-[10px] font-bold mb-2.5 ${theme.text} opacity-70`}>
-            {fibrasTrazo.length} fibra{fibrasTrazo.length === 1 ? '' : 's'} apoyada{fibrasTrazo.length === 1 ? '' : 's'} en el medio tramo {medioTramoTrazo}
-          </p>
+          {faltanOpcionales.length > 0 ? (
+            <p className="text-[10px] font-black mb-2.5 text-amber-600">
+              Sin {faltanOpcionales.join(' ni ')}. Se puede guardar así y completarlo después con EDITAR.
+            </p>
+          ) : (
+            <p className={`text-[10px] font-bold mb-2.5 ${theme.text} opacity-70`}>
+              {fibrasTrazo.length} fibra{fibrasTrazo.length === 1 ? '' : 's'} apoyada{fibrasTrazo.length === 1 ? '' : 's'} en el medio tramo {medioTramoTrazo}
+            </p>
+          )}
 
           <div className="flex gap-2">
             <button
@@ -217,7 +226,7 @@ export default function BarraAcero({
               disabled={!tipoElegido}
               className={`flex-1 py-2 rounded-xl border-2 text-[11px] font-black tracking-widest ${tipoElegido ? `${btnActivo} active:scale-95` : `${btnDisabled} opacity-40`}`}
             >
-              {editando ? 'ACTUALIZAR' : 'GUARDAR'}
+              {editando ? 'ACTUALIZAR' : 'GUARDAR'}{faltanOpcionales.length > 0 ? ' ASÍ' : ''}
             </button>
           </div>
         </div>

@@ -99,7 +99,8 @@ export const deshacerTrazoAcero = (trazo) => {
   return TRAZO_ACERO_VACIO;
 };
 
-// Lo primero que falta para poder guardar, en el orden en que se pide; null si nada
+// Lo primero que falta por tocar, en el orden en que se pide; null si ya está todo. Es la
+// guía de la barra: para GUARDAR basta con los dos postes (ver puedeGuardarAcero).
 export const faltaEnTrazoAcero = (trazo) => {
   if (trazo.postes.length === 0) return 'poste1';
   if (trazo.postes.length === 1) return 'poste2';
@@ -107,6 +108,17 @@ export const faltaEnTrazoAcero = (trazo) => {
   if (trazo.medioTramo == null) return 'medioTramo';
   return null;
 };
+
+// Con los dos postes ya se puede guardar: son los que dan los metros y los que sugieren
+// su ferretería. Las fibras apoyadas y el medio tramo son opcionales; si faltan, la barra
+// lo avisa antes de guardar y se completan después con EDITAR.
+export const puedeGuardarAcero = (trazo) => trazo.postes.length === 2;
+
+// Lo que quedaría sin marcar al guardar, para avisarlo: ['las fibras que se apoyan', …]
+export const faltanOpcionalesAcero = (trazo) => [
+  trazo.fibras.length === 0 ? 'las fibras que se apoyan' : null,
+  trazo.medioTramo == null ? 'el medio tramo' : null,
+].filter(Boolean);
 
 // Un cable guardado, de vuelta a trazo para editarlo
 export const trazoDesdeCable = (cable) => ({
