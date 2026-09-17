@@ -426,11 +426,18 @@ grados corrido, porque cada paso es una fracción de lo que falta y los pasos ch
 dejaban de repintarse. Lo cazó la prueba en Chrome, no la vista.
 
 `src/hooks/useRumbo.js` escucha el sensor y deduce el estado en el render (nada de
-`setState` dentro del efecto, que el lint marca). En iPhone la brújula exige permiso
-con un gesto: aparece un botón **ACTIVAR BRÚJULA** arriba a la derecha del mapa, y
-solo en equipos táctiles —en una PC con mouse sería puro ruido—. Si no hay brújula,
-si el equipo no manda nada en cuatro segundos o si el usuario rechaza el permiso, no
-hay cono y queda el punto azul de siempre.
+`setState` dentro del efecto, que el lint marca). **Escucha primero y pregunta
+después:** el botón **ACTIVAR BRÚJULA** solo aparece si pasan 2,5 segundos sin una
+sola lectura y además el sistema sabe pedir permiso. La primera versión preguntaba de
+entrada —"¿el sistema expone `requestPermission`?"— y en campo el aviso salía también
+en Android, porque Chrome la expone aunque no la necesite. Al conceder el permiso se
+vuelve a suscribir, porque iOS no revive los oyentes viejos. El botón se limita a
+equipos táctiles: en una PC con mouse sería puro ruido. Si no hay brújula, si el
+equipo no informa nada o si el usuario rechaza, no hay cono y queda el punto azul.
+
+El cono se dibuja con un degradado **anclado a la posición del técnico**
+(`gradientUnits="userSpaceOnUse"` centrado en el vértice). Midiéndolo contra la caja
+del triángulo —lo que hace SVG por defecto— quedaba tenue y descentrado.
 
 No escribe nada: ni Firestore, ni red, ni almacenamiento. Es solo pantalla.
 

@@ -276,19 +276,23 @@ export const MapaReal = ({
     // norte mientras el mapa no gire; cuando exista el giro, se le restará.
     return L.divIcon({
       className: 'user-icon',
-      html: `<div style="position:relative; width:64px; height:64px;">
-          <svg width="64" height="64" viewBox="0 0 64 64" style="position:absolute; left:0; top:0; transform:rotate(${rumbo.toFixed(1)}deg); transform-origin:32px 32px;">
+      html: `<div style="position:relative; width:76px; height:76px;">
+          <svg width="76" height="76" viewBox="0 0 76 76" style="position:absolute; left:0; top:0; transform:rotate(${rumbo.toFixed(1)}deg); transform-origin:38px 38px; filter:drop-shadow(0 0 2px rgba(255,255,255,0.9));">
             <defs>
-              <radialGradient id="conoRumbo" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stop-color="#2563eb" stop-opacity="0.55" />
-                <stop offset="100%" stop-color="#2563eb" stop-opacity="0" />
+              <!-- El degradado se ancla a la POSICIÓN del técnico (38,38), no a la caja
+                   del triángulo: así lo intenso queda donde está parado y se apaga hacia
+                   afuera. Midiéndolo por la caja, el cono salía tenue y descentrado. -->
+              <radialGradient id="conoRumbo" gradientUnits="userSpaceOnUse" cx="38" cy="38" r="34">
+                <stop offset="0%" stop-color="#1d4ed8" stop-opacity="0.95" />
+                <stop offset="55%" stop-color="#2563eb" stop-opacity="0.6" />
+                <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.05" />
               </radialGradient>
             </defs>
-            <path d="M32 32 L18 7.8 A28 28 0 0 1 46 7.8 Z" fill="url(#conoRumbo)" />
+            <path d="M38 38 L20 9.2 A34 34 0 0 1 56 9.2 Z" fill="url(#conoRumbo)" stroke="rgba(255,255,255,0.75)" stroke-width="1.5" stroke-linejoin="round" />
           </svg>
-          <div style="position:absolute; left:19px; top:19px; width:20px; height:20px; background-color:#2563eb; border:3px solid white; border-radius:50%; box-shadow:0 0 0 4px rgba(37, 99, 235, 0.3); animation:pulse-blue 2s infinite;"></div>
+          <div style="position:absolute; left:25px; top:25px; width:20px; height:20px; background-color:#2563eb; border:3px solid white; border-radius:50%; box-shadow:0 0 0 4px rgba(37, 99, 235, 0.3); animation:pulse-blue 2s infinite;"></div>
         </div>`,
-      iconSize: [64, 64], iconAnchor: [32, 32]
+      iconSize: [76, 76], iconAnchor: [38, 38]
     });
   }, [rumbo]);
 

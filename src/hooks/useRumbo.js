@@ -4,14 +4,19 @@ import { rumboDesdeEvento, suavizarRumbo, cambioNotorio, necesitaPermisoBrujula 
 // ── BRÚJULA DEL TELÉFONO ──────────────────────────────────────────────────────
 // Devuelve hacia dónde está mirando el equipo, para el cono del punto azul.
 //
-//   estado 'permiso'     → iPhone: hay que tocar un botón para habilitarla
-//   estado 'esperando'   → suscrito, pero todavía no llegó ninguna lectura
+//   estado 'esperando'   → escuchando, todavía sin lecturas
 //   estado 'activo'      → hay rumbo
+//   estado 'permiso'     → no llegó nada y el sistema sabe pedir permiso (iPhone)
 //   estado 'negado'      → el usuario dijo que no
 //   estado 'sin-brujula' → el equipo no la tiene, o no manda lecturas absolutas
 //
-// No escribe nada ni toca la red: solo escucha al sensor. El estado se DEDUCE en
-// el render (no se fija dentro del efecto, que dispara renders en cascada).
+// Se ESCUCHA PRIMERO y se pregunta después. Preguntar de entrada estaba mal: Android
+// informa sin pedir nada, pero Chrome expone `requestPermission` igual, así que el
+// aviso salía también ahí. Ahora el botón solo aparece si pasa el plazo sin una sola
+// lectura y el sistema sabe pedir permiso.
+//
+// No escribe nada ni toca la red: solo escucha al sensor. El estado se DEDUCE en el
+// render (nada de `setState` dentro del efecto, que dispara renders en cascada).
 
 const anguloDePantalla = () => {
   const a = window.screen?.orientation?.angle;
@@ -19,9 +24,9 @@ const anguloDePantalla = () => {
   return typeof window.orientation === 'number' ? window.orientation : 0;
 };
 
-// Si en este tiempo no llegó una lectura útil, se da por hecho que no hay brújula:
-// hay equipos que aceptan la suscripción y nunca informan nada absoluto.
-const ESPERA_MS = 4000;
+// Plazo sin lecturas tras el cual se ofrece el permiso (o se da por hecho que no hay
+// brújula). Corto, para que en iPhone el botón no se haga esperar.
+const ESPERA_MS = 2500;
 
 export const useRumbo = (activo = true) => {
   const [rumbo, setRumbo] = useState(null);
@@ -32,15 +37,16 @@ export const useRumbo = (activo = true) => {
   const mostradoRef = useRef(null); // último valor que se llegó a pintar
 
   const haySensor = typeof window !== 'undefined' && !!window.DeviceOrientationEvent;
-  // El permiso solo se pide en equipos táctiles: en una PC con mouse no hay brújula
+  // El permiso solo se ofrece en equipos táctiles: en una PC con mouse no hay brújula
   // que habilitar y el aviso sería puro ruido en el mapa.
   const esTactil = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches;
-  const esperaPermiso = haySensor && esTactil && necesitaPermisoBrujula(window) && !permisoPedido;
+  const puedePedirPermiso = haySensor && esTactil && necesitaPermisoBrujula(window);
+  const esperaPermiso = puedePedirPermiso && !permisoPedido && sinLecturas && rumbo == null;
 
   const estado = !haySensor ? 'sin-brujula'
     : permisoNegado ? 'negado'
-      : esperaPermiso ? 'permiso'
-        : rumbo != null ? 'activo'
+      : rumbo != null ? 'activo'
+        : esperaPermiso ? 'permiso'
           : sinLecturas ? 'sin-brujula'
             : 'esperando';
 
@@ -48,15 +54,19 @@ export const useRumbo = (activo = true) => {
   const pedirPermiso = useCallback(async () => {
     try {
       const respuesta = await window.DeviceOrientationEvent.requestPermission();
-      if (respuesta === 'granted') setPermisoPedido(true);
-      else setPermisoNegado(true);
+      if (respuesta === 'granted') {
+        setSinLecturas(false);   // arranca de nuevo el plazo
+        setPermisoPedido(true);  // y vuelve a suscribirse: iOS no revive las viejas
+      } else {
+        setPermisoNegado(true);
+      }
     } catch {
       setPermisoNegado(true);
     }
   }, []);
 
   useEffect(() => {
-    if (!activo || !haySensor || esperaPermiso || permisoNegado) return;
+    if (!activo || !haySensor || permisoNegado) return;
 
     const alLeer = (evento) => {
       const crudo = rumboDesdeEvento(evento, anguloDePantalla());
@@ -84,7 +94,7 @@ export const useRumbo = (activo = true) => {
       window.removeEventListener('deviceorientationabsolute', alLeer, true);
       window.removeEventListener('deviceorientation', alLeer, true);
     };
-  }, [activo, haySensor, esperaPermiso, permisoNegado]);
+  }, [activo, haySensor, permisoNegado, permisoPedido]);
 
   return { rumbo, estado, pedirPermiso };
 };
