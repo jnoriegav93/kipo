@@ -17,7 +17,7 @@ en campo. Antes de desplegar hay que pasar por todo esto:
 npx eslint <archivos tocados>    # comparar contra la línea base, no contra cero
 npm run build
 node scratchpad/smoke.js         # opcional: Chrome sin ventana, llega al login
-firebase deploy --only hosting
+firebase deploy --only hosting --project kipo-d29af   # no hay .firebaserc: el proyecto va explícito
 ```
 
 **Tras cada despliegue hay que reportar el sello de compilación** con el formato
@@ -37,7 +37,7 @@ nunca restringiendo: se aplican al instante y a todos. Una regla mal escrita dej
 a la cuadrilla sin poder subir fotos en ese mismo segundo.
 
 ```bash
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules --project kipo-d29af
 ```
 
 Para las Cloud Functions, antes de desplegar:
@@ -46,7 +46,7 @@ Para las Cloud Functions, antes de desplegar:
 node -c functions/index.js
 cd functions && FIREBASE_CONFIG='{"projectId":"kipo-d29af","storageBucket":"kipo-d29af.appspot.com"}' \
   GCLOUD_PROJECT=kipo-d29af node -e "require('./index.js')"
-firebase deploy --only functions:procesarExportacion
+firebase deploy --only functions:procesarExportacion --project kipo-d29af
 ```
 
 ---
