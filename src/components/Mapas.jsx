@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Pane, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPinOff } from 'lucide-react';
+import { MapPinOff, Compass } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
 import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
+import { useRumbo } from '../hooks/useRumbo';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -258,11 +259,38 @@ export const MapaReal = ({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [vigilanciaID]);
 
-  const userIcon = React.useMemo(() => L.divIcon({
-    className: 'user-icon',
-    html: `<div style="width: 20px; height: 20px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.3); animation: pulse-blue 2s infinite;"></div>`,
-    iconSize: [20, 20], iconAnchor: [10, 10]
-  }), []);
+  // Brújula del equipo: solo para pintar el cono. Si no hay, no pasa nada.
+  const { rumbo, estado: estadoBrujula, pedirPermiso } = useRumbo();
+
+  // Punto azul. Con brújula lleva un cono de linterna que apunta a donde mira el
+  // equipo; sin brújula queda exactamente el punto de siempre.
+  const userIcon = React.useMemo(() => {
+    if (rumbo == null) {
+      return L.divIcon({
+        className: 'user-icon',
+        html: `<div style="width: 20px; height: 20px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.3); animation: pulse-blue 2s infinite;"></div>`,
+        iconSize: [20, 20], iconAnchor: [10, 10]
+      });
+    }
+    // El cono se dibuja apuntando hacia arriba y se gira con el rumbo. Arriba es el
+    // norte mientras el mapa no gire; cuando exista el giro, se le restará.
+    return L.divIcon({
+      className: 'user-icon',
+      html: `<div style="position:relative; width:64px; height:64px;">
+          <svg width="64" height="64" viewBox="0 0 64 64" style="position:absolute; left:0; top:0; transform:rotate(${rumbo.toFixed(1)}deg); transform-origin:32px 32px;">
+            <defs>
+              <radialGradient id="conoRumbo" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#2563eb" stop-opacity="0.55" />
+                <stop offset="100%" stop-color="#2563eb" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <path d="M32 32 L18 7.8 A28 28 0 0 1 46 7.8 Z" fill="url(#conoRumbo)" />
+          </svg>
+          <div style="position:absolute; left:19px; top:19px; width:20px; height:20px; background-color:#2563eb; border:3px solid white; border-radius:50%; box-shadow:0 0 0 4px rgba(37, 99, 235, 0.3); animation:pulse-blue 2s infinite;"></div>
+        </div>`,
+      iconSize: [64, 64], iconAnchor: [32, 32]
+    });
+  }, [rumbo]);
 
   const tempIcon = React.useMemo(() => {
     const baseSize = 24 * iconSize;
@@ -502,6 +530,16 @@ export const MapaReal = ({
           <button onClick={reintentarGPS} className="bg-red-500/90 hover:bg-red-600 backdrop-blur-md text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl border border-white/20 transition-all active:scale-95 cursor-pointer">
             <MapPinOff size={14} />
             <span>Sin GPS. Toca para reintentar</span>
+          </button>
+        </div>
+      )}
+
+      {/* iPhone: la brújula solo se habilita si el usuario la autoriza con un toque */}
+      {estadoBrujula === 'permiso' && (
+        <div className="absolute top-16 right-4 z-[5000] animate-in fade-in slide-in-from-right-2">
+          <button onClick={pedirPermiso} className="bg-blue-600/90 hover:bg-blue-700 backdrop-blur-md text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl border border-white/20 transition-all active:scale-95 cursor-pointer">
+            <Compass size={14} />
+            <span>Activar brújula</span>
           </button>
         </div>
       )}

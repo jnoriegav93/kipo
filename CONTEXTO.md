@@ -410,6 +410,77 @@ Renumerar**: solo llena el ítem mientras se crea el punto.
 
 ---
 
+## El punto azul con cono de linterna (17/09)
+
+El punto azul ahora lleva un cono que apunta hacia donde mira el equipo, como la
+linterna de Google Maps. Sale de la brújula del teléfono, no del GPS: el rumbo del
+GPS solo existe si te estás moviendo, y en campo se mira parado.
+
+La cuenta está en `src/utils/rumbo.js` (pura, probada con Node). Cada sistema informa
+distinto: el iPhone da `webkitCompassHeading`, que ya es un rumbo; Android da `alpha`,
+que crece al revés, así que el rumbo es 360 − alpha. Una lectura que no sea absoluta
+se descarta: dice cuánto giraste desde que empezaste, no hacia dónde mirás. El valor
+se suaviza para que el cono no vibre, y **cuando el suavizado ya alcanzó la lectura
+real se fija el valor exacto**: sin eso el cono quedaba para siempre tres o cuatro
+grados corrido, porque cada paso es una fracción de lo que falta y los pasos chicos
+dejaban de repintarse. Lo cazó la prueba en Chrome, no la vista.
+
+`src/hooks/useRumbo.js` escucha el sensor y deduce el estado en el render (nada de
+`setState` dentro del efecto, que el lint marca). En iPhone la brújula exige permiso
+con un gesto: aparece un botón **ACTIVAR BRÚJULA** arriba a la derecha del mapa, y
+solo en equipos táctiles —en una PC con mouse sería puro ruido—. Si no hay brújula,
+si el equipo no manda nada en cuatro segundos o si el usuario rechaza el permiso, no
+hay cono y queda el punto azul de siempre.
+
+No escribe nada: ni Firestore, ni red, ni almacenamiento. Es solo pantalla.
+
+---
+
+## Girar el mapa: decidido, sin construir (17/09)
+
+Conversado a fondo el 17/09 y listo para programar. **Leaflet no gira de fábrica**, y
+los dos complementos que existen quedaron descartados con datos: `leaflet-rotate` es
+**GPL-3.0** (copyleft dentro del bundle que se distribuye: problema legal, no técnico,
+en una app privada) y `leaflet-rotate-map` es BSD pero **no es un complemento, es un
+Leaflet entero modificado** por una sola persona. MapLibre gira nativo y es BSD, pero
+es rehacer la capa del mapa completa, necesita WebGL —que en celulares flojos puede
+no andar— y **no arregla los nombres de calles**, que seguirían siendo una imagen
+mientras usemos Google + CARTO.
+
+Así que el giro se hace **con código propio**: girar el contenedor con CSS y corregir
+a mano lo poco que eso descoloca. Lo acordado:
+
+- Gesto de **dos dedos**, zoom y giro a la vez, con una zona muerta para no girar sin
+  querer. Giro siempre a mano: el mapa nunca se mueve solo siguiendo la brújula.
+- El botón de GPS: **un toque endereza al norte, dos toques van a mi ubicación**, y la
+  flecha muestra dónde quedó el norte.
+- **El mapa se endereza solo al activar** mover, dibujar fibra, acero, ajustar, ordenar
+  o corregir. Esa regla es la que hace todo seguro: arrastrar y dibujar ocurren siempre
+  con el norte arriba, como hoy.
+- La conversión del toque a coordenada se corrige **en un solo lugar**: crear un punto y
+  poner un vértice libre usan el mismo valor (`e.latlng` en `mapInteractions.js`), y
+  tocar un poste ya usa su coordenada guardada, que es inmune al giro.
+- **Los íconos giran** con el mapa (el cuadrado queda rombo, y está bien). **Las
+  etiquetas no**: se contra-giran tomando el centro del ícono como referencia, así
+  quedan horizontales y siguen encima del punto. El número de orden vive dentro del
+  ícono, pero solo aparece en ordenar y corregir, que enderezan el mapa: se resuelve solo.
+- Las etiquetas de fibra siguen la línea, calculadas **desde la pantalla** en vez de la
+  geografía, para que el giro se corrija solo y nunca queden cabeza abajo.
+- El contenedor se dibuja más grande mientras está girado (una pantalla girada deja las
+  esquinas vacías). Las imágenes ya se cachean 30 días, así que el costo es menor.
+- **El cono es el único que gira a propósito**: su ángulo es el rumbo menos el giro.
+- Modo Diseño queda fuera y puede romperse; se rehará.
+- Entra **detrás de la bandera de admin** y con interruptor: apagado, el mapa se comporta
+  exactamente como hoy.
+
+Pendiente de decidir: si la camarita de la capa de fotos se endereza o gira (da igual, es
+una línea). Y una mejora que salió de la charla y vale por sí sola, con giro o sin él:
+**dibujar solo los postes que entran en la pantalla** más un margen, en vez de todos los
+del filtro de días (`getPuntosVisibles` no mira el encuadre). Hay que conservar siempre
+el seleccionado, el temporal, el resaltado y los del trazo en curso.
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
