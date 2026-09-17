@@ -443,7 +443,41 @@ No escribe nada: ni Firestore, ni red, ni almacenamiento. Es solo pantalla.
 
 ---
 
-## Girar el mapa: decidido, sin construir (17/09)
+## Girar el mapa: la base construida y probada (17/09)
+
+**Ya está en el código, detrás de la bandera de admin y sin nada que lo active
+todavía** (no hay gesto ni botón: `giro` siempre vale 0, así que para las cuadrillas
+el mapa es exactamente el de siempre). Lo construido:
+
+- `src/utils/giroMapa.js`, pura y probada con Node (64 casos): des-girar un punto,
+  tamaño del contenedor, ángulo de las etiquetas de fibra, el gesto de dos dedos y
+  qué herramientas exigen el norte.
+- En `Mapas.jsx`: un marco que recorta y, dentro, un cuadrado de `150vmax` que gira
+  (cubre cualquier ángulo sin esquinas vacías); la corrección del toque antes de
+  convertirlo a coordenada; el enderezado automático al activar herramientas —que no
+  borra el giro elegido, lo ignora mientras dura y lo devuelve al terminar—; y el cono
+  de la brújula compensado (`rumbo − giro`).
+- `giro` vive en `useMapState`, para que el encabezado pueda leerlo después.
+
+**Lo verificado, que era la condición para tocar la app:** con el mapa girado a 25°,
+90°, 180° y 300°, tocar donde se ve un sitio devuelve ese sitio, con un error máximo
+de **0,30 m — un píxel**, que es el redondeo del clic. Sin girar, 0,00. O sea: no hay
+poste corrido. Dos pruebas en Chrome lo cubren: una sobre un mapa Leaflet armado a
+mano y otra por el camino real de la app (`MapaReal` → `handleMapaClick`, que es quien
+crea los puntos).
+
+Un error que costó encontrar y conviene no repetir: la esquina del cuadrado que gira
+**no se puede leer con `getBoundingClientRect`**, porque al estar girado el navegador
+devuelve la caja que lo envuelve, no su esquina. Se deduce de su tamaño de maquetación
+y del centro del marco. Con la cuenta mal, el error era de 42 m parejos a todos los
+ángulos.
+
+**Falta:** el gesto de dos dedos, el botón de GPS con norte y doble toque, y
+contra-girar las etiquetas (los globitos de ítem y el ángulo de las de fibra).
+
+---
+
+## Girar el mapa: lo decidido (17/09)
 
 Conversado a fondo el 17/09 y listo para programar. **Leaflet no gira de fábrica**, y
 los dos complementos que existen quedaron descartados con datos: `leaflet-rotate` es

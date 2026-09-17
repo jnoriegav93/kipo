@@ -16,6 +16,7 @@ const VistaMapa = ({
   theme, isDesktop = false, mapStyle, mapViewState, setMapViewState, handleMapaClick,
   puntosVisiblesMapa, iconSize, obtenerColorDia, puntoSeleccionado,
   handlePuntoClick, puntoTemporal, gpsTrigger, yaSaltoAlInicio,
+  giro = 0,            // giro del mapa en grados; 0 es el norte arriba de siempre
   setYaSaltoAlInicio, isDark, verDetalle, iniciarEdicion,
   solicitarBorrarPunto, intentarAgregarDatos,
   setVistaAnterior,
@@ -297,6 +298,7 @@ const VistaMapa = ({
             mostrarEtiquetas={mostrarEtiquetas}
             viewState={mapViewState}
             setViewState={setMapViewState}
+            giro={giro}
             gpsTrigger={gpsTrigger}
             yaSaltoAlInicio={yaSaltoAlInicio}
             setYaSaltoAlInicio={setYaSaltoAlInicio}

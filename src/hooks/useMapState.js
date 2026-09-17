@@ -23,6 +23,9 @@ export const useMapState = () => {
    const [yaSaltoAlInicio, setYaSaltoAlInicio] = useState(false);
   const [mapViewState, setMapViewState] = useState(null);
   const [gpsTrigger, setGpsTrigger] = useState(0);
+  // Giro del mapa en grados (0 = norte arriba). Vive aquí para que el mapa y el
+  // encabezado vean lo mismo: el botón de GPS necesita saber cuánto se torció.
+  const [giro, setGiro] = useState(0);
 
 
 
@@ -66,6 +69,8 @@ export const useMapState = () => {
     toggleMenuEtiquetas,
     gpsTrigger,
     setGpsTrigger,
+    giro,
+    setGiro,
     yaSaltoAlInicio,
     setYaSaltoAlInicio
   };

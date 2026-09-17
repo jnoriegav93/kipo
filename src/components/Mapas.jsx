@@ -6,6 +6,7 @@ import { MapPinOff, Compass } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
 import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
+import { desgirarPunto, exigeNorte } from '../utils/giroMapa';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -132,7 +133,7 @@ const makeTileHandlers = (provider) => ({
 });
 
 // --- PARTE 1: EL AYUDANTE (CON SALTO INICIAL Y DESCANSO) ---
-const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick, reintentarGPS, yaSaltoAlInicio, setYaSaltoAlInicio, dibujandoFibra, centrarEnCoord }) => {
+const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick, reintentarGPS, yaSaltoAlInicio, setYaSaltoAlInicio, dibujandoFibra, centrarEnCoord, giro = 0, corregirToque }) => {
   const map = useMap();
 
   // Marca el contenedor mientras se dibuja fibra, para que el CSS pueda cambiar el
@@ -152,6 +153,14 @@ const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick,
     const t2 = setTimeout(() => map.invalidateSize(), 500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [map]);
+
+  // Al empezar o dejar de girar, el contenedor cambia de tamaño (pasa a ser un
+  // cuadrado del tamaño de la diagonal, para que no se vean esquinas vacías).
+  // Leaflet necesita que se lo digan o sigue creyendo que mide lo de antes.
+  const alNorte = giro === 0;
+  useEffect(() => {
+    map.invalidateSize({ animate: false });
+  }, [map, alNorte]);
 
   useEffect(() => {
     if (miUbicacion && !yaSaltoAlInicio) {
@@ -183,7 +192,9 @@ const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick,
     moveend: () => {
       if (setViewState) setViewState({ center: map.getCenter(), zoom: map.getZoom() });
     },
-    click: (e) => handleMapaClick(e)
+    // Con el mapa girado, la coordenada que calcula Leaflet no vale: cree que el
+    // norte sigue arriba. `corregirToque` des-gira el punto antes de convertirlo.
+    click: (e) => handleMapaClick(corregirToque ? corregirToque(e, map) : e)
   });
 
   return null;
@@ -197,6 +208,7 @@ export const MapaReal = ({
   puntosRecorrido = [], conexionesVisiblesMapa, mostrarEtiquetas, centrarEnCoord,
   previewFibra = null,
   viewState, setViewState,
+  giro = 0,              // grados que se torció el mapa (0 = norte arriba)
   gpsTrigger,
   yaSaltoAlInicio,
   setYaSaltoAlInicio,
@@ -262,6 +274,43 @@ export const MapaReal = ({
   // Brújula del equipo: solo para pintar el cono. Si no hay, no pasa nada.
   const { rumbo, estado: estadoBrujula, pedirPermiso } = useRumbo();
 
+  // ── Giro del mapa ───────────────────────────────────────────────────────────
+  // Las herramientas que tocan la geometría de los datos (mover, dibujar, ajustar,
+  // ordenar, corregir) trabajan SIEMPRE con el norte arriba. No se borra el giro
+  // elegido: se ignora mientras dure la herramienta y vuelve solo al terminar.
+  const marcoRef = useRef(null);
+  const giroEfectivo = exigeNorte({
+    mover: modoMover,
+    fibra: modoFibra,
+    acero: modoLinea === 'acero',
+    ajuste: modoAjuste,
+    ordenar: modoOrdenar,
+    corregir: !!modoCorregir,
+    moverPuntos: modoMoverPuntos,
+  }) ? 0 : (giro || 0);
+  const girando = giroEfectivo !== 0;
+
+  // El toque cae sobre el mapa YA girado, pero Leaflet lo interpreta como si el norte
+  // siguiera arriba. Se des-gira alrededor del centro de lo que se ve y recién ahí se
+  // convierte a coordenada. Si esto fallara, un poste nuevo se guardaría corrido.
+  const corregirToque = React.useCallback((e, map) => {
+    if (!giroEfectivo || !marcoRef.current || !map) return e;
+    const oe = e?.originalEvent;
+    const cx = oe?.clientX ?? oe?.touches?.[0]?.clientX;
+    const cy = oe?.clientY ?? oe?.touches?.[0]?.clientY;
+    if (cx == null || cy == null) return e;
+    const vista = marcoRef.current.getBoundingClientRect();
+    const centro = { x: vista.left + vista.width / 2, y: vista.top + vista.height / 2 };
+    const derecho = desgirarPunto({ x: cx, y: cy }, centro, giroEfectivo);
+    // La esquina del mapa se deduce de su TAMAÑO DE MAQUETACIÓN y del centro del
+    // marco, con el que siempre coincide. No se puede usar su rectángulo en pantalla:
+    // al estar girado, el navegador devuelve la caja que lo envuelve, no su esquina.
+    const cont = map.getContainer();
+    const origen = { x: centro.x - cont.offsetWidth / 2, y: centro.y - cont.offsetHeight / 2 };
+    const punto = L.point(derecho.x - origen.x, derecho.y - origen.y);
+    return { ...e, latlng: map.containerPointToLatLng(punto) };
+  }, [giroEfectivo]);
+
   // Punto azul. Con brújula lleva un cono de linterna que apunta a donde mira el
   // equipo; sin brújula queda exactamente el punto de siempre.
   const userIcon = React.useMemo(() => {
@@ -277,7 +326,7 @@ export const MapaReal = ({
     return L.divIcon({
       className: 'user-icon',
       html: `<div style="position:relative; width:76px; height:76px;">
-          <svg width="76" height="76" viewBox="0 0 76 76" style="position:absolute; left:0; top:0; transform:rotate(${rumbo.toFixed(1)}deg); transform-origin:38px 38px; filter:drop-shadow(0 0 2px rgba(255,255,255,0.9));">
+          <svg width="76" height="76" viewBox="0 0 76 76" style="position:absolute; left:0; top:0; transform:rotate(${(rumbo - giroEfectivo).toFixed(1)}deg); transform-origin:38px 38px; filter:drop-shadow(0 0 2px rgba(255,255,255,0.9));">
             <defs>
               <!-- El degradado se ancla a la POSICIÓN del técnico (38,38), no a la caja
                    del triángulo: así lo intenso queda donde está parado y se apaga hacia
@@ -294,7 +343,9 @@ export const MapaReal = ({
         </div>`,
       iconSize: [76, 76], iconAnchor: [38, 38]
     });
-  }, [rumbo]);
+    // El cono es el ÚNICO que gira a propósito: apunta a donde mira el técnico, así
+    // que se le descuenta el giro del mapa.
+  }, [rumbo, giroEfectivo]);
 
   const tempIcon = React.useMemo(() => {
     const baseSize = 24 * iconSize;
@@ -548,6 +599,13 @@ export const MapaReal = ({
         </div>
       )}
 
+      {/* Marco que recorta y, dentro, lo que gira. Sin giro es exactamente el mapa de
+          siempre; girado pasa a ser un cuadrado más grande que la pantalla (150vmax
+          cubre cualquier ángulo) para que no aparezcan esquinas vacías. */}
+      <div ref={marcoRef} className="absolute inset-0 overflow-hidden">
+      <div style={girando
+        ? { position: 'absolute', left: '50%', top: '50%', width: '150vmax', height: '150vmax', transform: `translate(-50%, -50%) rotate(${giroEfectivo}deg)`, transformOrigin: '50% 50%' }
+        : { position: 'absolute', inset: 0 }}>
       <MapContainer center={viewState.center} zoom={viewState.zoom} maxZoom={22} style={{ height: "100%", width: "100%" }} zoomControl={false}>
         {mapStyle === 'vector' && (
           <TileLayer attribution='© OpenStreetMap contributors © CARTO' url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} />
@@ -579,6 +637,8 @@ export const MapaReal = ({
           miUbicacion={miUbicacion}
           setViewState={setViewState}
           handleMapaClick={handleMapaClick}
+          giro={giroEfectivo}
+          corregirToque={corregirToque}
           reintentarGPS={reintentarGPS}
           yaSaltoAlInicio={yaSaltoAlInicio}
           setYaSaltoAlInicio={setYaSaltoAlInicio}
@@ -882,6 +942,8 @@ export const MapaReal = ({
           return <Marker key={`res-${p.id}`} position={[p.coords.lat, p.coords.lng]} icon={resaltadoIcon} zIndexOffset={2000} />;
         })()}
       </MapContainer>
+      </div>
+      </div>
     </div>
   );
 };

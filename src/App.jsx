@@ -143,6 +143,7 @@ function App() {
     mostrarEtiquetas, setMostrarEtiquetas,
     menuEtiquetasAbierto, setMenuEtiquetasAbierto, toggleMenuEtiquetas,
     gpsTrigger, setGpsTrigger,
+    giro, setGiro,
     yaSaltoAlInicio, setYaSaltoAlInicio
   } = useMapState();
 
@@ -2051,6 +2052,8 @@ function App() {
           coloresDia={COLORES_DIA}
           proyectoActivoId={(mapaSupervision ? mapaSupervision.proyecto : proyectoActual)?.id}
           gpsTrigger={gpsTrigger}
+          giro={esAdmin ? giro : 0}
+          setGiro={setGiro}
           yaSaltoAlInicio={yaSaltoAlInicio}
           setYaSaltoAlInicio={setYaSaltoAlInicio}
           isDark={isDark}
