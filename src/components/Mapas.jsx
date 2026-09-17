@@ -6,7 +6,7 @@ import { MapPinOff, Compass } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
 import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
-import { desgirarPunto, exigeNorte } from '../utils/giroMapa';
+import { desgirarPunto, exigeNorte, anguloEtiquetaFibra } from '../utils/giroMapa';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -774,7 +774,14 @@ export const MapaReal = ({
             if (partes.length === 0) return ''; // sin datos → sin globito
             const bgLabel = isMedioTramo ? '#facc15' : isCajaEquipo ? '#22c55e' : '#ffffff';
             const fgLabel = isMedioTramo ? '#000000' : isCajaEquipo ? '#000000' : '#333333';
-            return `<div style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: ${bgLabel}; color: ${fgLabel}; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 800; border: 2px solid black; white-space: nowrap; z-index: 1000; margin-bottom: 2px;">${partes.join(' - ')}</div>`;
+            // El ícono gira con el mapa, pero el globito NO: se contra-gira tomando
+            // como eje el CENTRO del ícono, que es donde está la coordenada real. Por
+            // eso cuelga de un punto sin tamaño puesto en ese centro: así queda
+            // horizontal y siempre encima del poste, en vez de orbitar a su alrededor.
+            const alto = Math.round(baseSize / 2) + 4;
+            return `<div style="position:absolute; left:50%; top:50%; width:0; height:0; transform:rotate(${(-giroEfectivo).toFixed(1)}deg);">
+              <div style="position: absolute; bottom: ${alto}px; left: 0; transform: translateX(-50%); background: ${bgLabel}; color: ${fgLabel}; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 800; border: 2px solid black; white-space: nowrap; z-index: 1000;">${partes.join(' - ')}</div>
+            </div>`;
           })();
           let customIcon;
           if (isMedioTramo) {
@@ -848,7 +855,7 @@ export const MapaReal = ({
               className: '',
               // El halo se hace con ocho sombras de 1px en vez de -webkit-text-stroke,
               // que adelgaza la letra y en tamaños chicos la vuelve ilegible.
-              html: `<div style="white-space:nowrap; font-size:10px; font-weight:900; letter-spacing:0.3px; color:${et.color}; transform:translate(-50%,-50%) rotate(${et.angulo}deg); text-shadow:1px 0 0 #000,-1px 0 0 #000,0 1px 0 #000,0 -1px 0 #000,1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;">${escaparHtml(et.texto)}</div>`,
+              html: `<div style="white-space:nowrap; font-size:10px; font-weight:900; letter-spacing:0.3px; color:${et.color}; transform:translate(-50%,-50%) rotate(${anguloEtiquetaFibra(et.angulo, giroEfectivo)}deg); text-shadow:1px 0 0 #000,-1px 0 0 #000,0 1px 0 #000,0 -1px 0 #000,1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;">${escaparHtml(et.texto)}</div>`,
               iconSize: [0, 0], iconAnchor: [0, 0]
             })}
           />
