@@ -1100,6 +1100,20 @@ const VistaProyectos = ({
             <button onClick={() => setTempData({ ...tempData, modoFotos: 'altaCalidad' })} className={`flex-1 py-3 rounded-lg border-2 font-bold text-xs transition-colors ${tempData.modoFotos === 'altaCalidad' ? 'bg-slate-800 text-white border-black shadow-md' : 'bg-white text-slate-500 border-slate-300'}`}>ALTA CALIDAD</button>
           )}
         </div>
+        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Prefijo del ítem automático</p>
+        <div className="grid grid-cols-3 gap-2 mb-1">
+          {[{ k: 'poste', label: 'POSTE', def: 'P' }, { k: 'medioTramo', label: 'M. TRAMO', def: 'MT' }, { k: 'camara', label: 'CÁMARA', def: 'C' }].map(({ k, label, def }) => (
+            <label key={k} className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">{label}</span>
+              <input
+                type="text" maxLength={4} value={tempData.prefijosItem?.[k] ?? def}
+                onChange={e => setTempData({ ...tempData, prefijosItem: { ...(tempData.prefijosItem || {}), [k]: e.target.value.toUpperCase() } })}
+                className={`w-full ${theme.input} border-2 rounded-xl px-2 py-2 text-base font-black text-center focus:border-brand-500 focus:outline-none`}
+              />
+            </label>
+          ))}
+        </div>
+        <p className="text-[10px] text-slate-400 font-bold mb-4">Al crear el punto, el ITEM se llena solo: P1, MT1, C1…</p>
         {!tempData.nombre?.trim() && (
           <p className="text-[10px] text-red-500 font-bold text-center -mt-1 mb-1">Escribe un nombre para el proyecto</p>
         )}

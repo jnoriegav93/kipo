@@ -112,6 +112,11 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   independientes**: borrar un punto no borra fibras (las suelta con
   `soltarFibraDePunto`) y una fibra vuelve de la papelera aunque sus postes ya no
   existan (`soltarDePostesBorrados`).
+- El **ITEM** (`datos.numero`) se propone solo al crear el punto: P1 / MT1 / C1 según
+  la clase, con la cantidad que ya tiene el proyecto más uno (`src/utils/itemsAuto.js`).
+  Los prefijos viven en el proyecto (`prefijosItem`, elegidos al crearlo; los proyectos
+  viejos caen a P/MT/C). Lo escrito a mano no se pisa y editando un punto guardado no se
+  toca: renumerar al reordenar sigue siendo trabajo aparte (`RenumerarItems`).
 
 **Puntos viejos:** pueden traer `ownerId` ajeno o ausente, y `proyectoId`/`diaId`
 numéricos. Por eso existe `perteneceAProyecto()` en `src/utils/helpers.js`, que

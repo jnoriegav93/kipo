@@ -41,6 +41,7 @@ import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } f
 import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, puedeGuardarAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero } from './utils/cablesAcero';
 import { perteneceAProyecto } from './utils/helpers';
 import { posicionesAGuardar } from './utils/ordenTendido';
+import { contarPorClase, prefijosDeProyecto } from './utils/itemsAuto';
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
 import PantallaMigracion from './components/PantallaMigracion';
@@ -968,6 +969,13 @@ function App() {
     });
   }, [user, proyectos, todosLosPuntos, conexiones]);
 
+  // ITEM automático: cuántos postes / medios tramos / cámaras tiene ya el proyecto
+  // activo y con qué prefijos numerarlos. Solo se usa al crear un punto.
+  const itemAuto = React.useMemo(() => ({
+    conteo: contarPorClase(todosLosPuntos.filter(p => perteneceAProyecto(p, proyectoActual))),
+    prefijos: prefijosDeProyecto(proyectoActual),
+  }), [todosLosPuntos, proyectoActual]);
+
   const {
     abrirFormulario,
     iniciarEdicion,
@@ -996,7 +1004,8 @@ function App() {
     setConfirmData, setAlertData,
     agregarTarea, theme,
     vistaAnterior, setVistaAnterior,
-    config
+    config,
+    itemAuto
   });
 
   // Listeners centralizados de notificaciones - proyectos propios
@@ -2528,6 +2537,7 @@ function App() {
           setDatosFormulario={setDatosFormulario}
           config={configParaDetalle}
           proyectoActual={proyectoActual}
+          itemAuto={itemAuto}
           modoLectura={modoLectura}
           modoEdicion={modoEdicion}
           tipoProyecto={(() => {

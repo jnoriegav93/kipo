@@ -4,7 +4,7 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 15 de septiembre de 2026.
+Última actualización: 17 de septiembre de 2026.
 
 > **Ahora:** el modo Diseño quedó en pausa el 14/09 para agregar el **cable de
 > acero** a la sección FIBRA. Ver la sección "Cable de acero" más abajo.
@@ -381,6 +381,32 @@ solo del proyecto activo, con el contador contando exactamente eso. La comparaci
 `perteneceAProyecto`, así que aguanta los `proyectoId` numéricos de los puntos viejos;
 antes era `===` y con un id numérico no casaba. En producción desde el 16/09/26
 (**SELLO: 16/09/26, 18:07**).
+
+---
+
+## El ítem se numera solo al crear el punto (17/09)
+
+Antes el técnico escribía el ITEM a mano en cada punto, y sin él no se puede guardar
+(`validarPunto`). Ahora el formulario lo propone al crear: **P1, P2… P31** en los postes,
+**MT1…** en los medios tramos y **C1…** en las cámaras. El número es la **cantidad** de
+puntos de esa clase que ya tiene el proyecto, más uno (decidido con el usuario), sin
+relleno de ceros. Los prefijos se eligen **al crear el proyecto** (`prefijosItem` en el
+documento del proyecto), con P / MT / C por defecto; los proyectos viejos no traen el
+campo y usan esos mismos. El FAT no entra: es un equipo pasivo montado en un poste y
+lleva el ítem del poste, no uno propio.
+
+La lógica está en `src/utils/itemsAuto.js` (pura, probada con Node). Clasifica igual que
+Renumerar —MEDIO TRAMO manda; CÁMARA sobre el equipo pasivo; todo lo demás es poste, con
+FAT o sin él— y no propone nada mientras no se sepa qué es el punto. El enganche son dos
+sitios: `abrirFormulario`, donde el propietario se hereda del punto anterior y por eso el
+ITEM ya sale escrito al abrir, y un envoltorio del setter en `Formulario.jsx` que reciben
+solo `GrupoPropietario` y `GrupoElemento`, para recalcular si cambia el tipo. El input del
+ITEM sigue con el setter crudo: escribir ahí nunca se interfiere.
+
+**Manda el técnico:** si corrige el ITEM a mano no se le vuelve a tocar (se reconoce
+porque lo escrito ya no coincide con ninguna de las tres propuestas). Editando un punto ya
+guardado no se toca nunca. Y **esto no cambia nada del orden de posiciones ni de
+Renumerar**: solo llena el ítem mientras se crea el punto.
 
 ---
 

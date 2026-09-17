@@ -1,6 +1,7 @@
 import { doc, setDoc, updateDoc, writeBatch, query, collection, where, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
 import { db } from '../firebaseConfig';
 import { COLORES_DIA, colorDiaAleatorio, colorParaNuevoDia } from '../data/constantes';
+import { prefijosDeProyecto } from '../utils/itemsAuto';
 
 // 👇 AQUÍ RECIBIMOS TODO LO QUE NECESITAN LAS FUNCIONES
 export const useProjectLogic = ({
@@ -43,13 +44,15 @@ const irUbicacionProyecto = (e, proyId) => {
 
 // --- PROYECTOS ---
 // Estructura de un proyecto nuevo: la misma si nace del modal de Kipo o del modo Diseño
-const armarProyectoNuevo = ({ nombre, tipo = 'levantamiento', modoFotos = 'comprimido' }) => {
+const armarProyectoNuevo = ({ nombre, tipo = 'levantamiento', modoFotos = 'comprimido', prefijosItem }) => {
     const diaUno = { id: `d_${Date.now()}`, nombre: 'Día 1', fecha: new Date().toLocaleDateString(), color: colorDiaAleatorio() };
     const nuevo = {
         id: String(Date.now()),
         nombre,
         tipo,
         modoFotos,
+        // Prefijos del ITEM automático (P1 / MT1 / C1): se eligen al crear el proyecto
+        prefijosItem: prefijosDeProyecto({ prefijosItem }),
         dias: [diaUno],
         ownerId: user.uid,
         ownerNombre: config?.nombrePersonal || user?.displayName || '',
@@ -88,6 +91,7 @@ const confirmarCrearProyecto = async () => {
         nombre: tempData.nombre,
         tipo: tempData.tipo || 'levantamiento',
         modoFotos: tempData.modoFotos || 'comprimido',
+        prefijosItem: tempData.prefijosItem,
     });
     const idProyecto = nuevo.id;
 

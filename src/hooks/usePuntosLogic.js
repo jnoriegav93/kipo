@@ -4,6 +4,7 @@ import { enviarMensajeSistema, detectarCambiosFotos, detectarCambiosCaracteristi
 import { uploadImage } from '../utils/storage';
 import { quitarCandidatasPorUrls } from '../utils/fotoHuerfanas';
 import { validarPunto } from '../utils/validarPunto';
+import { conItemAuto } from '../utils/itemsAuto';
 import { nombreTipoAcero } from '../utils/cablesAcero';
 import { soltarFibraDePunto } from '../utils/fibraUtils';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -18,6 +19,7 @@ export const usePuntosLogic = ({
   setModoLectura,
   datosFormulario, setDatosFormulario,
   memoriaUltimoPunto, setMemoriaUltimoPunto,
+  itemAuto,
   diaActual, proyectoActual,
   proyectos,
   asegurarDiaHoy,
@@ -230,9 +232,12 @@ export const usePuntosLogic = ({
     const now = new Date();
     const fecha = now.toISOString();
     const hora = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const inicial = memoriaUltimoPunto
+    const base = memoriaUltimoPunto
       ? { ...memoriaUltimoPunto, codigo: '', suministro: '', numero: '', fotos: {}, observaciones: '', fecha, hora }
       : { codigo: '', suministro: '', altura: null, fuerza: null, material: null, tipo: null, extrasSeleccionados: [], armadoSeleccionado: null, cables: null, ferreteriaExtraSeleccionada: [], fotos: {}, observaciones: '', fecha, hora };
+    // El propietario se hereda del punto anterior, así que casi siempre ya se sabe que
+    // es un poste: el ITEM sale propuesto (P31) desde que se abre el formulario.
+    const inicial = itemAuto ? conItemAuto(base, itemAuto.conteo, itemAuto.prefijos) : base;
     datosInicialesRef.current = JSON.parse(JSON.stringify(inicial)); // snapshot inicial para detectar cambios
     setDatosFormulario(inicial);
     setVista('formulario');

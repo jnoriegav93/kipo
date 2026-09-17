@@ -4,6 +4,7 @@ import { equiposDePunto, sincronizarEquipos, LABEL_EQUIPO } from '../utils/equip
 import { ThemedInput } from './UI';
 import { SelectorGrid, SelectorGridMulti, ListaContadores } from './Selectores';
 import { esCableAcero } from '../utils/cablesAcero';
+import { conItemAuto } from '../utils/itemsAuto';
 
 export default function Formulario({
   theme,
@@ -15,6 +16,7 @@ export default function Formulario({
   config,
   sugeridasAcero = {},   // ferretería que sugieren los cables de acero de este punto
   proyectoActual,
+  itemAuto = null,       // conteo y prefijos del proyecto para proponer el ITEM al crear
   modoLectura,
   modoEdicion,
   setVista,
@@ -39,6 +41,17 @@ export default function Formulario({
 
   // Siempre abre en datos
   const [tabActiva, setTabActiva] = React.useState('datos');
+
+  // ITEM automático: al crear un punto se propone P1 / MT1 / C1 y se recalcula si
+  // cambia el tipo (poste ↔ medio tramo ↔ cámara), salvo que el técnico ya lo haya
+  // escrito a mano. Editando un punto ya guardado no se toca nunca.
+  const setDatosConItem = (actualizar) => {
+    setDatosFormulario(prev => {
+      const next = typeof actualizar === 'function' ? actualizar(prev) : actualizar;
+      if (!itemAuto || modoEdicion || modoLectura) return next;
+      return conItemAuto(next, itemAuto.conteo, itemAuto.prefijos);
+    });
+  };
 
   // Swipe: izquierda → ferretería (tab derecho), derecha → datos (tab izquierdo)
   const touchStartX = useRef(null);
@@ -216,11 +229,11 @@ export default function Formulario({
             <>
             <InputsDatos datos={datosFormulario} setDatos={setDatosFormulario} theme={theme} disabled={modoLectura} tipoProyecto={tipoProyecto} />
 
-            <GrupoPropietario datos={datosFormulario} setDatos={setDatosFormulario} theme={theme} disabled={modoLectura} setAlertData={setAlertData} />
+            <GrupoPropietario datos={datosFormulario} setDatos={setDatosConItem} theme={theme} disabled={modoLectura} setAlertData={setAlertData} />
 
             {/* EQ. PASIVO: exclusivo de los tipos de red (LEVANTAMIENTO no lleva) */}
             {tipoProyecto !== 'levantamiento' && (
-              <GrupoElemento datos={datosFormulario} setDatos={setDatosFormulario} theme={theme} disabled={modoLectura} tipoProyecto={tipoProyecto} setAlertData={setAlertData} />
+              <GrupoElemento datos={datosFormulario} setDatos={setDatosConItem} theme={theme} disabled={modoLectura} tipoProyecto={tipoProyecto} setAlertData={setAlertData} />
             )}
 
             <BloqueLevantamiento
