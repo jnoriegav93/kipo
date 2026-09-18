@@ -43,12 +43,11 @@ import { perteneceAProyecto } from './utils/helpers';
 import { posicionesAGuardar } from './utils/ordenTendido';
 import { contarPorClase, prefijosDeProyecto } from './utils/itemsAuto';
 
-// El giro del mapa está APAGADO mientras se rehace. La primera versión corregía a
-// Leaflet desde afuera y, al apagarle sus manejadores para llevar el arrastre y el
-// pellizco, salía entrecortada, el zoom saltaba y en iPhone el navegador se quedaba
-// con el gesto (sin sus clases, Leaflet deja de poner `touch-action: none`). Se está
-// reescribiendo para que Leaflet conozca el ángulo. Ver CONTEXTO.md.
-const GIRO_MAPA_ACTIVO = false;
+// Giro del mapa. Rehecho: ahora Leaflet CONOCE el ángulo (`src/utils/giroLeaflet.js`)
+// en vez de corregirlo desde afuera, así que conserva su arrastre con inercia, su zoom
+// suave y su `touch-action` —sin el cual, en iOS, el navegador se queda con el gesto—.
+// Sigue detrás de `esAdmin`: las cuadrillas no lo ven. Poner en false para apagarlo.
+const GIRO_MAPA_ACTIVO = true;
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
 import PantallaMigracion from './components/PantallaMigracion';

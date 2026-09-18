@@ -443,11 +443,10 @@ No escribe nada: ni Firestore, ni red, ni almacenamiento. Es solo pantalla.
 
 ---
 
-## Girar el mapa: APAGADO, se está rehaciendo (18/09)
+## Girar el mapa: rehecho por dentro de Leaflet (18/09)
 
-> **Estado:** el interruptor `GIRO_MAPA_ACTIVO` en `App.jsx` está en `false`. El código
-> del giro sigue en el repo pero no llega a la app: `giro` vale 0 y no se pasa `setGiro`,
-> así que no se intercepta ningún gesto y Leaflet trabaja como siempre.
+> **Estado:** `GIRO_MAPA_ACTIVO` en `App.jsx` está en `true`, detrás de `esAdmin`. Las
+> cuadrillas siguen sin verlo. Para apagarlo, basta poner ese interruptor en `false`.
 
 **Por qué se apagó.** Probado en campo el 17/09, el giro salió entrecortado, el zoom
 saltaba al acercar y en iPhone el navegador se quedaba con el gesto (zoom de la página
@@ -458,16 +457,38 @@ Leaflet deja de poner `touch-action: none` ([leaflet.css](node_modules/leaflet/d
 que es justo lo que protege el gesto en iOS—. Además, escribir el ángulo en el estado de
 React en cada movimiento de dedo redibuja todos los postes por cuadro: de ahí el tirón.
 
-**Cómo se rehace (decidido con el usuario el 18/09).** Que **Leaflet conozca el ángulo**
-en vez de corregirlo por fuera: se sobrescriben sus conversiones de coordenadas
-(`mouseEventToContainerPoint` y las de punto de contenedor a capa) para que su propio
-arrastre, su pellizco y su inercia sigan siendo suyos —fluidos, con el foco correcto y
-con el `touch-action` puesto—. Dos reglas que no se pueden olvidar: el ángulo se aplica
-tocando el DOM, nunca por estado de React en cada movimiento; y si alguna vez manejamos
-un gesto nosotros, `touch-action: none` va garantizado a mano.
+**Cómo quedó hecho.** `src/utils/giroLeaflet.js` le enseña el ángulo a Leaflet parcheando
+la **instancia** del mapa (no el prototipo: el mapa del modo Diseño no se entera). Son
+dos piezas y nada más:
 
-Lo que sigue sirviendo y no se toca: la geometría de `src/utils/giroMapa.js` (64 casos en
-Node) y las pruebas en Chrome, que ya cazaron dos errores invisibles a ojo.
+1. **`mouseEventToContainerPoint`**, que es el embudo por donde pasan el clic, el toque
+   y **los dos dedos del pellizco** ([leaflet-src.js:14328](node_modules/leaflet/dist/leaflet-src.js#L14328)).
+   Corregido ahí, el foco del zoom deja de saltar **solo**, sin tocar el zoom.
+2. **El desplazamiento del arrastre**, enganchándose a `predrag`, el aviso que Leaflet
+   lanza justo antes de aplicar la posición ([leaflet-src.js:6120](node_modules/leaflet/dist/leaflet-src.js#L6120)),
+   en vez de copiar su código. Ahí se gira el corrimiento a la referencia del mapa y se
+   deshace su corrección de escala, que mide con el rectángulo en pantalla y con el mapa
+   torcido miente (la caja que envuelve a algo girado es más grande).
+
+Sus manejadores quedan **encendidos**, así que conserva la inercia, el zoom suave y el
+`touch-action`. Del gesto propio solo queda mirar el ángulo de los dos dedos, y **se
+pinta en el DOM**, no en el estado de React: pasarlo por React redibujaba los cientos de
+postes cuadro a cuadro, y de ahí venía el tirón. React se entera al soltar los dedos.
+
+El contenedor se dibuja cuadrado (`150vmax`) **desde el arranque** mientras el giro esté
+habilitado: si solo se agrandara al torcerlo, aparecerían esquinas vacías a mitad del
+gesto.
+
+**Verificado con 26 casos en Chrome:** el arrastre sigue al dedo con 0,00 m de error a
+25°, 90°, 180°, 200° y 300°; el sitio entre los dedos no se mueve al acercar (0,04 m) y
+el zoom sube de 19 a 20; tocar donde se ve un sitio devuelve ese sitio; los globitos
+quedan derechos y encima del poste; y no hay errores en la consola. Sigue valiendo la
+geometría de `src/utils/giroMapa.js` (64 casos en Node).
+
+Una trampa del banco de pruebas, por si vuelve a aparecer: los toques hay que lanzarlos
+**sobre el contenedor del mapa**. Leaflet toma el `touchstart` ahí y sigue el movimiento
+en el `document`; lanzarlos directamente sobre el `document` no le llega a nadie de
+abajo, y además Leaflet lo toma como objetivo del arrastre y revienta con `baseVal`.
 
 ---
 
