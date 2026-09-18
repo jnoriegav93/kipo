@@ -8,6 +8,8 @@ export default function Header({
   cola,
   onClickSync,
   setGpsTrigger,
+  giro = 0,        // cuánto está torcido el mapa: la flecha lo muestra
+  onTocarGps,      // si no llega, el botón hace lo de siempre: ir a mi ubicación
   mostrarEtiquetas,
   menuEtiquetasAbierto,
   toggleMenuEtiquetas,
@@ -80,12 +82,14 @@ export default function Header({
           </button>
 
           {/* 1. BOTÓN GPS */}
-          <button 
-            onClick={() => setGpsTrigger(t => t + 1)} 
+          <button
+            onClick={() => (onTocarGps ? onTocarGps() : setGpsTrigger(t => t + 1))}
             className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${theme.bg} ${theme.text} ${theme.border}`}
-            title="Ir a mi ubicación"
+            title={giro ? 'Un toque: enderezar al norte · Dos toques: mi ubicación' : 'Ir a mi ubicación'}
           >
-            <Navigation size={20} className={theme.text} fill="currentColor" />
+            {/* Con el mapa girado, la flecha apunta a dónde quedó el norte */}
+            <Navigation size={20} className={theme.text} fill="currentColor"
+              style={giro ? { transform: `rotate(${-giro}deg)` } : undefined} />
           </button>
 
 

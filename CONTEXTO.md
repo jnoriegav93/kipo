@@ -472,8 +472,28 @@ devuelve la caja que lo envuelve, no su esquina. Se deduce de su tamaño de maqu
 y del centro del marco. Con la cuenta mal, el error era de 42 m parejos a todos los
 ángulos.
 
-**Falta:** el gesto de dos dedos, el botón de GPS con norte y doble toque, y
-contra-girar las etiquetas (los globitos de ítem y el ángulo de las de fibra).
+**El gesto y el botón, ya construidos.** Se gira con **dos dedos**: la separación la
+sigue manejando Leaflet (es el zoom de siempre) y nosotros solo miramos el ángulo, así
+que acercar y girar salen del mismo gesto. Hay una zona muerta de 12° para que un
+pellizco apenas torcido no empiece a girar sin querer, y al cruzarla el giro **arranca
+desde ahí**, no desde cero: si no, el mapa pegaría un tirón. Eso hace que girar los
+dedos 60° deje el mapa en unos 45°, que es el comportamiento buscado.
+
+El **botón de GPS** ahora depende de si el mapa está torcido: con giro, un toque lo
+endereza al norte y dos toques van a mi ubicación, y la flecha se inclina mostrando
+dónde quedó el norte. **Sin giro no cambia nada**: un solo toque va a la ubicación, sin
+esperas, como siempre.
+
+**Las etiquetas** también están: el globito del ítem cuelga de un punto sin tamaño
+puesto en el centro del ícono y se contra-gira, así queda horizontal y encima del poste
+en vez de orbitarlo; las de fibra siguen su línea pero deciden el volteo contra el
+ángulo real en pantalla, para no leerse de cabeza. Probado en Chrome a 0°, 40°, 90° y
+200°, midiendo que la caja que envuelve al globito coincida con su tamaño de
+maquetación, que solo ocurre si está derecho.
+
+**Lo único que queda del diseño acordado:** decidir si la camarita de la capa de fotos
+se endereza o gira (da igual, es una línea), y abrirlo más allá del admin cuando el
+usuario lo apruebe en campo.
 
 ---
 

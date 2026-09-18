@@ -977,6 +977,21 @@ function App() {
     prefijos: prefijosDeProyecto(proyectoActual),
   }), [todosLosPuntos, proyectoActual]);
 
+  // Botón de GPS. Con el mapa torcido, un toque lo endereza al norte y dos toques
+  // van a mi ubicación; sin giro, un toque hace lo de siempre y no hay que esperar.
+  const tapGpsRef = React.useRef(null);
+  const tocarGps = React.useCallback(() => {
+    const irAMiUbicacion = () => setGpsTrigger(t => t + 1);
+    if (!giro) { irAMiUbicacion(); return; }
+    if (tapGpsRef.current) {            // llegó el segundo toque: era doble
+      clearTimeout(tapGpsRef.current);
+      tapGpsRef.current = null;
+      irAMiUbicacion();
+      return;
+    }
+    tapGpsRef.current = setTimeout(() => { tapGpsRef.current = null; setGiro(0); }, 280);
+  }, [giro, setGpsTrigger, setGiro]);
+
   const {
     abrirFormulario,
     iniciarEdicion,
@@ -1931,6 +1946,8 @@ function App() {
         cola={cola}
         onClickSync={() => setQueueModalAbierto(true)}
         setGpsTrigger={setGpsTrigger}
+        giro={esAdmin ? giro : 0}
+        onTocarGps={tocarGps}
         mostrarEtiquetas={mostrarEtiquetas}
         setMostrarEtiquetas={setMostrarEtiquetas}
         menuEtiquetasAbierto={menuEtiquetasAbierto}

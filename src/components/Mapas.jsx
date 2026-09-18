@@ -6,7 +6,7 @@ import { MapPinOff, Compass } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
 import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
-import { desgirarPunto, exigeNorte, anguloEtiquetaFibra } from '../utils/giroMapa';
+import { desgirarPunto, exigeNorte, anguloEtiquetaFibra, gestoDosDedos } from '../utils/giroMapa';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -209,6 +209,7 @@ export const MapaReal = ({
   previewFibra = null,
   viewState, setViewState,
   giro = 0,              // grados que se torció el mapa (0 = norte arriba)
+  setGiro,               // si no llega, el mapa no se puede girar
   gpsTrigger,
   yaSaltoAlInicio,
   setYaSaltoAlInicio,
@@ -279,7 +280,7 @@ export const MapaReal = ({
   // ordenar, corregir) trabajan SIEMPRE con el norte arriba. No se borra el giro
   // elegido: se ignora mientras dure la herramienta y vuelve solo al terminar.
   const marcoRef = useRef(null);
-  const giroEfectivo = exigeNorte({
+  const alNorteForzado = exigeNorte({
     mover: modoMover,
     fibra: modoFibra,
     acero: modoLinea === 'acero',
@@ -287,7 +288,8 @@ export const MapaReal = ({
     ordenar: modoOrdenar,
     corregir: !!modoCorregir,
     moverPuntos: modoMoverPuntos,
-  }) ? 0 : (giro || 0);
+  });
+  const giroEfectivo = alNorteForzado ? 0 : (giro || 0);
   const girando = giroEfectivo !== 0;
 
   // El toque cae sobre el mapa YA girado, pero Leaflet lo interpreta como si el norte
@@ -310,6 +312,34 @@ export const MapaReal = ({
     const punto = L.point(derecho.x - origen.x, derecho.y - origen.y);
     return { ...e, latlng: map.containerPointToLatLng(punto) };
   }, [giroEfectivo]);
+
+  // ── El gesto de dos dedos ───────────────────────────────────────────────────
+  // La separación entre los dedos la sigue manejando Leaflet (es el zoom de
+  // siempre); aquí solo se mira el ÁNGULO, así que acercar y girar salen del mismo
+  // gesto. La zona muerta evita que un pellizco apenas torcido empiece a girar sin
+  // querer, y al pasarla se arranca desde cero para que no pegue un salto.
+  const gestoRef = useRef(null);
+  const dosDedos = (e) => (e.touches && e.touches.length === 2)
+    ? { a: { x: e.touches[0].clientX, y: e.touches[0].clientY }, b: { x: e.touches[1].clientX, y: e.touches[1].clientY } }
+    : null;
+  const alEmpezarGesto = (e) => {
+    const dedos = dosDedos(e);
+    if (!dedos || !setGiro || alNorteForzado) { gestoRef.current = null; return; }
+    gestoRef.current = { inicio: dedos, giroInicial: giro || 0, sueltoElFreno: false, arranque: 0 };
+  };
+  const alMoverGesto = (e) => {
+    const g = gestoRef.current;
+    const dedos = dosDedos(e);
+    if (!g || !dedos) return;
+    const { delta, pasaZonaMuerta } = gestoDosDedos(g.inicio, dedos);
+    if (!g.sueltoElFreno) {
+      if (!pasaZonaMuerta) return;
+      g.sueltoElFreno = true;
+      g.arranque = delta;
+    }
+    setGiro(g.giroInicial + (delta - g.arranque));
+  };
+  const alTerminarGesto = () => { gestoRef.current = null; };
 
   // Punto azul. Con brújula lleva un cono de linterna que apunta a donde mira el
   // equipo; sin brújula queda exactamente el punto de siempre.
@@ -602,7 +632,8 @@ export const MapaReal = ({
       {/* Marco que recorta y, dentro, lo que gira. Sin giro es exactamente el mapa de
           siempre; girado pasa a ser un cuadrado más grande que la pantalla (150vmax
           cubre cualquier ángulo) para que no aparezcan esquinas vacías. */}
-      <div ref={marcoRef} className="absolute inset-0 overflow-hidden">
+      <div ref={marcoRef} className="absolute inset-0 overflow-hidden"
+        onTouchStart={alEmpezarGesto} onTouchMove={alMoverGesto} onTouchEnd={alTerminarGesto} onTouchCancel={alTerminarGesto}>
       <div style={girando
         ? { position: 'absolute', left: '50%', top: '50%', width: '150vmax', height: '150vmax', transform: `translate(-50%, -50%) rotate(${giroEfectivo}deg)`, transformOrigin: '50% 50%' }
         : { position: 'absolute', inset: 0 }}>
