@@ -491,6 +491,21 @@ en vez de orbitarlo; las de fibra siguen su línea pero deciden el volteo contra
 200°, midiendo que la caja que envuelve al globito coincida con su tamaño de
 maquetación, que solo ocurre si está derecho.
 
+**Lo que falló en campo y por qué (probado el 17/09).** Corregir el TOQUE no alcanzaba:
+Leaflet también lee el **arrastre** y el **pellizco** como si el norte siguiera arriba.
+Al desplazar con un dedo el mapa se iba en diagonal, y al acercar saltaba a otro lado
+porque calculaba el punto entre los dedos contra el contenedor sin girar. Ninguno de
+los dos ensuciaba datos —son navegación—, pero hacían el giro inservible. Ahora,
+mientras el mapa está torcido, se le **apagan a Leaflet sus dos manejadores**
+(`dragging` y `touchZoom`) y los lleva `MapaReal`: el arrastre gira la distancia al
+revés antes de aplicarla, y el pellizco se ancla al sitio que quedó entre los dedos,
+por pasos enteros de zoom. Al volver al norte se le devuelven y todo queda como siempre.
+
+Una regresión que dejó la prueba a la vista: al principio condicioné **todo** el gesto a
+que el mapa ya estuviera girado, y así **no se podía empezar a girar desde el norte**,
+que es el caso normal. Girar está siempre disponible; lo que se toma prestado solo con
+el mapa torcido es el arrastre y el pellizco.
+
 **Lo único que queda del diseño acordado:** decidir si la camarita de la capa de fotos
 se endereza o gira (da igual, es una línea), y abrirlo más allá del admin cuando el
 usuario lo apruebe en campo.

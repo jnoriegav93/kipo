@@ -133,7 +133,7 @@ const makeTileHandlers = (provider) => ({
 });
 
 // --- PARTE 1: EL AYUDANTE (CON SALTO INICIAL Y DESCANSO) ---
-const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick, reintentarGPS, yaSaltoAlInicio, setYaSaltoAlInicio, dibujandoFibra, centrarEnCoord, giro = 0, corregirToque }) => {
+const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick, reintentarGPS, yaSaltoAlInicio, setYaSaltoAlInicio, dibujandoFibra, centrarEnCoord, giro = 0, corregirToque, mapaRef }) => {
   const map = useMap();
 
   // Marca el contenedor mientras se dibuja fibra, para que el CSS pueda cambiar el
@@ -160,6 +160,24 @@ const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick,
   const alNorte = giro === 0;
   useEffect(() => {
     map.invalidateSize({ animate: false });
+  }, [map, alNorte]);
+
+  // El mapa, al alcance del componente de arriba: necesita moverlo y acercarlo él
+  // mismo mientras está girado.
+  useEffect(() => {
+    if (mapaRef) mapaRef.current = map;
+    return () => { if (mapaRef) mapaRef.current = null; };
+  }, [map, mapaRef]);
+
+  // Con el mapa torcido, Leaflet lee los dedos como si el norte siguiera arriba: al
+  // arrastrar manda el mapa en diagonal y al pellizcar hace zoom hacia otro lado. Sus
+  // dos manejadores se apagan mientras dure el giro y los lleva MapaReal; al volver al
+  // norte se devuelven, y todo queda como siempre.
+  useEffect(() => {
+    if (!map.dragging || !map.touchZoom) return;
+    if (alNorte) { map.dragging.enable(); map.touchZoom.enable(); }
+    else { map.dragging.disable(); map.touchZoom.disable(); }
+    return () => { map.dragging?.enable(); map.touchZoom?.enable(); };
   }, [map, alNorte]);
 
   useEffect(() => {
@@ -280,6 +298,7 @@ export const MapaReal = ({
   // ordenar, corregir) trabajan SIEMPRE con el norte arriba. No se borra el giro
   // elegido: se ignora mientras dure la herramienta y vuelve solo al terminar.
   const marcoRef = useRef(null);
+  const mapaRef = useRef(null);
   const alNorteForzado = exigeNorte({
     mover: modoMover,
     fibra: modoFibra,
@@ -295,12 +314,9 @@ export const MapaReal = ({
   // El toque cae sobre el mapa YA girado, pero Leaflet lo interpreta como si el norte
   // siguiera arriba. Se des-gira alrededor del centro de lo que se ve y recién ahí se
   // convierte a coordenada. Si esto fallara, un poste nuevo se guardaría corrido.
-  const corregirToque = React.useCallback((e, map) => {
-    if (!giroEfectivo || !marcoRef.current || !map) return e;
-    const oe = e?.originalEvent;
-    const cx = oe?.clientX ?? oe?.touches?.[0]?.clientX;
-    const cy = oe?.clientY ?? oe?.touches?.[0]?.clientY;
-    if (cx == null || cy == null) return e;
+  // Un punto de la PANTALLA (ya girada) a coordenada del mundo.
+  const coordenadaDesdePantalla = React.useCallback((cx, cy, map) => {
+    if (!marcoRef.current || !map) return null;
     const vista = marcoRef.current.getBoundingClientRect();
     const centro = { x: vista.left + vista.width / 2, y: vista.top + vista.height / 2 };
     const derecho = desgirarPunto({ x: cx, y: cy }, centro, giroEfectivo);
@@ -309,9 +325,18 @@ export const MapaReal = ({
     // al estar girado, el navegador devuelve la caja que lo envuelve, no su esquina.
     const cont = map.getContainer();
     const origen = { x: centro.x - cont.offsetWidth / 2, y: centro.y - cont.offsetHeight / 2 };
-    const punto = L.point(derecho.x - origen.x, derecho.y - origen.y);
-    return { ...e, latlng: map.containerPointToLatLng(punto) };
+    return map.containerPointToLatLng(L.point(derecho.x - origen.x, derecho.y - origen.y));
   }, [giroEfectivo]);
+
+  const corregirToque = React.useCallback((e, map) => {
+    if (!giroEfectivo || !map) return e;
+    const oe = e?.originalEvent;
+    const cx = oe?.clientX ?? oe?.touches?.[0]?.clientX;
+    const cy = oe?.clientY ?? oe?.touches?.[0]?.clientY;
+    if (cx == null || cy == null) return e;
+    const ll = coordenadaDesdePantalla(cx, cy, map);
+    return ll ? { ...e, latlng: ll } : e;
+  }, [giroEfectivo, coordenadaDesdePantalla]);
 
   // ── El gesto de dos dedos ───────────────────────────────────────────────────
   // La separación entre los dedos la sigue manejando Leaflet (es el zoom de
@@ -322,22 +347,73 @@ export const MapaReal = ({
   const dosDedos = (e) => (e.touches && e.touches.length === 2)
     ? { a: { x: e.touches[0].clientX, y: e.touches[0].clientY }, b: { x: e.touches[1].clientX, y: e.touches[1].clientY } }
     : null;
+  const unDedo = (e) => (e.touches && e.touches.length === 1)
+    ? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    : null;
+  // Una distancia medida en la pantalla girada, pasada a la referencia del mapa
+  const enElMapa = (dx, dy) => desgirarPunto({ x: dx, y: dy }, { x: 0, y: 0 }, giroEfectivo);
+
   const alEmpezarGesto = (e) => {
+    const mapa = mapaRef.current;
+    // GIRAR se puede siempre, empezando desde el norte: es el caso normal. Lo que solo
+    // se toma prestado cuando el mapa YA está torcido es el arrastre y el pellizco,
+    // que es donde Leaflet se equivoca y donde se le apagan sus manejadores.
+    if (!mapa || !setGiro || alNorteForzado) { gestoRef.current = null; return; }
     const dedos = dosDedos(e);
-    if (!dedos || !setGiro || alNorteForzado) { gestoRef.current = null; return; }
-    gestoRef.current = { inicio: dedos, giroInicial: giro || 0, sueltoElFreno: false, arranque: 0 };
+    if (dedos) {
+      gestoRef.current = {
+        tipo: 'pinza', inicio: dedos, giroInicial: giro || 0,
+        sueltoElFreno: false, arranque: 0, ancla: null,
+      };
+      return;
+    }
+    const dedo = unDedo(e);
+    gestoRef.current = (dedo && girando) ? { tipo: 'arrastre', ultimo: dedo } : null;
   };
+
   const alMoverGesto = (e) => {
     const g = gestoRef.current;
-    const dedos = dosDedos(e);
-    if (!g || !dedos) return;
-    const { delta, pasaZonaMuerta } = gestoDosDedos(g.inicio, dedos);
-    if (!g.sueltoElFreno) {
-      if (!pasaZonaMuerta) return;
-      g.sueltoElFreno = true;
-      g.arranque = delta;
+    const mapa = mapaRef.current;
+    if (!g || !mapa) return;
+
+    if (g.tipo === 'arrastre') {
+      const dedo = unDedo(e);
+      if (!dedo) return;
+      // El mapa sigue al dedo: la distancia se gira al revés antes de aplicarla
+      const d = enElMapa(dedo.x - g.ultimo.x, dedo.y - g.ultimo.y);
+      mapa.panBy([-d.x, -d.y], { animate: false });
+      g.ultimo = dedo;
+      return;
     }
-    setGiro(g.giroInicial + (delta - g.arranque));
+
+    const dedos = dosDedos(e);
+    if (!dedos) return;
+    const { escala, delta, pasaZonaMuerta } = gestoDosDedos(g.inicio, dedos);
+    if (!g.sueltoElFreno && pasaZonaMuerta) { g.sueltoElFreno = true; g.arranque = delta; }
+    if (g.sueltoElFreno) setGiro(g.giroInicial + (delta - g.arranque));
+
+    // El zoom solo se toma prestado con el mapa ya girado, que es cuando el de Leaflet
+    // está apagado. Como el relevo puede ocurrir a mitad del gesto —los dedos empiezan
+    // con el mapa al norte y lo tuercen—, el ancla y la escala se miden en el momento
+    // de tomarlo, no al apoyar los dedos.
+    if (!girando) return;
+    if (!g.ancla) {
+      const medio = { x: (dedos.a.x + dedos.b.x) / 2, y: (dedos.a.y + dedos.b.y) / 2 };
+      g.ancla = coordenadaDesdePantalla(medio.x, medio.y, mapa);
+      g.zoomInicial = mapa.getZoom();
+      g.escalaBase = escala;
+      g.pasos = 0;
+      return;
+    }
+    // Por pasos enteros: cada vez que los dedos duplican o parten a la mitad su
+    // separación, se sube o baja un nivel, anclado al sitio que quedó entre ellos.
+    if (escala > 0 && g.escalaBase > 0) {
+      const pasos = Math.round(Math.log2(escala / g.escalaBase));
+      if (pasos !== g.pasos) {
+        g.pasos = pasos;
+        mapa.setZoomAround(g.ancla, g.zoomInicial + pasos, { animate: false });
+      }
+    }
   };
   const alTerminarGesto = () => { gestoRef.current = null; };
 
@@ -670,6 +746,7 @@ export const MapaReal = ({
           handleMapaClick={handleMapaClick}
           giro={giroEfectivo}
           corregirToque={corregirToque}
+          mapaRef={mapaRef}
           reintentarGPS={reintentarGPS}
           yaSaltoAlInicio={yaSaltoAlInicio}
           setYaSaltoAlInicio={setYaSaltoAlInicio}
