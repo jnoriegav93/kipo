@@ -42,6 +42,13 @@ import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_A
 import { perteneceAProyecto } from './utils/helpers';
 import { posicionesAGuardar } from './utils/ordenTendido';
 import { contarPorClase, prefijosDeProyecto } from './utils/itemsAuto';
+
+// El giro del mapa está APAGADO mientras se rehace. La primera versión corregía a
+// Leaflet desde afuera y, al apagarle sus manejadores para llevar el arrastre y el
+// pellizco, salía entrecortada, el zoom saltaba y en iPhone el navegador se quedaba
+// con el gesto (sin sus clases, Leaflet deja de poner `touch-action: none`). Se está
+// reescribiendo para que Leaflet conozca el ángulo. Ver CONTEXTO.md.
+const GIRO_MAPA_ACTIVO = false;
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
 import PantallaMigracion from './components/PantallaMigracion';
@@ -1946,7 +1953,7 @@ function App() {
         cola={cola}
         onClickSync={() => setQueueModalAbierto(true)}
         setGpsTrigger={setGpsTrigger}
-        giro={esAdmin ? giro : 0}
+        giro={GIRO_MAPA_ACTIVO && esAdmin ? giro : 0}
         onTocarGps={tocarGps}
         mostrarEtiquetas={mostrarEtiquetas}
         setMostrarEtiquetas={setMostrarEtiquetas}
@@ -2069,8 +2076,8 @@ function App() {
           coloresDia={COLORES_DIA}
           proyectoActivoId={(mapaSupervision ? mapaSupervision.proyecto : proyectoActual)?.id}
           gpsTrigger={gpsTrigger}
-          giro={esAdmin ? giro : 0}
-          setGiro={setGiro}
+          giro={GIRO_MAPA_ACTIVO && esAdmin ? giro : 0}
+          setGiro={GIRO_MAPA_ACTIVO && esAdmin ? setGiro : undefined}
           yaSaltoAlInicio={yaSaltoAlInicio}
           setYaSaltoAlInicio={setYaSaltoAlInicio}
           isDark={isDark}

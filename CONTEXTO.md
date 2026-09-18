@@ -443,7 +443,35 @@ No escribe nada: ni Firestore, ni red, ni almacenamiento. Es solo pantalla.
 
 ---
 
-## Girar el mapa: la base construida y probada (17/09)
+## Girar el mapa: APAGADO, se está rehaciendo (18/09)
+
+> **Estado:** el interruptor `GIRO_MAPA_ACTIVO` en `App.jsx` está en `false`. El código
+> del giro sigue en el repo pero no llega a la app: `giro` vale 0 y no se pasa `setGiro`,
+> así que no se intercepta ningún gesto y Leaflet trabaja como siempre.
+
+**Por qué se apagó.** Probado en campo el 17/09, el giro salió entrecortado, el zoom
+saltaba al acercar y en iPhone el navegador se quedaba con el gesto (zoom de la página
+y "tirar para refrescar"). Las tres cosas vienen del mismo error de enfoque: corregir a
+Leaflet **desde afuera**. Cada agujero tapado abría otro —arreglar el clic obligó a
+arreglar el arrastre, eso obligó a apagarle a Leaflet sus manejadores, y sin sus clases
+Leaflet deja de poner `touch-action: none` ([leaflet.css](node_modules/leaflet/dist/leaflet.css)),
+que es justo lo que protege el gesto en iOS—. Además, escribir el ángulo en el estado de
+React en cada movimiento de dedo redibuja todos los postes por cuadro: de ahí el tirón.
+
+**Cómo se rehace (decidido con el usuario el 18/09).** Que **Leaflet conozca el ángulo**
+en vez de corregirlo por fuera: se sobrescriben sus conversiones de coordenadas
+(`mouseEventToContainerPoint` y las de punto de contenedor a capa) para que su propio
+arrastre, su pellizco y su inercia sigan siendo suyos —fluidos, con el foco correcto y
+con el `touch-action` puesto—. Dos reglas que no se pueden olvidar: el ángulo se aplica
+tocando el DOM, nunca por estado de React en cada movimiento; y si alguna vez manejamos
+un gesto nosotros, `touch-action: none` va garantizado a mano.
+
+Lo que sigue sirviendo y no se toca: la geometría de `src/utils/giroMapa.js` (64 casos en
+Node) y las pruebas en Chrome, que ya cazaron dos errores invisibles a ojo.
+
+---
+
+## Lo que ya estaba construido y probado (17/09)
 
 **Ya está en el código, detrás de la bandera de admin y sin nada que lo active
 todavía** (no hay gesto ni botón: `giro` siempre vale 0, así que para las cuadrillas
