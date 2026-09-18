@@ -357,41 +357,50 @@ export const MapaReal = ({
     if (g?.sueltoElFreno && setGiro) setGiro(g.ultimo);
   };
 
-  // Punto azul. Con brújula lleva un cono de linterna que apunta a donde mira el
-  // equipo; sin brújula queda exactamente el punto de siempre.
-  const userIcon = React.useMemo(() => {
-    if (rumbo == null) {
-      return L.divIcon({
-        className: 'user-icon',
-        html: `<div style="width: 20px; height: 20px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.3); animation: pulse-blue 2s infinite;"></div>`,
-        iconSize: [20, 20], iconAnchor: [10, 10]
-      });
-    }
-    // El cono se dibuja apuntando hacia arriba y se gira con el rumbo. Arriba es el
-    // norte mientras el mapa no gire; cuando exista el giro, se le restará.
-    return L.divIcon({
-      className: 'user-icon',
-      html: `<div style="position:relative; width:76px; height:76px;">
-          <svg width="76" height="76" viewBox="0 0 76 76" style="position:absolute; left:0; top:0; transform:rotate(${(rumbo - giroEfectivo).toFixed(1)}deg); transform-origin:38px 38px; filter:drop-shadow(0 0 2px rgba(255,255,255,0.9));">
+  // Punto azul con su cono de linterna. Se construye UNA SOLA VEZ: cuando cambia el
+  // rumbo solo se le escribe el giro al cono (en el efecto de más abajo). Antes se
+  // rehacía el ícono entero en cada lectura de la brújula, con lo cual Leaflet
+  // reemplazaba el elemento, la animación del punto se reiniciaba y el conjunto
+  // parecía bailar: eran dos piezas sueltas en vez de una.
+  const userIcon = React.useMemo(() => L.divIcon({
+    className: 'user-icon',
+    html: `<div style="position:relative; width:76px; height:76px;">
+        <div data-cono style="position:absolute; left:0; top:0; width:76px; height:76px; opacity:0; z-index:1; transform-origin:38px 38px; will-change:transform; pointer-events:none;">
+          <svg width="76" height="76" viewBox="0 0 76 76" style="display:block; filter:drop-shadow(0 0 2px rgba(255,255,255,0.85));">
             <defs>
-              <!-- El degradado se ancla a la POSICIÓN del técnico (38,38), no a la caja
-                   del triángulo: así lo intenso queda donde está parado y se apaga hacia
-                   afuera. Midiéndolo por la caja, el cono salía tenue y descentrado. -->
+              <!-- El degradado se ancla a la POSICIÓN del técnico (38,38). Arranca
+                   transparente en el primer tramo para que el cono salga de DETRÁS del
+                   punto azul en vez de taparlo. -->
               <radialGradient id="conoRumbo" gradientUnits="userSpaceOnUse" cx="38" cy="38" r="34">
-                <stop offset="0%" stop-color="#1d4ed8" stop-opacity="0.95" />
-                <stop offset="55%" stop-color="#2563eb" stop-opacity="0.6" />
+                <stop offset="0%" stop-color="#1d4ed8" stop-opacity="0" />
+                <stop offset="24%" stop-color="#1d4ed8" stop-opacity="0.95" />
+                <stop offset="60%" stop-color="#2563eb" stop-opacity="0.55" />
                 <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.05" />
               </radialGradient>
             </defs>
-            <path d="M38 38 L20 9.2 A34 34 0 0 1 56 9.2 Z" fill="url(#conoRumbo)" stroke="rgba(255,255,255,0.75)" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M38 38 L20 9.2 A34 34 0 0 1 56 9.2 Z" fill="url(#conoRumbo)" stroke="rgba(255,255,255,0.6)" stroke-width="1.5" stroke-linejoin="round" />
           </svg>
-          <div style="position:absolute; left:25px; top:25px; width:20px; height:20px; background-color:#2563eb; border:3px solid white; border-radius:50%; box-shadow:0 0 0 4px rgba(37, 99, 235, 0.3); animation:pulse-blue 2s infinite;"></div>
-        </div>`,
-      iconSize: [76, 76], iconAnchor: [38, 38]
-    });
-    // El cono es el ÚNICO que gira a propósito: apunta a donde mira el técnico, así
-    // que se le descuenta el giro del mapa.
-  }, [rumbo, giroEfectivo]);
+        </div>
+        <!-- El punto se centra por PORCENTAJE, no por píxeles contados a mano: el reset
+             de Tailwind pone box-sizing border-box, con lo cual el borde de 3 px va por
+             dentro y el punto mide 20 y no 26. Contando a mano quedaba 3 px arriba y 3 a
+             la izquierda del origen del cono, y por eso parecían dos piezas sueltas. -->
+        <div data-punto style="position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); width:20px; height:20px; z-index:2; background-color:#2563eb; border:3px solid white; border-radius:50%; box-shadow:0 0 0 4px rgba(37, 99, 235, 0.3); animation:pulse-blue 2s infinite;"></div>
+      </div>`,
+    iconSize: [76, 76], iconAnchor: [38, 38]
+  }), []);
+
+  // El rumbo se escribe DIRECTO en el DOM, sin pasar por React ni por Leaflet: así el
+  // ícono nunca se rehace y el cono y el punto se mueven como una sola pieza. El cono
+  // es el único que gira a propósito, por eso se le descuenta el giro del mapa.
+  const marcadorUsuarioRef = useRef(null);
+  useEffect(() => {
+    const cono = marcadorUsuarioRef.current?.getElement?.()?.querySelector('[data-cono]');
+    if (!cono) return;
+    if (rumbo == null) { cono.style.opacity = '0'; return; }
+    cono.style.transform = `rotate(${(rumbo - giroEfectivo).toFixed(1)}deg)`;
+    cono.style.opacity = '1';
+  }, [rumbo, giroEfectivo, miUbicacion]);
 
   const tempIcon = React.useMemo(() => {
     const baseSize = 24 * iconSize;
@@ -694,7 +703,7 @@ export const MapaReal = ({
           setYaSaltoAlInicio={setYaSaltoAlInicio}
         />
 
-        {miUbicacion && <Marker position={miUbicacion} icon={userIcon} zIndexOffset={9999} />}
+        {miUbicacion && <Marker ref={marcadorUsuarioRef} position={miUbicacion} icon={userIcon} zIndexOffset={9999} />}
 
         {/* Cables de acero por DEBAJO de las fibras, salvo mientras se trabaja con ellos:
             comparten postes y el contorno oscuro taparía el color de la fibra */}

@@ -441,6 +441,27 @@ del triángulo —lo que hace SVG por defecto— quedaba tenue y descentrado.
 
 No escribe nada: ni Firestore, ni red, ni almacenamiento. Es solo pantalla.
 
+**Arreglado el 18/09: el cono y el punto eran dos piezas sueltas.** En campo se veía
+"bailar" el cono respecto del punto, y el punto quedaba tapado. Dos causas, las dos
+concretas:
+
+1. **El ícono se rehacía en cada lectura de la brújula** (varias veces por segundo),
+   así que Leaflet reemplazaba el elemento del DOM, la animación del punto se
+   reiniciaba y el conjunto parecía descoserse. Ahora el ícono se construye **una sola
+   vez** y al cambiar el rumbo solo se le escribe el giro al cono, directo en el DOM.
+   Es la misma lección del giro del mapa: lo que cambia muchas veces por segundo no
+   pasa por React.
+2. **El punto estaba 3 px arriba y 3 a la izquierda** del origen del cono —4,24 px de
+   separación, idéntica en todos los rumbos—. La causa: el reset de Tailwind pone
+   `box-sizing: border-box`, con lo cual el punto de 20 px con borde de 3 mide 20 y no
+   26, y la cuenta a mano (`left:25px`) quedaba corrida. Se centra por **porcentaje**
+   (`left:50%; top:50%; translate(-50%,-50%)`), que es inmune al reset.
+
+El cono va **detrás** del punto: el degradado arranca transparente en el primer tramo
+y el punto se dibuja por encima. Verificado con 25 casos en Chrome, que miden la
+separación entre ambos centros (0,00 px en todos los rumbos) y que el elemento del
+ícono **sobrevive** a los cambios de rumbo.
+
 ---
 
 ## Girar el mapa: rehecho por dentro de Leaflet (18/09)
