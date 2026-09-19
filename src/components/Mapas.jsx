@@ -8,6 +8,7 @@ import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
 import { exigeNorte, anguloEtiquetaFibra, gestoDosDedos } from '../utils/giroMapa';
 import { instalarGiro } from '../utils/giroLeaflet';
+import { agruparPuntos, ocultaEtiquetas } from '../utils/agruparPuntos';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -403,6 +404,61 @@ export const MapaReal = ({
     cono.style.opacity = '1';
   }, [rumbo, giroEfectivo, miUbicacion]);
 
+  // ── Agrupar de lejos ────────────────────────────────────────────────────────
+  // A partir de cierto zoom, los puntos que caen juntos se muestran como una burbuja
+  // con su cantidad. Lo que está EN JUEGO nunca se agrupa: el seleccionado, el
+  // temporal, el resaltado, los del trazo en curso y los marcados en cada modo.
+  const zoomActual = viewState?.zoom;
+  const claseDePunto = React.useCallback((p) => {
+    const raw = p?.datos?.tipoElemento;
+    const tipos = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    if (tipos.includes('medioTramo')) return 'medioTramo';
+    if (tipos.includes('camara')) return 'camara';
+    return 'poste';
+  }, []);
+
+  const { sueltos: puntosSueltos, grupos: gruposPuntos } = React.useMemo(() => {
+    const enJuego = new Set([
+      puntoSeleccionado, puntoResaltado,
+      ...puntosRecorrido.map(v => v?.puntoId),
+      ...puntosSeleccionadosMover, ...ordenSeleccion, ...correccionSel,
+      ...(trazoAcero?.postes || []), trazoAcero?.medioTramo,
+    ].filter(Boolean).map(String));
+    return agruparPuntos(puntosVisiblesMapa, zoomActual, { claseDe: claseDePunto, siempreSolos: enJuego });
+  }, [puntosVisiblesMapa, zoomActual, claseDePunto, puntoSeleccionado, puntoResaltado,
+    puntosRecorrido, puntosSeleccionadosMover, ordenSeleccion, correccionSel, trazoAcero]);
+
+  // La burbuja conserva la FORMA de su clase, para no perder de un vistazo qué son:
+  // redonda los postes, triangular los medios tramos, cuadrada las cámaras.
+  const iconoGrupo = React.useCallback((g) => {
+    const lado = Math.round(30 * Math.max(0.6, iconSize));
+    const fuente = Math.max(11, Math.round(lado * 0.46));
+    const forma = g.clase === 'medioTramo'
+      ? 'border-radius:14%; transform:rotate(45deg);'
+      : g.clase === 'camara' ? 'border-radius:12%;' : 'border-radius:50%;';
+    const enderezar = g.clase === 'medioTramo' ? 'transform:rotate(-45deg);' : '';
+    return L.divIcon({
+      className: 'grupo-icon',
+      html: `<div style="width:${lado}px; height:${lado}px; ${forma} background:#1e293b; border:2px solid #fff; display:flex; align-items:center; justify-content:center;">
+          <span style="${enderezar} color:#fff; font-weight:900; font-size:${fuente}px; line-height:1;">${g.cantidad}</span>
+        </div>`,
+      iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2],
+    });
+  }, [iconSize]);
+
+  // Tocar una burbuja acerca el mapa: es la forma de "abrirla" sin inventar gestos.
+  const acercarAGrupo = React.useCallback((e, g) => {
+    const mapa = e?.target?._map;
+    if (!mapa) return;
+    mapa.setView([g.centro.lat, g.centro.lng], Math.min(mapa.getZoom() + 2, mapa.getMaxZoom() || 22));
+  }, []);
+
+  // De lejos las etiquetas se esconden aunque estén encendidas: los globitos se pisan
+  // y no se lee ninguno. No se apagan, se ocultan, y se avisa.
+  const etiquetasOcultas = ocultaEtiquetas(zoomActual)
+    && !!(mostrarEtiquetas?.item || mostrarEtiquetas?.pasivo || mostrarEtiquetas?.fibra);
+  const etiquetasVisibles = etiquetasOcultas ? { item: false, pasivo: false, fibra: false } : mostrarEtiquetas;
+
   const tempIcon = React.useMemo(() => {
     const baseSize = 24 * iconSize;
     return L.divIcon({
@@ -645,6 +701,14 @@ export const MapaReal = ({
         </div>
       )}
 
+      {/* Las etiquetas no se apagaron: están ocultas porque de lejos se pisan entre sí.
+          Se avisa para que nadie las dé por perdidas y las vuelva a tocar. */}
+      {etiquetasOcultas && (
+        <div className="absolute bottom-2 right-2 z-[5000] px-2 py-1 rounded-md bg-black/70 text-white text-[10px] font-bold pointer-events-none max-w-[60vw]">
+          Etiquetas activas, ocultas por el zoom. Acercá para verlas.
+        </div>
+      )}
+
       {/* TEMPORAL: el nivel de zoom, para decidir a partir de qué distancia se agrupan
           los postes y se simplifica el dibujo. Se quita cuando estén fijados. */}
       {mostrarZoom && (
@@ -782,8 +846,23 @@ export const MapaReal = ({
           verticesSnap={verticesSnap}
         />
 
-        {/* Renderizado de puntos */}
-        {puntosVisiblesMapa.map(p => {
+        {/* Burbujas: de lejos, los puntos que caen juntos se muestran como uno con su
+            cantidad. Nunca mezclan clases y jamás agrupan lo que está en juego. */}
+        {gruposPuntos.map(g => (
+          <Marker
+            key={g.id}
+            position={[g.centro.lat, g.centro.lng]}
+            icon={iconoGrupo(g)}
+            eventHandlers={{
+              click: (e) => { L.DomEvent.stopPropagation(e); acercarAGrupo(e, g); }
+            }}
+          />
+        ))}
+
+        {/* Renderizado de puntos. De lejos se dibujan solo los SUELTOS: los demás
+            viajan dentro de una burbuja. El arrastre y el imantado siguen recibiendo
+            la lista completa, que para eso no depende de lo que se ve. */}
+        {puntosSueltos.map(p => {
           // El punto seleccionado en modo mover se maneja por DragMoverController
           if (modoMover && p.id === puntoSeleccionado) return null;
           // Con la simbología encendida el color sale del armado del punto; sin
@@ -832,8 +911,8 @@ export const MapaReal = ({
           const bord = enAjuste ? '4px solid #b45309' : ancladoAFibra ? '4px solid #15803d' : marcaCorr > 0 ? '4px solid #9a3412' : isEnOrden ? '4px solid #15803d' : isEnSeleccion ? '4px solid #7c3aed' : (isInRecorrido || isSelected) ? '4px solid #facc15' : '2px solid white';
           const numOrdenHtml = isEnOrden ? `<span style="color:white; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.5))}px; line-height:1;">${posOrden}</span>` : '';
           const labelHtml = (() => {
-            const showItem = mostrarEtiquetas?.item;
-            const showPasivo = mostrarEtiquetas?.pasivo;
+            const showItem = etiquetasVisibles?.item;
+            const showPasivo = etiquetasVisibles?.pasivo;
             if (!showItem && !showPasivo) return '';
             const limpio = (x) => { const s = (x == null ? '' : x).toString().trim(); return (s && s !== '-') ? s : null; };
             const partes = [];
@@ -913,7 +992,7 @@ export const MapaReal = ({
 
         {/* Etiquetas de las fibras. interactive={false} es importante: si capturaran
             el clic, taparían el mapa justo donde se van a poner vértices. */}
-        {mostrarEtiquetas?.fibra && etiquetasFibra.map(et => (
+        {etiquetasVisibles?.fibra && etiquetasFibra.map(et => (
           <Marker
             key={`etf-${et.id}`}
             position={[et.pos.lat, et.pos.lng]}

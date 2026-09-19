@@ -645,15 +645,23 @@ Plan acordado con el usuario, por fases:
 1. **Hecho:** fuera las sombras de los tres marcadores masivos (el `drop-shadow` del
    triángulo era el peor, por ser un filtro). Se conservó el **anillo** del cuadrado,
    que es información de selección y no decoración.
-2. Memorizar los íconos para que no se reconstruyan en cada redibujo. Exige sacar el
-   marcador a su propio componente.
-3. Dibujar solo lo visible, con margen y **lista de excepciones** que se dibujan siempre
-   (el seleccionado, el temporal, el resaltado, los del trazo en curso, el que se
-   arrastra), o se rompen esas interacciones.
-4. Lejos: símbolo simple y **etiquetas ocultas por zoom**, con aviso de que están
-   activas pero ocultas.
-5. **Agrupar por cercanía** bajo cierto zoom: la burbuja muestra solo la cantidad y los
-   grupos van **separados por tipo** (postes, medios tramos, cámaras).
+2. **Pendiente:** memorizar los íconos para que no se reconstruyan en cada redibujo.
+   Exige sacar el marcador a su propio componente.
+3. **Pendiente:** dibujar solo lo visible, con margen y **lista de excepciones** que se
+   dibujan siempre (el seleccionado, el temporal, el resaltado, los del trazo en curso,
+   el que se arrastra), o se rompen esas interacciones.
+4. **Hecho:** **etiquetas ocultas por zoom** (16 o más lejos), con un aviso de que están
+   activas pero ocultas, para que nadie las dé por apagadas. Falta la otra mitad: el
+   símbolo simplificado a la distancia.
+5. **Hecho:** **agrupar por cercanía**, en `src/utils/agruparPuntos.js` (puro, 27 casos
+   en Node). Umbrales que eligió el usuario mirando el zoom en pantalla: **17 o más
+   cerca no se agrupa; 16 y 15 de a 2; 14, 13 y más lejos de a 3**. La burbuja muestra
+   **solo la cantidad**, conserva la **forma de su clase** (redonda los postes, rombo
+   los medios tramos, cuadrada las cámaras) y **nunca mezcla clases**. Tocarla acerca el
+   mapa. Lo que está en juego jamás se agrupa: el seleccionado, el resaltado, el trazo
+   en curso, los marcados para mover, ordenar o corregir, y las puntas del cable de
+   acero. Probado sobre el mapa real con 17 casos en Chrome, que verifican además que
+   **no se pierda ni se repita ningún punto** en ningún zoom.
 
 El lienzo (canvas) queda para el final y solo si hace falta: los círculos salen casi
 gratis, pero triángulos, cuadrados y globitos habría que dibujarlos a mano. Sin decidir:
