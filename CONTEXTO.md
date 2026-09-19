@@ -270,14 +270,18 @@ en el cable y en qué medio tramo.
   Copiar/cortar puntos los lleva si van sus dos postes; al copiar, el medio tramo y las
   fibras pasan a las copias si también van. Borrar proyecto (lista, equipos, admin)
   los incluye. Salir de un equipo los copia con postes, medio tramo y fibras remapeados.
-- **Elegirlo desde el mapa (19/09).** Con la barra de acero abierta y **sin estar
-  trazando**, tocar la línea del cable lo elige, igual que tocarlo en la lista; tocarlo
-  otra vez lo suelta. La línea visible es fina, así que el dedo lo recibe una polilínea
-  invisible de 22 px encima, el mismo recurso que ya usaban las fibras al trazar acero.
-  Mientras se traza y fuera del modo acero la línea no responde: ahí cada toque es del
-  dibujo (postes, fibras apoyadas, medio tramo) y no debe significar dos cosas. La barra
-  suma un botón **EDITAR**, porque el que ya existía vive dentro de la fila desplegada
-  de la lista y eligiendo el cable en el mapa no había por dónde llegar a editarlo.
+- **Elegirlo desde el mapa (19/09).** Con la barra de acero abierta y **el trazo vacío**,
+  tocar la línea del cable lo elige, igual que tocarlo en la lista; tocarlo otra vez lo
+  suelta. La línea visible es fina, así que el dedo lo recibe una polilínea invisible de
+  22 px encima, el mismo recurso que ya usaban las fibras al trazar acero. Con un trazo
+  empezado (o editando un cable) la línea queda sorda, y fuera del modo acero también:
+  ahí cada toque es del dibujo (postes, fibras apoyadas, medio tramo) y no debe significar
+  dos cosas. La barra suma un botón **EDITAR**, porque el que ya existía vive dentro de la
+  fila desplegada de la lista y eligiendo el cable en el mapa no había por dónde llegar.
+  **Cuidado con `dibujandoFibra`:** en acero queda encendido todo el rato (es lo que deja
+  tocar los postes, `mapInteractions.handlePuntoClick`), así que **no** sirve para saber
+  si se está trazando. Mirarlo dejó la selección apagada siempre en la primera versión;
+  quien decide es el trazo (`hayTrazoAcero`).
 - **La lista muestra los apoyos (19/09).** Cada cable lista las **fibras que se apoyan
   en él** (con el color de su capacidad) y el **medio tramo donde se apoyan**. El cable
   guarda solo ids: `lineasAcero` (App.jsx) los resuelve en `fibrasInfo` y
@@ -293,9 +297,12 @@ en el cable y en qué medio tramo.
   corrección del guardado sin día elegido en el mapa. Y el 16/09/26 (**SELLO: 16/09/26,
   18:24**): guardar un cable solo con sus dos postes, con las fibras y el medio tramo
   como opcionales. Y el 19/09/26 (**SELLO: 19/09/26, 00:33**): elegir el cable tocando
-  su línea en el mapa, el botón EDITAR en la barra y los apoyos en la lista. Probado en
-  el harness de acero con 12 comprobaciones (elegir, soltar, no crear punto al tocar, la
-  lista, EDITAR desde el mapa, y las dos situaciones en que la línea no debe responder).
+  su línea en el mapa, el botón EDITAR en la barra y los apoyos en la lista. Salió sin
+  poder elegir ningún cable (la guardia miraba `dibujandoFibra`); corregido y subido el
+  mismo día (**SELLO: 19/09/26, 00:59**). Probado en el harness de acero con 20
+  comprobaciones que **entran por los botones** (FIBRA y el selector ACERO) en vez de
+  forzar el estado, que es lo que había tapado el fallo: elegir, soltar, no crear punto
+  al tocar, la lista, empezar un trazo, ATRÁS, EDITAR desde el mapa y la vuelta a FIBRA.
 
 Probado con Node (23 casos: metros, tipos, trazo, apoyos y reparto por poste) y la
 copia del servidor contra el cliente; con lint (ningún error nuevo en los 22 archivos
