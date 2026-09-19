@@ -262,6 +262,22 @@ en el cable y en qué medio tramo.
   (del proyecto ni del ramal) ni en el RF de ferretería. La regla de metros y los ítems
   de cable de acero (`IDS_CABLE_ACERO`) están copiados en `functions/index.js`: si
   cambian, cambian en los dos.
+- **En el reporte de tendido (19/09).** En el **croquis** de cada ramal los cables se
+  dibujan en **rojo**, con la **mitad** del grosor de la fibra (`1.5 * ESC` contra
+  `3 * ESC`), rotulados a mitad del vano con **solo la medida y los metros**
+  (`3/16 - 34m`). Van **encima** de la fibra justamente por ser más finos, y su rótulo
+  usa el mismo control de choques que los de poste: en un tramo apretado alguno queda
+  sin rótulo antes que salir superpuesto. Los **postes que lo sostienen y el medio tramo**
+  donde se apoyan las fibras salen en rojo; el resto de medios tramos sigue naranja.
+  La medida sale del **nombre del catálogo** (`medidaAcero`: busca la fracción, y si no
+  hay, quita las palabras del tipo), no de una lista fija, para que un tipo nuevo tampoco
+  salga rotulado "CABLE DE ACERO". En la **hoja del ramal**, sus metros se suman al final
+  de FERRETERÍA DEL RAMAL en negrita. En el **RESUMEN** ya **no hay tabla aparte**: sus
+  filas van dentro de FERRETERÍA UTILIZADA, al final y en negrita (decidido con el
+  usuario el 19/09). **Ojo: esos metros entran en TOTAL DE PIEZAS**, así que ese total
+  mezcla piezas con metros; se eligió a cambio de tenerlo todo en una sola tabla.
+  Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
+  representa cambia en cada proyecto, así que sigue anotándose a mano.
 - **Ciclo de vida.** Borrar uno de sus dos postes borra el cable (papelera tipo
   `acero`, que lo restaura si existen sus dos postes). Borrar su **medio tramo** no lo
   borra: el cable se queda sin medio tramo, sale "SIN MEDIO TRAMO" en la lista y se
