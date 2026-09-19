@@ -1138,6 +1138,17 @@ const metrosAceroPorPoste = (cables, puntosEnOrden) => {
 const IDS_CABLE_ACERO = new Set(['b13', 'b38']);
 const sinCableAcero = (totales) => Object.fromEntries(Object.entries(totales).filter(([id]) => !IDS_CABLE_ACERO.has(String(id))));
 
+// Del nombre del catálogo, para el croquis, solo la MEDIDA: "MENSAJERO 3/16" → "3/16".
+// Si el nombre no trae fracción se le quitan las palabras del tipo y queda lo que
+// distinga a ese cable, para que uno nuevo no salga rotulado "CABLE DE ACERO".
+const medidaAcero = (nombre) => {
+  const n = String(nombre || "").trim();
+  const frac = n.match(/\d+\s*\/\s*\d+/);
+  if (frac) return frac[0].replace(/\s+/g, "");
+  const limpio = n.replace(/cable\s+de\s+acero/ig, "").replace(/mensajero/ig, "").replace(/\s+/g, " ").trim();
+  return limpio || n;
+};
+
 // Croquis esquemático de un ramal: su recorrido y sus postes en negro, el resto
 // de la red del proyecto al fondo en gris, y una cuadrícula UTM de referencia.
 // Se dibuja al tamaño exacto del recuadro de Excel (por dos, para que no se vea
@@ -1146,7 +1157,7 @@ const sinCableAcero = (totales) => Object.fromEntries(Object.entries(totales).fi
 // El encuadre lo manda SOLO el ramal de la hoja: la red de fondo se recorta
 // contra el marco. Si el encuadre abarcara todo el proyecto, el ramal quedaría
 // reducido a una rayita en una esquina.
-const croquisRamal = (vertices, postes, anchoPx, altoPx, otrasFibras = [], otrosPostes = []) => {
+const croquisRamal = (vertices, postes, anchoPx, altoPx, otrasFibras = [], otrosPostes = [], tramosAcero = []) => {
   const ESC = 2;
   const W = Math.max(240, Math.round(Number(anchoPx)) || 0) * ESC;
   const H = Math.max(140, Math.round(Number(altoPx)) || 0) * ESC;
@@ -1277,6 +1288,23 @@ const croquisRamal = (vertices, postes, anchoPx, altoPx, otrasFibras = [], otros
     ctx.stroke();
   }
 
+  // Cable de acero (mensajero): rojo y la MITAD de grueso que la fibra, para que se
+  // distinga sin competir con ella. Va encima de la fibra justamente por ser más fino.
+  const acero = (tramosAcero || []).filter(t => t && t.a && t.b && t.a.lat != null && t.b.lat != null);
+  if (acero.length) {
+    ctx.strokeStyle = '#DC2626';
+    ctx.lineWidth = 1.5 * ESC;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const t of acero) {
+      const qa = aLienzo(t.a), qb = aLienzo(t.b);
+      ctx.beginPath();
+      ctx.moveTo(qa.x, qa.y);
+      ctx.lineTo(qb.x, qb.y);
+      ctx.stroke();
+    }
+  }
+
   // Postes: puntos pequeños con reborde blanco para que no se peguen entre sí.
   // Se guarda su sitio como obstáculo para que las etiquetas los esquiven.
   const ocupados = [];
@@ -1286,7 +1314,9 @@ const croquisRamal = (vertices, postes, anchoPx, altoPx, otrasFibras = [], otros
   for (const p of enLienzo) {
     ctx.beginPath();
     ctx.arc(p.q.x, p.q.y, RADIO, 0, Math.PI * 2);
-    ctx.fillStyle = p.medio ? '#FF6600' : '#1A1A1A';
+    // Rojo si sostiene cable de acero: sus dos postes y el medio tramo donde se apoyan
+    // las fibras. Naranja el resto de medios tramos, negro los demás.
+    ctx.fillStyle = p.acero ? '#DC2626' : (p.medio ? '#FF6600' : '#1A1A1A');
     ctx.fill();
     ctx.lineWidth = 1.2 * ESC;
     ctx.strokeStyle = '#FFFFFF';
@@ -1326,6 +1356,28 @@ const croquisRamal = (vertices, postes, anchoPx, altoPx, otrasFibras = [], otros
     ctx.fillStyle = '#1A1A1A';
     ctx.fillText(txt, sitio.x, sitio.y);
   }
+  // Rótulo de cada cable de acero, a mitad del vano: solo la medida y los metros
+  // ("3/16 - 34m"). Usa el mismo control de choques que los rótulos de poste, así que
+  // en un tramo apretado alguno queda sin rótulo antes que salir superpuesto.
+  ctx.font = `bold ${6.5 * ESC}px Arial`;
+  ctx.textBaseline = 'middle';
+  for (const t of acero) {
+    const txt = String(t.texto || '').trim();
+    if (!txt) continue;
+    const qa = aLienzo(t.a), qb = aLienzo(t.b);
+    const mx = (qa.x + qb.x) / 2, my = (qa.y + qb.y) / 2;
+    const w = ctx.measureText(txt).width;
+    const r = { x1: mx - w / 2 - 1 * ESC, y1: my - ALTO_TXT / 2, x2: mx + w / 2 + 1 * ESC, y2: my + ALTO_TXT / 2 };
+    if (r.x1 < 0 || r.x2 > W || r.y1 < 0 || r.y2 > H || !libre(r)) continue;
+    ocupados.push(r);
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 2.5 * ESC;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.strokeText(txt, mx, my);
+    ctx.fillStyle = '#DC2626';
+    ctx.fillText(txt, mx, my);
+  }
+
   ctx.textAlign = 'start';
   ctx.textBaseline = 'alphabetic';
 
@@ -1609,8 +1661,10 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
           c2.alignment = { horizontal: "center" }; c2.border = B; if (fondo) c2.fill = fondo;
           r++;
         };
-        pares.forEach(([k, v], n) => {
-          pinta(k, v, n % 2 === 1 ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } } : null, false);
+        // Un par puede traer un tercer valor para salir en negrita: los metros de cable
+        // de acero, que se listan con la ferretería pero no son piezas.
+        pares.forEach(([k, v, negrita], n) => {
+          pinta(k, v, n % 2 === 1 ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } } : null, !!negrita);
         });
         if (etiquetaTotal) {
           const total = pares.reduce((t, x) => t + (Number(x[1]) || 0), 0);
@@ -1645,18 +1699,19 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       const cMT2 = wsRes.getCell(finPostes, 3); cMT2.value = nMediosP;
       cMT2.font = { bold: true, size: 10 }; cMT2.alignment = { horizontal: "center" }; cMT2.border = B;
 
+      // El cable de acero va DENTRO de la ferretería (decidido con el usuario), al final
+      // y en negrita, en vez de en una tabla aparte. Sus metros entran en TOTAL DE
+      // PIEZAS: ese total mezcla piezas con metros, a cambio de tenerlo todo junto.
+      Object.entries(totAceroP)
+        .sort((a, b) => String(nomF(a[0])).localeCompare(String(nomF(b[0]))))
+        .forEach(([id, m]) => paresF.push([`${nomF(id)} (m)`, m, true]));
+
       const finFerr = tabla(filaTablas, 4, 2, "FERRETERÍA UTILIZADA", "FF1F4E78", paresF, "TOTAL DE PIEZAS");
       const finArm = tabla(filaTablas, 7, 2, "ARMADOS UTILIZADOS", "FFB45309", paresA, "TOTAL DE ARMADOS");
-      // El cable de acero no es ferretería del poste: va en metros, con lo trazado en el
-      // mapa, en su propia tabla debajo
-      const paresAcero = Object.entries(totAceroP).map(([id, m]) => [nomF(id), m]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-      const finAcero = paresAcero.length
-        ? tabla(finFerr + 1, 4, 2, "CABLE DE ACERO (METROS)", "FF475569", paresAcero, "TOTAL DE METROS")
-        : finFerr;
 
       // ── Sección 2: fibra óptica ────────────────────────────────────────────
       // Primero el consolidado por capacidad y debajo el detalle ramal por ramal.
-      let fr = Math.max(finPostes + 1, finAcero, finArm) + 2;
+      let fr = Math.max(finPostes + 1, finFerr, finArm) + 2;
       fr = banda(fr, "FIBRA ÓPTICA");
 
       const porCap = {};
@@ -1826,9 +1881,11 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
           c.border = BORDE;
           fila++;
         }
-        pares.forEach(([k, v]) => {
+        // Un par puede traer un tercer valor para salir en negrita: así los metros de
+        // cable de acero se distinguen del resto de la ferretería, que va en piezas.
+        pares.forEach(([k, v, negrita]) => {
           const c1 = ws.getCell(fila, 1); c1.value = k;
-          c1.font = { size: 9 }; c1.alignment = { vertical: "middle" }; c1.border = BORDE;
+          c1.font = { size: 9, bold: !!negrita }; c1.alignment = { vertical: "middle" }; c1.border = BORDE;
           if (resaltar) {
             c1.font = { size: 9, bold: true, color: { argb: "FFFFFFFF" } };
             c1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A1A1A" } };
@@ -1879,6 +1936,16 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
         ], null, true);
         f++;
         const paresFerr = Object.entries(totFerr).map(([id, c]) => [nombreFerr(id), c]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+        // Los metros de cable de acero de este ramal, al final de la lista y en negrita:
+        // no son piezas del poste, se liquidan por metro con lo trazado en el mapa.
+        const aceroGrupo = {};
+        for (const p of grupo.puntos) {
+          Object.entries(aceroPorPoste[String(p.id)] || {}).forEach(([id, m]) => { aceroGrupo[id] = (aceroGrupo[id] || 0) + m; });
+        }
+        Object.entries(aceroGrupo)
+          .sort((a, b) => String(nombreFerr(a[0])).localeCompare(String(nombreFerr(b[0]))))
+          .forEach(([id, m]) => paresFerr.push([`${nombreFerr(id)} (m)`, m, true]));
+
         const paresArm = Object.entries(totArm).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
         f = tablaAB(ws, f, "FERRETERÍA DEL RAMAL", paresFerr);
         f++;
@@ -1893,11 +1960,31 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
         ws.mergeCells(3, 4, filaFinCroquis, 6);
         // El lienzo se pide del tamaño exacto del recuadro (ancho de las columnas
         // que abarca y alto de sus filas) para que la imagen no se estire.
+        // Cables de acero con sus DOS postes en este ramal: se dibujan y se resaltan
+        // sus postes y el medio tramo donde se apoyan las fibras.
+        const puntoDelGrupo = new Map(grupo.puntos.map(p => [String(p.id), p]));
+        const idsApoyo = new Set();
+        const tramosAcero = [];
+        for (const c of cablesAcero || []) {
+          const [ia, ib] = (c.puntos || []).map(String);
+          const pa = puntoDelGrupo.get(ia), pb = puntoDelGrupo.get(ib);
+          if (!pa || !pb || pa.coords?.lat == null || pb.coords?.lat == null) continue;
+          idsApoyo.add(ia);
+          idsApoyo.add(ib);
+          if (c.medioTramo != null) idsApoyo.add(String(c.medioTramo));
+          tramosAcero.push({
+            a: pa.coords,
+            b: pb.coords,
+            texto: `${medidaAcero(nombreFerr(c.ferrId))} - ${metrosCableAcero(pa.coords, pb.coords)}m`,
+          });
+        }
+
         const pngCroquis = croquisRamal(
           grupo.fibra ? grupo.fibra.vertices : [],
           grupo.puntos.map(p => ({
             coords: p.coords,
             medio: esMedioTramoP(p),
+            acero: idsApoyo.has(String(p.id)),
             etiqueta: (p.datos && p.datos.numero) || "",
           })),
           [4, 5, 6].reduce((s, c) => s + ((ws.getColumn(c).width || 8.43) * 7 + 5), 0),
@@ -1905,6 +1992,7 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
           // Resto de la red, para situar el ramal dentro del proyecto
           fibrasProy.filter(f => !grupo.fibra || f.id !== grupo.fibra.id).map(f => f.vertices),
           listaPuntos.filter(p => !idsDelGrupo.has(p.id)).map(p => p.coords),
+          tramosAcero,
         );
         ws.addImage(workbook.addImage({ buffer: pngCroquis, extension: "png" }), {
           tl: { col: 3, row: 2 }, br: { col: 6, row: filaFinCroquis },
