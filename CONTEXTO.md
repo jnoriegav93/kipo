@@ -664,8 +664,25 @@ Plan acordado con el usuario, por fases:
    mover, ordenar o corregir, y las puntas del cable de acero. Sin eso se rompen cosas
    que dan por hecho que el marcador existe, como arrastrar uno que se salió del borde.
 4. **Hecho:** **etiquetas ocultas por zoom** (16 o más lejos), con un aviso de que están
-   activas pero ocultas, para que nadie las dé por apagadas. Falta la otra mitad: el
-   símbolo simplificado a la distancia.
+   activas pero ocultas, para que nadie las dé por apagadas.
+
+   Y la otra mitad, resuelta de raíz por decisión del usuario: en vez de simplificar el
+   símbolo solo de lejos, **el mapa pasó a tener una sola geometría, siempre**. El
+   triángulo del medio tramo y el cuadrado de la caja de equipo **ya no existen**:
+   - **Medio tramo:** círculo **amarillo siempre**, borde y punto centrales **blancos**.
+     El amarillo se mantiene incluso con la simbología encendida.
+   - **Caja de equipo** (mufa, xbox, hbox, fat): círculo **del color del día**, como un
+     poste, con borde y punto centrales **negros**.
+   - Lo que cambia de color sigue siendo el **estado de trabajo** (ámbar si el ajuste lo
+     va a mover, verde si ya está anclado, naranja al corregir): eso es información y se
+     conservó.
+
+   Con una sola forma, el dibujo es más barato en todos los zooms —no solo de lejos— y
+   queda el camino abierto por si alguna vez se pasa a lienzo, donde el círculo sale casi
+   gratis y un triángulo habría que pintarlo a mano. También desapareció la excepción de
+   tamaño: el cuadrado se dibujaba más chico, y ahora miden todos igual. Las burbujas de
+   grupo siguen el mismo lenguaje. Las formas vivían **solo** en `Mapas.jsx`; el minimapa
+   de REVISIÓN ya usaba círculos, así que no quedó ninguna vista contradiciendo al mapa.
 5. **Hecho:** **agrupar por cercanía**, en `src/utils/agruparPuntos.js` (puro, 29 casos
    en Node). Umbrales que eligió el usuario mirando el zoom en pantalla, **uno más por
    cada nivel que se aleja**: 18 o más cerca no se agrupa, **17 junta 2, 16 junta 3, 15

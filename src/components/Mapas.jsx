@@ -455,25 +455,14 @@ export const MapaReal = ({
       ? (coloresArmado[primero?.datos?.armadoSeleccionadoId] || '#9ca3af')
       : obtenerColorDia(primero?.diaId);
 
-    if (esMedioTramo) {
-      // Triángulo amarillo, como el medio tramo suelto, con la cantidad abajo
-      const half = baseSize / 2;
-      const t = Math.max(2, Math.round(baseSize * 0.16));
-      const relleno = simbologiaActiva ? color : '#facc15';
-      return L.divIcon({
-        className: 'grupo-icon',
-        html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px;">
-            <div style="position:absolute; left:0; bottom:0; width:0; height:0; border-left:${half}px solid transparent; border-right:${half}px solid transparent; border-bottom:${baseSize}px solid #1e293b;"></div>
-            <div style="position:absolute; left:${t}px; bottom:${Math.round(t * 0.6)}px; width:0; height:0; border-left:${half - t}px solid transparent; border-right:${half - t}px solid transparent; border-bottom:${baseSize - Math.round(t * 1.8)}px solid ${relleno};"></div>
-            <div style="position:absolute; left:0; bottom:0; width:${baseSize}px; height:${baseSize}px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:1px;"><span style="color:#000; font-weight:900; font-size:${Math.max(8, Math.round(baseSize * 0.36))}px; line-height:1;">${g.cantidad}</span></div>
-          </div>`,
-        iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2],
-      });
-    }
+    // Mismo lenguaje que los marcadores sueltos: el medio tramo va amarillo con borde
+    // blanco; el resto, del color del día con borde blanco. Solo cambia el número.
+    const relleno = esMedioTramo ? '#facc15' : color;
+    const tinta = esMedioTramo ? '#000' : '#fff';
     return L.divIcon({
       className: 'grupo-icon',
-      html: `<div style="width:${baseSize}px; height:${baseSize}px; background:${color}; border:2px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center;">
-          <span style="color:white; font-weight:900; font-size:${fuente}px; line-height:1;">${g.cantidad}</span>
+      html: `<div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${relleno}; border:2px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+          <span style="color:${tinta}; font-weight:900; font-size:${fuente}px; line-height:1;">${g.cantidad}</span>
         </div>`,
       iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2],
     });
@@ -936,8 +925,9 @@ export const MapaReal = ({
           const isCajaEquipo = !isMedioTramo && ['mufa', 'xbox', 'hbox', 'fat'].some(x => tiposArr.includes(x));
           const isBorrador = p.datos?.estado === 'borrador'; // punto sin terminar (aún no confirmado)
           // Reducción de tamaño por forma, en "toques de lupa" (cada toque = 0.2):
-          // cuadrado −2, triángulo −1, círculo −1.
-          const reduccionForma = isCajaEquipo ? 0.4 : 0.2;
+          // Antes el cuadrado se dibujaba más chico que el círculo; ahora son todos
+          // círculos, así que la excepción perdió sentido y miden todos igual.
+          const reduccionForma = 0.2;
           const multForma = Math.max(0.4, iconSize - reduccionForma);
           const baseSize = (isEnOrden ? 30 : 24) * multForma;
           const bg = enAjuste ? '#f59e0b' : ancladoAFibra ? '#16a34a' : marcaCorr > 0 ? '#ea580c' : isEnOrden ? '#16a34a' : (isEnSeleccion ? '#a855f7' : colorDia);
@@ -965,41 +955,40 @@ export const MapaReal = ({
           })();
           let customIcon;
           if (isMedioTramo) {
-            // Medio tramo: triángulo SIEMPRE amarillo (sin importar el día). El borde refleja selección/orden.
-            const half = baseSize / 2;
-            const t = Math.max(2, Math.round(baseSize * 0.16));
-            const outline = enAjuste ? '#b45309' : ancladoAFibra ? '#15803d' : marcaCorr > 0 ? '#9a3412'
-              : isEnOrden ? '#15803d' : isEnSeleccion ? '#7c3aed' : (isInRecorrido || isSelected) ? '#ea580c' : '#1e293b';
-            // El relleno amarillo se sustituye para que el estado se vea de lejos
+            // Medio tramo: círculo SIEMPRE amarillo, con borde y punto blancos. Antes era
+            // un triángulo; se pasó a círculo para que el mapa tenga una sola geometría
+            // (más rápido de dibujar) sin perder de vista qué es cada cosa: el amarillo
+            // lo distingue. El color solo se sustituye para señalar ESTADO de trabajo.
+            const dot = Math.max(4, Math.round(baseSize * 0.28));
             const rellenoMT = enAjuste ? '#f59e0b' : ancladoAFibra ? '#16a34a' : marcaCorr > 0 ? '#ea580c'
-              : simbologiaActiva ? colorDia : '#facc15';
+              : '#facc15';
+            const bordeMT = isEnOrden ? '3px solid #15803d' : isEnSeleccion ? '3px solid #7c3aed'
+              : (isInRecorrido || isSelected) ? '3px solid #ea580c' : '2px solid #fff';
             customIcon = L.divIcon({
               className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
-              html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px;">
+              html: `<div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${rellenoMT}; border:${bordeMT}; border-radius:50%; display:flex; align-items:center; justify-content:center;">
                           ${labelHtml}
-                          <div style="position:absolute; left:0; bottom:0; width:0; height:0; border-left:${half}px solid transparent; border-right:${half}px solid transparent; border-bottom:${baseSize}px solid ${outline};"></div>
-                          <div style="position:absolute; left:${t}px; bottom:${Math.round(t * 0.6)}px; width:0; height:0; border-left:${half - t}px solid transparent; border-right:${half - t}px solid transparent; border-bottom:${baseSize - Math.round(t * 1.8)}px solid ${rellenoMT};"></div>
-                          ${isEnOrden ? `<div style="position:absolute; left:0; bottom:0; width:${baseSize}px; height:${baseSize}px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:1px;"><span style="color:#000; font-weight:900; font-size:${Math.max(8, Math.round(baseSize * 0.36))}px; line-height:1;">${posOrden}</span></div>` : ''}
+                          ${isEnOrden
+                            ? `<span style="color:#000; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.45))}px; line-height:1;">${posOrden}</span>`
+                            : `<div style="width:${dot}px; height:${dot}px; background:#fff; border-radius:50%;"></div>`}
                         </div>`,
               iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
             });
           } else if (isCajaEquipo) {
-            // Mufa/Xbox/Hbox/Fat: cuadrado SIEMPRE rojo con borde y punto negro (sin importar el día).
-            const bw = Math.max(2, Math.round(baseSize * 0.14));
+            // Mufa/Xbox/Hbox/Fat: círculo del COLOR DEL DÍA, como los postes, con borde y
+            // punto negros. Antes era un cuadrado verde; lo distingue el punto negro.
             const dot = Math.max(4, Math.round(baseSize * 0.28));
-            const ring = enAjuste ? '#b45309' : ancladoAFibra ? '#15803d' : marcaCorr > 0 ? '#9a3412'
-              : isEnOrden ? '#15803d' : isEnSeleccion ? '#a855f7' : (isInRecorrido || isSelected) ? '#f97316' : null;
-            const rellenoCaja = enAjuste ? '#f59e0b' : marcaCorr > 0 ? '#ea580c'
-              : simbologiaActiva ? colorDia : '#22c55e';
+            const rellenoCaja = enAjuste ? '#f59e0b' : ancladoAFibra ? '#16a34a' : marcaCorr > 0 ? '#ea580c'
+              : isEnSeleccion ? '#a855f7' : colorDia;
+            const bordeCaja = isEnOrden ? '3px solid #15803d'
+              : (isInRecorrido || isSelected) ? '3px solid #f97316' : '2px solid #000';
             customIcon = L.divIcon({
               className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
-              html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px; display:flex; align-items:center; justify-content:center;">
+              html: `<div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${rellenoCaja}; border:${bordeCaja}; border-radius:50%; display:flex; align-items:center; justify-content:center;">
                           ${labelHtml}
-                          <div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${rellenoCaja}; border:${bw}px solid #000;${ring ? ` box-shadow:0 0 0 3px ${ring};` : ''} display:flex; align-items:center; justify-content:center;">
-                            ${isEnOrden
-                              ? `<span style="color:#fff; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.45))}px; line-height:1; text-shadow:0 1px 2px #000;">${posOrden}</span>`
-                              : `<div style="width:${dot}px; height:${dot}px; background:#000; border-radius:50%;"></div>`}
-                          </div>
+                          ${isEnOrden
+                            ? `<span style="color:#fff; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.45))}px; line-height:1; text-shadow:0 1px 2px #000;">${posOrden}</span>`
+                            : `<div style="width:${dot}px; height:${dot}px; background:#000; border-radius:50%;"></div>`}
                         </div>`,
               iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
             });
