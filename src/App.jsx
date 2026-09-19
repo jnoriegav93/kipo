@@ -588,6 +588,12 @@ function App() {
       .map(p => p.id);
   }, [retomarOrden, todosLosPuntos, proyOrdenar]);
 
+  // Avance de las tareas largas que bloquean la app: copiar o mover puntos a otro
+  // proyecto, y guardar el orden de las posiciones. Mientras no sea null,
+  // PantallaMigracion tapa todo. Se declara ACÁ ARRIBA porque el guardado de
+  // posiciones, que está justo debajo, lo necesita.
+  const [migracion, setMigracion] = React.useState(null);
+
   const guardarOrdenTendido = React.useCallback(() => {
     if (guardandoOrden || !proyOrdenar?.id) return;
     const ptsProy = todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar));
@@ -600,12 +606,18 @@ function App() {
     });
     const guardar = async () => {
       setGuardandoOrden(true);
+      // Se bloquea la pantalla: son muchas escrituras, una por punto, y tocar algo a
+      // mitad dejaría el orden hecho a medias.
+      const total = orden.length + sinPosicion.length;
+      setMigracion({ modo: 'orden', etapa: 'datos', hechos: 0, total, destino: proyOrdenar?.nombre || '' });
       try {
         for (let i = 0; i < orden.length; i++) {
           await fbUpdateDoc(doc(db, 'puntos', String(orden[i])), { 'datos.ordenTendido': i + 1 });
+          setMigracion(m => (m ? { ...m, hechos: i + 1 } : m));
         }
-        for (const id of sinPosicion) {
-          await fbUpdateDoc(doc(db, 'puntos', String(id)), { 'datos.ordenTendido': deleteField() });
+        for (let j = 0; j < sinPosicion.length; j++) {
+          await fbUpdateDoc(doc(db, 'puntos', String(sinPosicion[j])), { 'datos.ordenTendido': deleteField() });
+          setMigracion(m => (m ? { ...m, hechos: orden.length + j + 1 } : m));
         }
         const posicion = new Map(orden.map((id, i) => [String(id), i + 1]));
         const quitar = new Set(sinPosicion.map(String));
@@ -629,6 +641,7 @@ function App() {
         setAlertData({ title: 'Error', message: 'No se pudo guardar el orden.' });
       } finally {
         setGuardandoOrden(false);
+        setMigracion(null);   // se quita siempre, termine bien o mal
       }
     };
     if (sinPosicion.length === 0) { guardar(); return; }
@@ -641,16 +654,13 @@ function App() {
       theme,
       onConfirm: () => { setConfirmData(null); guardar(); },
     });
-  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, prefijoOrden, modoCorregir, ordenTrabajo, movidosCorreccion, limpiarCorreccion, setPuntos, setModalPendiente, setVista, setAlertData, setConfirmData, theme]);
+  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, prefijoOrden, modoCorregir, ordenTrabajo, movidosCorreccion, limpiarCorreccion, setPuntos, setMigracion, setModalPendiente, setVista, setAlertData, setConfirmData, theme]);
 
   // Corrigiendo, el mapa numera solo lo que va a quedar con posición: lo que ya la tenía y
   // lo que se movió. Lo demás se ve en blanco, igual que después de guardar.
   const ordenTrabajoVisible = React.useMemo(() => (modoCorregir
     ? posicionesAGuardar({ puntos: todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar)), ordenTrabajo, movidos: movidosCorreccion }).orden
     : ordenTrabajo), [modoCorregir, ordenTrabajo, movidosCorreccion, todosLosPuntos, proyOrdenar]);
-
-  // Avance de copiar/cortar puntos: mientras no es null, PantallaMigracion bloquea la app
-  const [migracion, setMigracion] = React.useState(null);
 
   // Copiar o cortar puntos seleccionados hacia un proyecto destino (existente o nuevo).
   // modo: 'copiar' (duplica, deja originales) | 'cortar' (reasigna, los saca del origen).
