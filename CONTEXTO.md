@@ -274,8 +274,9 @@ en el cable y en qué medio tramo.
   salga rotulado "CABLE DE ACERO". En la **hoja del ramal**, sus metros se suman al final
   de FERRETERÍA DEL RAMAL en negrita. En el **RESUMEN** ya **no hay tabla aparte**: sus
   filas van dentro de FERRETERÍA UTILIZADA, al final y en negrita (decidido con el
-  usuario el 19/09). **Ojo: esos metros entran en TOTAL DE PIEZAS**, así que ese total
-  mezcla piezas con metros; se eligió a cambio de tenerlo todo en una sola tabla.
+  usuario el 19/09). Metidos ahí, el TOTAL DE PIEZAS habría sumado piezas con metros, así
+  que **se quitaron las filas de total de FERRETERÍA UTILIZADA y de ARMADOS UTILIZADOS**.
+  Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
 - **Ciclo de vida.** Borrar uno de sus dos postes borra el cable (papelera tipo

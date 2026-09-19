@@ -1700,14 +1700,17 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       cMT2.font = { bold: true, size: 10 }; cMT2.alignment = { horizontal: "center" }; cMT2.border = B;
 
       // El cable de acero va DENTRO de la ferretería (decidido con el usuario), al final
-      // y en negrita, en vez de en una tabla aparte. Sus metros entran en TOTAL DE
-      // PIEZAS: ese total mezcla piezas con metros, a cambio de tenerlo todo junto.
+      // y en negrita, en vez de en una tabla aparte. Por eso esa tabla ya no lleva fila
+      // de total: habría sumado piezas con metros.
       Object.entries(totAceroP)
         .sort((a, b) => String(nomF(a[0])).localeCompare(String(nomF(b[0]))))
         .forEach(([id, m]) => paresF.push([`${nomF(id)} (m)`, m, true]));
 
-      const finFerr = tabla(filaTablas, 4, 2, "FERRETERÍA UTILIZADA", "FF1F4E78", paresF, "TOTAL DE PIEZAS");
-      const finArm = tabla(filaTablas, 7, 2, "ARMADOS UTILIZADOS", "FFB45309", paresA, "TOTAL DE ARMADOS");
+      // Sin fila de total: la de ferretería sumaba piezas con los metros de cable, y la
+      // de armados no aportaba nada. Los totales que sí valen (postes y metros de fibra)
+      // se quedan donde están.
+      const finFerr = tabla(filaTablas, 4, 2, "FERRETERÍA UTILIZADA", "FF1F4E78", paresF);
+      const finArm = tabla(filaTablas, 7, 2, "ARMADOS UTILIZADOS", "FFB45309", paresA);
 
       // ── Sección 2: fibra óptica ────────────────────────────────────────────
       // Primero el consolidado por capacidad y debajo el detalle ramal por ramal.
