@@ -2188,6 +2188,9 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
       });
       setEstadosOverride(prev => ({ ...prev, [p.id]: null }));
       setDirty(false);
+      // Guardado el punto, la lista se acomoda sola: lo que tiene cantidad sube arriba,
+      // igual que con ORDENAR. Se apaga sola al pasar al siguiente punto.
+      setSubirActivas(true);
       ok = true;
       if (!silent) setAlertData?.({ title: 'Actualizado', message: `Ferretería del punto ${p.datos?.numero || ''} guardada.` });
     } catch (e) { console.error(e); setAlertData?.({ title: 'Error', message: 'No se pudo guardar.' }); }
@@ -2200,6 +2203,9 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     const habiaCambios = dirty;
     if (dirty) { const ok = await guardarPuntoFerr(true); if (!ok) return; }
     marcarEstado('aprobado', habiaCambios);
+    // Aprobando un punto SIN cambios no se pasa por el guardado, así que el orden se
+    // enciende acá también: el ✓ ordena siempre, haya o no algo que guardar.
+    setSubirActivas(true);
   };
 
   React.useEffect(() => {
