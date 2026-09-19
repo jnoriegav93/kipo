@@ -4,18 +4,20 @@
 // visible), así que a cierta distancia los que caen juntos se muestran como una
 // burbuja con su cantidad.
 //
-// Umbrales elegidos por el usuario mirando el zoom en pantalla:
-//   17 o más cerca → nada se agrupa, y las etiquetas quedan como estén
-//   16             → se ocultan las etiquetas y se agrupa de a 2
-//   15             → de a 2
-//   14, 13 y más lejos → de a 3
+// Umbrales elegidos por el usuario mirando el zoom en pantalla: cada nivel que se
+// aleja junta uno más.
+//   18 o más cerca → nada se agrupa
+//   17             → de a 2
+//   16             → de a 3   (y aquí además se ocultan las etiquetas)
+//   15             → de a 4
+//   14             → de a 5, y así sucesivamente
 //
-// El tope es deliberadamente chico: la idea no es esconder el levantamiento, es
-// aliviar la pantalla sin perder la noción de cuántos postes hay.
+// O sea: el tope crece uno por nivel. No se le pone techo a propósito; el freno real
+// lo da la celda, porque solo se juntan los que están pegados en la pantalla.
 //
 // Todo esto es geometría pura, sin Leaflet ni React, para poder probarlo con Node.
 
-export const SIN_AGRUPAR_DESDE = 17;
+export const SIN_AGRUPAR_DESDE = 18;
 export const OCULTAR_ETIQUETAS_DESDE = 16;
 // Lado de la celda en píxeles: más o menos la yema de un dedo. Dos puntos que caen
 // en la misma celda están, en la pantalla, uno encima del otro.
@@ -27,8 +29,8 @@ const zoomEntero = (zoom) => Math.round(typeof zoom === 'number' && !Number.isNa
 export const maxDelGrupo = (zoom) => {
   const z = zoomEntero(zoom);
   if (z >= SIN_AGRUPAR_DESDE) return 1;
-  if (z >= 15) return 2;
-  return 3;
+  // 17 junta 2, 16 junta 3, 15 junta 4... uno más por cada nivel que se aleja
+  return SIN_AGRUPAR_DESDE + 1 - z;
 };
 
 // Las etiquetas (ítem y pasivo) se esconden de lejos aunque estén encendidas: a esa

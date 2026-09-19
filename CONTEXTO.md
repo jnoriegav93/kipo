@@ -653,15 +653,23 @@ Plan acordado con el usuario, por fases:
 4. **Hecho:** **etiquetas ocultas por zoom** (16 o más lejos), con un aviso de que están
    activas pero ocultas, para que nadie las dé por apagadas. Falta la otra mitad: el
    símbolo simplificado a la distancia.
-5. **Hecho:** **agrupar por cercanía**, en `src/utils/agruparPuntos.js` (puro, 27 casos
-   en Node). Umbrales que eligió el usuario mirando el zoom en pantalla: **17 o más
-   cerca no se agrupa; 16 y 15 de a 2; 14, 13 y más lejos de a 3**. La burbuja muestra
-   **solo la cantidad**, conserva la **forma de su clase** (redonda los postes, rombo
-   los medios tramos, cuadrada las cámaras) y **nunca mezcla clases**. Tocarla acerca el
-   mapa. Lo que está en juego jamás se agrupa: el seleccionado, el resaltado, el trazo
-   en curso, los marcados para mover, ordenar o corregir, y las puntas del cable de
-   acero. Probado sobre el mapa real con 17 casos en Chrome, que verifican además que
-   **no se pierda ni se repita ningún punto** en ningún zoom.
+5. **Hecho:** **agrupar por cercanía**, en `src/utils/agruparPuntos.js` (puro, 29 casos
+   en Node). Umbrales que eligió el usuario mirando el zoom en pantalla, **uno más por
+   cada nivel que se aleja**: 18 o más cerca no se agrupa, **17 junta 2, 16 junta 3, 15
+   junta 4**, y así. No se le puso techo: el freno real lo da la celda, porque solo se
+   juntan los que están pegados en la pantalla.
+
+   La burbuja se ve **igual que un marcador suelto** —mismo tamaño y mismo color del
+   día, con la cantidad dentro—; el medio tramo conserva su triángulo amarillo. Fue una
+   corrección del usuario: la primera versión los pintaba negros y más grandes, y el
+   mapa cambiaba de aspecto al alejarse. **Nunca mezcla clases** (postes, medios tramos
+   y cámaras van por separado) y tocarla acerca el mapa.
+
+   Lo que está en juego jamás se agrupa: el seleccionado, el resaltado, el trazo en
+   curso, los marcados para mover, ordenar o corregir, y las puntas del cable de acero.
+   Y agrupar afecta **solo al dibujo**: el arrastre y el imantado siguen recibiendo la
+   lista completa. Probado sobre el mapa real con 25 casos en Chrome, que verifican
+   además que **no se pierda ni se repita ningún punto** en ningún zoom.
 
 El lienzo (canvas) queda para el final y solo si hace falta: los círculos salen casi
 gratis, pero triángulos, cuadrados y globitos habría que dibujarlos a mano. Sin decidir:

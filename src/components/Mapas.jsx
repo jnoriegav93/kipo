@@ -428,23 +428,42 @@ export const MapaReal = ({
   }, [puntosVisiblesMapa, zoomActual, claseDePunto, puntoSeleccionado, puntoResaltado,
     puntosRecorrido, puntosSeleccionadosMover, ordenSeleccion, correccionSel, trazoAcero]);
 
-  // La burbuja conserva la FORMA de su clase, para no perder de un vistazo qué son:
-  // redonda los postes, triangular los medios tramos, cuadrada las cámaras.
+  // La burbuja se ve IGUAL que un marcador suelto —mismo tamaño, misma forma y mismo
+  // color que tendría ese punto— y solo cambia que lleva el número adentro. Así, al
+  // alejarse, el mapa no cambia de aspecto: solo aparecen números.
   const iconoGrupo = React.useCallback((g) => {
-    const lado = Math.round(30 * Math.max(0.6, iconSize));
-    const fuente = Math.max(11, Math.round(lado * 0.46));
-    const forma = g.clase === 'medioTramo'
-      ? 'border-radius:14%; transform:rotate(45deg);'
-      : g.clase === 'camara' ? 'border-radius:12%;' : 'border-radius:50%;';
-    const enderezar = g.clase === 'medioTramo' ? 'transform:rotate(-45deg);' : '';
+    const primero = g.puntos[0];
+    const esMedioTramo = g.clase === 'medioTramo';
+    // Mismas cuentas que el marcador suelto, para que midan exactamente lo mismo
+    const baseSize = 24 * Math.max(0.4, iconSize - 0.2);
+    const fuente = Math.max(9, Math.round(baseSize * 0.5));
+    const color = simbologiaActiva
+      ? (coloresArmado[primero?.datos?.armadoSeleccionadoId] || '#9ca3af')
+      : obtenerColorDia(primero?.diaId);
+
+    if (esMedioTramo) {
+      // Triángulo amarillo, como el medio tramo suelto, con la cantidad abajo
+      const half = baseSize / 2;
+      const t = Math.max(2, Math.round(baseSize * 0.16));
+      const relleno = simbologiaActiva ? color : '#facc15';
+      return L.divIcon({
+        className: 'grupo-icon',
+        html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px;">
+            <div style="position:absolute; left:0; bottom:0; width:0; height:0; border-left:${half}px solid transparent; border-right:${half}px solid transparent; border-bottom:${baseSize}px solid #1e293b;"></div>
+            <div style="position:absolute; left:${t}px; bottom:${Math.round(t * 0.6)}px; width:0; height:0; border-left:${half - t}px solid transparent; border-right:${half - t}px solid transparent; border-bottom:${baseSize - Math.round(t * 1.8)}px solid ${relleno};"></div>
+            <div style="position:absolute; left:0; bottom:0; width:${baseSize}px; height:${baseSize}px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:1px;"><span style="color:#000; font-weight:900; font-size:${Math.max(8, Math.round(baseSize * 0.36))}px; line-height:1;">${g.cantidad}</span></div>
+          </div>`,
+        iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2],
+      });
+    }
     return L.divIcon({
       className: 'grupo-icon',
-      html: `<div style="width:${lado}px; height:${lado}px; ${forma} background:#1e293b; border:2px solid #fff; display:flex; align-items:center; justify-content:center;">
-          <span style="${enderezar} color:#fff; font-weight:900; font-size:${fuente}px; line-height:1;">${g.cantidad}</span>
+      html: `<div style="width:${baseSize}px; height:${baseSize}px; background:${color}; border:2px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+          <span style="color:white; font-weight:900; font-size:${fuente}px; line-height:1;">${g.cantidad}</span>
         </div>`,
-      iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2],
+      iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2],
     });
-  }, [iconSize]);
+  }, [iconSize, simbologiaActiva, coloresArmado, obtenerColorDia]);
 
   // Tocar una burbuja acerca el mapa: es la forma de "abrirla" sin inventar gestos.
   const acercarAGrupo = React.useCallback((e, g) => {
