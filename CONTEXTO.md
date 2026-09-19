@@ -486,6 +486,16 @@ Tailwind no ve las que se arman con plantillas.
   distinto de lo que iba a producción: 50+22+33 = **105%**. Verificar el archivo real, no
   solo la maqueta.
 
+**La lista se ordena sola al guardar y al aprobar (19/09).** Antes solo se acomodaba con
+el botón **ORDENAR**; ahora **ACTUALIZAR** y el **✓ verde** encienden el mismo orden, que
+sube arriba la ferretería con cantidad. Va dentro de `guardarPuntoFerr` y de `aprobar`, no
+en los botones: `aprobar` solo pasa por el guardado **si hay cambios**, así que aprobando
+un punto ya guardado no se ordenaría. Se sigue apagando solo al pasar al siguiente punto
+(el efecto que reinicia `subirActivas` con `idx`). Esto **no lleva prueba de pantalla**: el
+modal depende de Firestore y el harness apunta a un emulador que no existe, donde un
+`await updateDoc` no resuelve; el mecanismo que ordena es el del botón ORDENAR, ya en uso.
+En producción desde el 19/09/26 (**SELLO: 19/09/26, 14:04**).
+
 El reparto se calcula sobre el ancho **interior** del modal: está topado en `max-w-6xl`
 (1152 px) y el borde descuenta 4, o sea 1148 px reales. Probado en Chrome con
 `harness-diseno/revision3col.html`, fuera de git (14 comprobaciones: el reparto, los
