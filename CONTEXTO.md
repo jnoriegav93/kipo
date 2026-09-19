@@ -4,7 +4,7 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 17 de septiembre de 2026.
+Última actualización: 19 de septiembre de 2026.
 
 > **Ahora:** el modo Diseño quedó en pausa el 14/09 para agregar el **cable de
 > acero** a la sección FIBRA. Ver la sección "Cable de acero" más abajo.
@@ -270,6 +270,18 @@ en el cable y en qué medio tramo.
   Copiar/cortar puntos los lleva si van sus dos postes; al copiar, el medio tramo y las
   fibras pasan a las copias si también van. Borrar proyecto (lista, equipos, admin)
   los incluye. Salir de un equipo los copia con postes, medio tramo y fibras remapeados.
+- **Elegirlo desde el mapa (19/09).** Con la barra de acero abierta y **sin estar
+  trazando**, tocar la línea del cable lo elige, igual que tocarlo en la lista; tocarlo
+  otra vez lo suelta. La línea visible es fina, así que el dedo lo recibe una polilínea
+  invisible de 22 px encima, el mismo recurso que ya usaban las fibras al trazar acero.
+  Mientras se traza y fuera del modo acero la línea no responde: ahí cada toque es del
+  dibujo (postes, fibras apoyadas, medio tramo) y no debe significar dos cosas. La barra
+  suma un botón **EDITAR**, porque el que ya existía vive dentro de la fila desplegada
+  de la lista y eligiendo el cable en el mapa no había por dónde llegar a editarlo.
+- **La lista muestra los apoyos (19/09).** Cada cable lista las **fibras que se apoyan
+  en él** (con el color de su capacidad) y el **medio tramo donde se apoyan**. El cable
+  guarda solo ids: `lineasAcero` (App.jsx) los resuelve en `fibrasInfo` y
+  `numeroMedioTramo`. Una fibra borrada simplemente deja de aparecer.
 - **Despliegue.** La primera versión (tipos por catálogo, sin fibras ni medio tramo)
   quedó en producción el 14/09/26 (**SELLO: 14/09/26, 16:00**). **Lo del 15/09 está en
   producción desde el 15/09/26**: tipos fijos, fibras apoyadas, medio tramo, el cable
@@ -280,7 +292,10 @@ en el cable y en qué medio tramo.
   ferretería sugerida por los cables de acero. Y luego (**SELLO: 15/09/26, 02:32**) la
   corrección del guardado sin día elegido en el mapa. Y el 16/09/26 (**SELLO: 16/09/26,
   18:24**): guardar un cable solo con sus dos postes, con las fibras y el medio tramo
-  como opcionales.
+  como opcionales. Y el 19/09/26 (**SELLO: 19/09/26, 00:33**): elegir el cable tocando
+  su línea en el mapa, el botón EDITAR en la barra y los apoyos en la lista. Probado en
+  el harness de acero con 12 comprobaciones (elegir, soltar, no crear punto al tocar, la
+  lista, EDITAR desde el mapa, y las dos situaciones en que la línea no debe responder).
 
 Probado con Node (23 casos: metros, tipos, trazo, apoyos y reparto por poste) y la
 copia del servidor contra el cliente; con lint (ningún error nuevo en los 22 archivos
