@@ -645,11 +645,24 @@ Plan acordado con el usuario, por fases:
 1. **Hecho:** fuera las sombras de los tres marcadores masivos (el `drop-shadow` del
    triángulo era el peor, por ser un filtro). Se conservó el **anillo** del cuadrado,
    que es información de selección y no decoración.
-2. **Pendiente:** memorizar los íconos para que no se reconstruyan en cada redibujo.
-   Exige sacar el marcador a su propio componente.
-3. **Pendiente:** dibujar solo lo visible, con margen y **lista de excepciones** que se
-   dibujan siempre (el seleccionado, el temporal, el resaltado, los del trazo en curso,
-   el que se arrastra), o se rompen esas interacciones.
+2. **DESCARTADA**, y conviene no volver a intentarla tal cual. Memorizar los íconos
+   exigía sacar el marcador a su propio componente, pero cada uno depende de **trece
+   cosas** que se calculan dentro del bucle (`previewAjuste`, `apoyadosAjuste`,
+   `correccionSel`, `prefijoOrden`, `ordenSeleccion`, `ordenTrabajo`,
+   `puntosSeleccionadosMover`, `trazoAcero`, `postesEnFibra`, `puntosRecorrido`,
+   `coloresArmado`, `etiquetasVisibles`, `iconSize`). Varias son arreglos y conjuntos
+   que **se crean nuevos en cada render**, así que la comparación de `React.memo`
+   fallaría siempre y saldría más caro que hoy. Estabilizarlas es reescribir el
+   componente entero, con riesgo en los modos de ordenar, corregir, ajustar y acero.
+   La fase 3 ataca el mismo síntoma sin tocar nada de eso.
+3. **Hecho:** dibujar solo lo visible. `recortarAlEncuadre` descarta los puntos fuera
+   del encuadre con un **margen del 60%** a cada lado, para que ya estén dibujados antes
+   de asomar y no aparezcan de golpe al desplazar. El encuadre lo informa `MapController`
+   al terminar cada movimiento (`moveend`), no en cada cuadro: recortar mientras el dedo
+   arrastra sería peor que no recortar. La **lista de excepciones** se dibuja siempre,
+   esté donde esté: el seleccionado, el resaltado, el trazo en curso, los marcados para
+   mover, ordenar o corregir, y las puntas del cable de acero. Sin eso se rompen cosas
+   que dan por hecho que el marcador existe, como arrastrar uno que se salió del borde.
 4. **Hecho:** **etiquetas ocultas por zoom** (16 o más lejos), con un aviso de que están
    activas pero ocultas, para que nadie las dé por apagadas. Falta la otra mitad: el
    símbolo simplificado a la distancia.

@@ -52,6 +52,37 @@ export const aPixeles = (coords, zoom) => {
 
 const coordsDe = (p) => (p?.coords?.lat != null ? p.coords : (p?.lat != null ? p : null));
 
+// ── Dibujar solo lo que entra en pantalla ─────────────────────────────────────
+// Hoy se dibuja un elemento por cada punto que pasa el filtro de días, aunque esté
+// lejísimos del encuadre. Con mil puntos, mover el mapa obliga a recolocarlos a
+// todos. Esto deja fuera a los que no se ven, con un MARGEN alrededor para que ya
+// estén dibujados antes de asomar: a ojo no se nota.
+//
+// El margen va en grados y se calcula desde el propio encuadre, así que se adapta
+// solo al zoom: al alejarse, el recuadro es más grande y el margen también.
+export const MARGEN = 0.6; // 60% del alto y del ancho de lo que se ve, a cada lado
+
+export const dentroDelEncuadre = (coords, encuadre, margen = MARGEN) => {
+  if (!encuadre || !coords) return true;   // sin encuadre no se recorta nada
+  const { norte, sur, este, oeste } = encuadre;
+  if ([norte, sur, este, oeste].some(v => typeof v !== 'number')) return true;
+  const altoExtra = Math.abs(norte - sur) * margen;
+  const anchoExtra = Math.abs(este - oeste) * margen;
+  return coords.lat >= sur - altoExtra && coords.lat <= norte + altoExtra
+    && coords.lng >= oeste - anchoExtra && coords.lng <= este + anchoExtra;
+};
+
+// Los que se dibujan: lo que entra en el encuadre ampliado, MÁS los que están en
+// juego, que van siempre aunque queden lejos. Sin eso se rompen cosas que dan por
+// hecho que el marcador existe: arrastrar uno que se salió del borde, el resaltado
+// que llega desde REVISIÓN, el trazo en curso.
+export const recortarAlEncuadre = (puntos = [], encuadre, opciones = {}) => {
+  const { siempre = new Set(), margen = MARGEN } = opciones;
+  if (!encuadre) return [...puntos];
+  return puntos.filter(p =>
+    siempre.has(String(p?.id)) || dentroDelEncuadre(coordsDe(p), encuadre, margen));
+};
+
 // Devuelve { sueltos, grupos }. Los sueltos se dibujan como siempre; cada grupo es una
 // burbuja con la cantidad, y NUNCA mezcla clases: los postes con los postes, los medios
 // tramos con los medios tramos, las cámaras con las cámaras.

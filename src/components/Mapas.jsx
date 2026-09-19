@@ -8,7 +8,7 @@ import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
 import { exigeNorte, anguloEtiquetaFibra, gestoDosDedos } from '../utils/giroMapa';
 import { instalarGiro } from '../utils/giroLeaflet';
-import { agruparPuntos, ocultaEtiquetas } from '../utils/agruparPuntos';
+import { agruparPuntos, ocultaEtiquetas, recortarAlEncuadre } from '../utils/agruparPuntos';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -198,7 +198,15 @@ const MapController = ({ gpsTrigger, miUbicacion, setViewState, handleMapaClick,
 
   useMapEvents({
     moveend: () => {
-      if (setViewState) setViewState({ center: map.getCenter(), zoom: map.getZoom() });
+      // Se avisa también del ENCUADRE, que es lo que permite dibujar solo los puntos
+      // que se ven. Va aquí y no en cada cuadro del movimiento: recortar mientras el
+      // dedo arrastra sería peor que no recortar.
+      const b = map.getBounds();
+      if (setViewState) setViewState({
+        center: map.getCenter(),
+        zoom: map.getZoom(),
+        encuadre: { norte: b.getNorth(), sur: b.getSouth(), este: b.getEast(), oeste: b.getWest() },
+      });
     },
     // Ya no hace falta corregir la coordenada: Leaflet conoce el ángulo
     click: (e) => handleMapaClick(e)
@@ -417,6 +425,9 @@ export const MapaReal = ({
     return 'poste';
   }, []);
 
+  // Se saca a una variable: dentro del useMemo, una expresión con ?. no la puede
+  // seguir el compilador de React y desarma la memorización.
+  const encuadreActual = viewState?.encuadre;
   const { sueltos: puntosSueltos, grupos: gruposPuntos } = React.useMemo(() => {
     const enJuego = new Set([
       puntoSeleccionado, puntoResaltado,
@@ -424,8 +435,11 @@ export const MapaReal = ({
       ...puntosSeleccionadosMover, ...ordenSeleccion, ...correccionSel,
       ...(trazoAcero?.postes || []), trazoAcero?.medioTramo,
     ].filter(Boolean).map(String));
-    return agruparPuntos(puntosVisiblesMapa, zoomActual, { claseDe: claseDePunto, siempreSolos: enJuego });
-  }, [puntosVisiblesMapa, zoomActual, claseDePunto, puntoSeleccionado, puntoResaltado,
+    // Primero se descarta lo que no se ve —con margen, para que nada aparezca de
+    // golpe al desplazar— y recién después se agrupa lo que queda.
+    const aDibujar = recortarAlEncuadre(puntosVisiblesMapa, encuadreActual, { siempre: enJuego });
+    return agruparPuntos(aDibujar, zoomActual, { claseDe: claseDePunto, siempreSolos: enJuego });
+  }, [puntosVisiblesMapa, encuadreActual, zoomActual, claseDePunto, puntoSeleccionado, puntoResaltado,
     puntosRecorrido, puntosSeleccionadosMover, ordenSeleccion, correccionSel, trazoAcero]);
 
   // La burbuja se ve IGUAL que un marcador suelto —mismo tamaño, misma forma y mismo
