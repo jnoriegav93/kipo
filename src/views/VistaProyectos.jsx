@@ -11,6 +11,7 @@ import { MiniMapaRevision } from '../components/Mapas';
 import useIsDesktop from '../hooks/useIsDesktop';
 import { compartirODescargar, perteneceAProyecto } from '../utils/helpers';
 import { metrosPorItem, esMedioTramo, fibrasApoyadasEn, quitarCableAcero, sugeridasPorAcero } from '../utils/cablesAcero';
+import { claseCasilla, faltaTipoPoste } from '../utils/grillaPosiciones';
 import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
 import BloqueoHerramienta from '../components/BloqueoHerramienta';
 import { equiposDePunto } from '../utils/equiposPasivos';
@@ -2673,15 +2674,15 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                   <div className="flex-1 overflow-y-auto p-3">
                     <div className="grid grid-cols-5 gap-2">
                       {ptsOrd.map((p, i) => {
-                        const est = estadoDe(p);
-                        const faltaTipo = !p?.datos?.tipoPoste;
-                        const cls = est === 'aprobado' ? 'bg-green-500 text-white border-green-600'
-                          : est === 'desaprobado' ? 'bg-red-500 text-white border-red-600'
-                          : `${theme.bg} ${theme.text} ${theme.border}`;
+                        // Arriba el ITEM, grande; debajo la posición. El fondo dice qué es,
+                        // pero solo una vez aprobado; sin revisar va blanco y desaprobado
+                        // rojo (`utils/grillaPosiciones`).
+                        const cls = claseCasilla(p?.datos, estadoDe(p));
+                        const faltaTipo = faltaTipoPoste(p?.datos);
                         return (
                           <button key={p.id} onClick={() => irAIndice(i)} className={`relative h-14 rounded-lg border-2 flex flex-col items-center justify-center leading-none px-1 active:scale-95 ${cls} ${i === idx ? 'ring-2 ring-brand-500 ring-offset-1' : ''}`}>
-                            <span className="text-base font-black">{i + 1}</span>
-                            <span className="text-[10px] font-bold opacity-80 truncate max-w-full">{p?.datos?.numero || '—'}</span>
+                            <span className="text-base font-black truncate max-w-full">{p?.datos?.numero || '—'}</span>
+                            <span className="text-[10px] font-bold opacity-80">{i + 1}</span>
                             {faltaTipo && <span className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 rounded-full bg-orange-500 border-2 border-white shadow" title="Sin tipo de poste" />}
                           </button>
                         );
@@ -3072,15 +3073,13 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
               <div className="flex-1 overflow-y-auto p-3">
                 <div className="grid grid-cols-5 gap-2">
                   {ptsOrd.map((p, i) => {
-                    const est = estadoDe(p);
-                    const faltaTipo = !p?.datos?.tipoPoste;
-                    const cls = est === 'aprobado' ? 'bg-green-500 text-white border-green-600'
-                      : est === 'desaprobado' ? 'bg-red-500 text-white border-red-600'
-                      : `${theme.bg} ${theme.text} ${theme.border}`;
+                    // Igual que la grilla del modal FERRETERÍA: mismo código, misma pinta.
+                    const cls = claseCasilla(p?.datos, estadoDe(p));
+                    const faltaTipo = faltaTipoPoste(p?.datos);
                     return (
                       <button key={p.id} onClick={() => irAIndice(i)} className={`relative h-14 rounded-lg border-2 flex flex-col items-center justify-center leading-none px-1 active:scale-95 ${cls} ${i === idx ? 'ring-2 ring-brand-500 ring-offset-1' : ''}`}>
-                        <span className="text-base font-black">{i + 1}</span>
-                        <span className="text-[10px] font-bold opacity-80 truncate max-w-full">{p?.datos?.numero || '—'}</span>
+                        <span className="text-base font-black truncate max-w-full">{p?.datos?.numero || '—'}</span>
+                        <span className="text-[10px] font-bold opacity-80">{i + 1}</span>
                         {faltaTipo && <span className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 rounded-full bg-orange-500 border-2 border-white shadow" title="Sin tipo de poste" />}
                       </button>
                     );
