@@ -295,6 +295,7 @@ const VistaMapa = ({
             lineasAcero={acero?.lineas || []}
             trazoAcero={acero?.trazo}
             onTocarFibraAcero={acero?.onTocarFibra}
+            onSeleccionarAcero={acero?.setSeleccionado}
             cableAceroSeleccionado={acero?.seleccionado || null}
             mostrarEtiquetas={mostrarEtiquetas}
             viewState={mapViewState}

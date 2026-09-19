@@ -1759,6 +1759,7 @@ function App() {
   const lineasAcero = React.useMemo(() => {
     if (!acerosVisibles) return [];
     const porId = new Map(todosLosPuntos.map(p => [String(p.id), p]));
+    const fibraPorId = new Map((conexiones || []).map(f => [String(f.id), f]));
     return filtrosVisibilidad.getConexionesVisibles(cablesAcero, diasVisibles, proyectos.filter(p => !p.archivado))
       .map(c => {
         const postes = postesDeCable(c, porId);
@@ -1769,10 +1770,19 @@ function App() {
           nombreTipo: nombreTipoAcero(c.ferrId),
           etiqueta: `${a.datos?.numero || 'S/N'} → ${b.datos?.numero || 'S/N'}`,
           metros: metrosCableAcero(a.coords, b.coords),
+          // Las fibras apoyadas y el medio tramo donde se apoyan, ya resueltos para la
+          // lista: el cable guarda solo ids. Una fibra borrada simplemente no aparece.
+          fibrasInfo: (c.fibras || [])
+            .map(id => fibraPorId.get(String(id)))
+            .filter(Boolean)
+            .map(f => ({ id: String(f.id), nombre: f.nombre || '', capacidad: f.capacidad || 12 })),
+          numeroMedioTramo: c.medioTramo != null
+            ? (porId.get(String(c.medioTramo))?.datos?.numero || null)
+            : null,
         };
       })
       .filter(Boolean);
-  }, [acerosVisibles, cablesAcero, todosLosPuntos, diasVisibles, proyectos]);
+  }, [acerosVisibles, cablesAcero, todosLosPuntos, diasVisibles, proyectos, conexiones]);
 
   // Igual que las fibras: la barra lista solo los cables del proyecto activo, aunque el
   // mapa siga dibujando los de todos los proyectos visibles.

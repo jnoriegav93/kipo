@@ -131,6 +131,20 @@ export default function BarraAcero({
 
         <div className={`w-[1px] h-7 ${isDark ? 'bg-slate-600' : 'bg-slate-400'} shrink-0`} />
 
+        {/* EDITAR — el cable elegido, sea de la lista o tocando su línea en el mapa,
+            vuelve al trazo. Sin este botón, eligiéndolo en el mapa no habría cómo
+            editarlo: el otro EDITAR vive dentro de la fila desplegada de la lista. */}
+        <button
+          onClick={() => { if (cableSeleccionado) { setPanel(null); onEditar?.(cableSeleccionado); } }}
+          disabled={!cableSeleccionado}
+          className={`${btnBase} border-2 ${cableSeleccionado
+            ? `${btnNormal} active:scale-95`
+            : `${btnDisabled} opacity-30 cursor-not-allowed`}`}
+          title="Editar el cable seleccionado"
+        >
+          <Pencil size={18} />
+        </button>
+
         {/* ELIMINAR — actúa sobre el cable elegido en la lista */}
         <button
           onClick={() => { if (cableSeleccionado) onEliminar?.(cableSeleccionado); }}
@@ -278,6 +292,20 @@ export default function BarraAcero({
                     <Crosshair size={15} strokeWidth={2.5} />
                   </button>
                 </div>
+
+                {/* Qué sostiene este cable: las fibras apoyadas y el medio tramo donde se
+                    apoyan. Si no tiene ninguna de las dos, ya lo dice el aviso de arriba. */}
+                {(c.fibrasInfo?.length > 0 || !!c.numeroMedioTramo) && (
+                  <div className={`px-2 pb-2 -mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold ${theme.text} opacity-70`}>
+                    {c.numeroMedioTramo && <span className="shrink-0">MEDIO TRAMO {c.numeroMedioTramo}</span>}
+                    {(c.fibrasInfo || []).map(f => (
+                      <span key={f.id} className="flex items-center gap-1 min-w-0" title={`${f.nombre || 'Fibra'} · ${f.capacidad} FO`}>
+                        <span className="w-2.5 h-2.5 rounded-full border border-black/40 shrink-0" style={{ backgroundColor: getColorFibra(f.capacidad) }} />
+                        <span className="truncate max-w-[110px]">{f.nombre || `${f.capacidad} FO`}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {/* Cambiar el tipo se guarda al tocar; EDITAR devuelve el cable al trazo para
                     corregir postes, fibras o medio tramo */}

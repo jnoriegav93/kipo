@@ -256,6 +256,7 @@ export const MapaReal = ({
   lineasAcero = [],
   trazoAcero = TRAZO_ACERO_VACIO,
   onTocarFibraAcero,
+  onSeleccionarAcero,
   cableAceroSeleccionado = null,
 }) => {
 
@@ -667,6 +668,10 @@ export const MapaReal = ({
   const fibrasApoyadas = new Set(!modoAcero ? []
     : cableAceroSeleccionado ? (cableAceroSeleccionado.fibras || []).map(String)
     : trazoAcero.fibras);
+  // Con la barra de acero abierta y sin estar trazando, el cable se elige tocando su
+  // línea en el mapa, igual que en la lista. Mientras se traza no: ahí cada toque es del
+  // dibujo (postes, fibras apoyadas, medio tramo) y no debe significar dos cosas.
+  const puedeElegirAcero = modoAcero && !trazandoAcero;
   const capaAcero = (
     <>
       {lineasAcero.map(c => {
@@ -676,6 +681,19 @@ export const MapaReal = ({
           <React.Fragment key={`ac-${c.id}`}>
             <Polyline positions={pos} interactive={false} pathOptions={{ color: '#0f172a', weight: sel ? 9 : 6, opacity: 0.85 }} />
             <Polyline positions={pos} interactive={false} pathOptions={{ color: sel ? '#fbbf24' : '#e2e8f0', weight: sel ? 5 : 3, dashArray: '4,5' }} />
+            {/* La línea visible es fina: esta, invisible y ancha, es la que recibe el dedo */}
+            {puedeElegirAcero && (
+              <Polyline
+                positions={pos}
+                pathOptions={{ color: '#000', opacity: 0, weight: 22 }}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    onSeleccionarAcero?.(sel ? null : c);
+                  }
+                }}
+              />
+            )}
           </React.Fragment>
         );
       })}
