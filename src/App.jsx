@@ -2077,6 +2077,7 @@ function App() {
           gpsTrigger={gpsTrigger}
           giro={GIRO_MAPA_ACTIVO && esAdmin ? giro : 0}
           setGiro={GIRO_MAPA_ACTIVO && esAdmin ? setGiro : undefined}
+          mostrarZoom={esAdmin}
           yaSaltoAlInicio={yaSaltoAlInicio}
           setYaSaltoAlInicio={setYaSaltoAlInicio}
           isDark={isDark}

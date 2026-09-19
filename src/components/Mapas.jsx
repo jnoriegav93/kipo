@@ -216,6 +216,7 @@ export const MapaReal = ({
   viewState, setViewState,
   giro = 0,              // grados que se torció el mapa (0 = norte arriba)
   setGiro,               // si no llega, el mapa no se puede girar
+  mostrarZoom = false,   // TEMPORAL: número de zoom en pantalla, para afinar umbrales
   gpsTrigger,
   yaSaltoAlInicio,
   setYaSaltoAlInicio,
@@ -644,6 +645,14 @@ export const MapaReal = ({
         </div>
       )}
 
+      {/* TEMPORAL: el nivel de zoom, para decidir a partir de qué distancia se agrupan
+          los postes y se simplifica el dibujo. Se quita cuando estén fijados. */}
+      {mostrarZoom && (
+        <div className="absolute bottom-2 left-2 z-[5000] px-2 py-0.5 rounded-md bg-black/70 text-white text-[11px] font-black tracking-wider pointer-events-none">
+          ZOOM {Number(viewState?.zoom ?? 0).toFixed(1)}
+        </div>
+      )}
+
       {/* iPhone: la brújula solo se habilita si el usuario la autoriza con un toque */}
       {estadoBrujula === 'permiso' && (
         <div className="absolute top-16 right-4 z-[5000] animate-in fade-in slide-in-from-right-2">
@@ -854,7 +863,7 @@ export const MapaReal = ({
               : simbologiaActiva ? colorDia : '#facc15';
             customIcon = L.divIcon({
               className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
-              html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));">
+              html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px;">
                           ${labelHtml}
                           <div style="position:absolute; left:0; bottom:0; width:0; height:0; border-left:${half}px solid transparent; border-right:${half}px solid transparent; border-bottom:${baseSize}px solid ${outline};"></div>
                           <div style="position:absolute; left:${t}px; bottom:${Math.round(t * 0.6)}px; width:0; height:0; border-left:${half - t}px solid transparent; border-right:${half - t}px solid transparent; border-bottom:${baseSize - Math.round(t * 1.8)}px solid ${rellenoMT};"></div>
@@ -874,7 +883,7 @@ export const MapaReal = ({
               className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
               html: `<div style="position:relative; width:${baseSize}px; height:${baseSize}px; display:flex; align-items:center; justify-content:center;">
                           ${labelHtml}
-                          <div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${rellenoCaja}; border:${bw}px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.5)${ring ? `, 0 0 0 3px ${ring}` : ''}; display:flex; align-items:center; justify-content:center;">
+                          <div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${rellenoCaja}; border:${bw}px solid #000;${ring ? ` box-shadow:0 0 0 3px ${ring};` : ''} display:flex; align-items:center; justify-content:center;">
                             ${isEnOrden
                               ? `<span style="color:#fff; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.45))}px; line-height:1; text-shadow:0 1px 2px #000;">${posOrden}</span>`
                               : `<div style="width:${dot}px; height:${dot}px; background:#000; border-radius:50%;"></div>`}
@@ -885,7 +894,7 @@ export const MapaReal = ({
           } else {
             customIcon = L.divIcon({
               className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
-              html: `<div style="width: ${baseSize}px; height: ${baseSize}px; background: ${bg}; border: ${bord}; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;">
+              html: `<div style="width: ${baseSize}px; height: ${baseSize}px; background: ${bg}; border: ${bord}; border-radius: 50%; display: flex; justify-content: center; align-items: center;">
                           ${numOrdenHtml}
                           ${labelHtml}
                         </div>`,

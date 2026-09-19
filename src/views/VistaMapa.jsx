@@ -17,6 +17,7 @@ const VistaMapa = ({
   puntosVisiblesMapa, iconSize, obtenerColorDia, puntoSeleccionado,
   handlePuntoClick, puntoTemporal, gpsTrigger, yaSaltoAlInicio,
   giro = 0, setGiro,   // giro del mapa en grados; 0 es el norte arriba de siempre
+  mostrarZoom = false, // TEMPORAL: número de zoom en pantalla, para afinar umbrales
   setYaSaltoAlInicio, isDark, verDetalle, iniciarEdicion,
   solicitarBorrarPunto, intentarAgregarDatos,
   setVistaAnterior,
@@ -300,6 +301,7 @@ const VistaMapa = ({
             setViewState={setMapViewState}
             giro={giro}
             setGiro={setGiro}
+            mostrarZoom={mostrarZoom}
             gpsTrigger={gpsTrigger}
             yaSaltoAlInicio={yaSaltoAlInicio}
             setYaSaltoAlInicio={setYaSaltoAlInicio}
