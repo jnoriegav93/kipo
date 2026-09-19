@@ -486,6 +486,25 @@ Tailwind no ve las que se arman con plantillas.
   distinto de lo que iba a producción: 50+22+33 = **105%**. Verificar el archivo real, no
   solo la maqueta.
 
+**La grilla de posiciones dice qué es cada punto (19/09).** En la grilla que se abre al
+tocar el título (ITEM / Posición) va ahora **arriba el ITEM, grande**, y debajo la
+posición; antes era al revés. El fondo pasó a decir **qué es** cada punto, pero **solo una
+vez aprobado**: medio tramo **amarillo**, cámara **azul**, poste con equipo pasivo
+**naranja**, poste normal **verde**. Sin revisar va **blanco** (decidido con el usuario:
+"cuando no está con el check") y **desaprobado sigue rojo**, porque es una marca puesta a
+propósito y se perdería si también fuera blanco.
+
+**El puntito naranja no marca los medios tramos**, aunque lo parezca: marca que falta
+`datos.tipoPoste`, y coincidía porque un medio tramo nunca lo lleva. Se conserva, pero
+**solo en postes**: en un medio tramo o una cámara estaría siempre encendido sin avisar de
+nada.
+
+La decisión de color vive en `src/utils/grillaPosiciones.js`, fuera de la interfaz, porque
+**esta grilla está duplicada** en los dos modales (FERRETERÍA → Revisión y REVISIÓN) y se
+cambian juntas para que no se separen. Probada con Node (28 casos); el render en sí no
+lleva prueba, por lo mismo que lo de abajo. En producción desde el 19/09/26
+(**SELLO: 19/09/26, 14:45**).
+
 **La lista se ordena sola al guardar y al aprobar (19/09).** Antes solo se acomodaba con
 el botón **ORDENAR**; ahora **ACTUALIZAR** y el **✓ verde** encienden el mismo orden, que
 sube arriba la ferretería con cantidad. Va dentro de `guardarPuntoFerr` y de `aprobar`, no
