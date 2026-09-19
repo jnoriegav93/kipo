@@ -460,6 +460,40 @@ las escrituras esperadas). En producción desde el 19/09/26 (**SELLO: 19/09/26, 
 
 ---
 
+## Revisión de ferretería en tres columnas (19/09)
+
+La pestaña **REVISIÓN** del modal FERRETERÍA (el tab interno se llama `definir`), **en
+PC**, pasó de dos mitades a tres columnas, cada una con su propio scroll: la **foto**
+(45%), los **ARMADOS** en una sola tira vertical (22%) y los **contadores de ferretería**
+(33%). **En celular no cambia nada:** sigue siendo UNA columna hacia abajo, con los dos
+bloques juntos y los armados de a 3.
+
+`BloqueLiquidacion` (`Formulario.jsx`) gana dos props opcionales: `solo` (`'armados'` o
+`'ferreteria'`), para pedirle una sola de sus dos mitades, y `armadosCols`, para la
+grilla. Sin ellas se dibuja como siempre, así que el formulario del punto —su único otro
+uso— no cambia. Las clases de la grilla van **literales** (`grid-cols-1` / `grid-cols-3`):
+Tailwind no ve las que se arman con plantillas.
+
+**Tres cosas que costaron esta tanda:**
+
+- **`shrink-0` en las tres columnas.** Sin eso un hijo flex cede ancho según su contenido:
+  la prueba midió la columna de la foto en **69 px** en vez de 517.
+- **"PC" no mira el ancho.** `useIsDesktop` es `(hover: hover) and (pointer: fine)`, o sea
+  "¿tiene mouse?": una ventana angosta en una laptop sigue contando como PC. Se decidió
+  con el usuario **no** poner umbral de ancho, porque la app se usa a pantalla completa.
+- **El harness puede mentir.** La maqueta ya tenía el 45% mientras el archivo real seguía
+  en `w-1/2` (la edición no había aterrizado), así que la prueba estuvo midiendo algo
+  distinto de lo que iba a producción: 50+22+33 = **105%**. Verificar el archivo real, no
+  solo la maqueta.
+
+El reparto se calcula sobre el ancho **interior** del modal: está topado en `max-w-6xl`
+(1152 px) y el borde descuenta 4, o sea 1148 px reales. Probado en Chrome con
+`harness-diseno/revision3col.html`, fuera de git (14 comprobaciones: el reparto, los
+armados en una sola tira, que cada mitad caiga en su columna y que en celular sigan
+juntos). En producción desde el 19/09/26 (**SELLO: 19/09/26, 12:28**).
+
+---
+
 ## El punto azul con cono de linterna (17/09)
 
 El punto azul ahora lleva un cono que apunta hacia donde mira el equipo, como la
