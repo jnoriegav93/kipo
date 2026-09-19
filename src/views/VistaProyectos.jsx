@@ -2687,7 +2687,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                 {!expandido && (
                 <div ref={scrollRef} className={`flex-1 ${isDesktop ? 'flex flex-row overflow-hidden' : 'overflow-y-auto'}`}>
                   {/* Columna fotos */}
-                  <div className={`p-4 space-y-3 ${isDesktop ? `w-1/2 flex flex-col overflow-hidden border-r ${theme.border}` : ''}`}>
+                  <div className={`p-4 space-y-3 ${isDesktop ? `w-[45%] shrink-0 flex flex-col overflow-hidden border-r ${theme.border}` : ''}`} data-prueba="col-foto">
                     {/* Navegación de fotos + mapa (SIG/ANT como en Revisión) */}
                     <div className="flex items-center justify-between gap-2 shrink-0">
                       <button onClick={() => setFotoIdx(i => Math.max(0, i - 1))} disabled={slideIdx === 0} className={`px-3 py-2 rounded-lg border-2 ${theme.border} ${theme.text} text-lg font-black leading-none active:scale-95 disabled:opacity-30`}>◀</button>
@@ -2727,8 +2727,24 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                       <div className={`${isDesktop ? 'flex-1 min-h-0' : 'h-96'} flex items-center justify-center bg-black rounded-xl`}><p className="text-slate-400 text-sm font-bold">Sin foto</p></div>
                     )}
                   </div>
+                  {/* En PC, ARMADOS y FERRETERÍA van en columnas propias: los armados en una
+                      sola tira vertical y los contadores al lado, cada columna con su scroll.
+                      En celular sigue siendo UNA sola columna hacia abajo con los dos juntos. */}
+                  {isDesktop && (
+                    <div className={`w-[22%] shrink-0 p-3 overflow-y-auto border-r ${theme.border}`} data-prueba="col-armados">
+                      <BloqueLiquidacion
+                        config={{ ...config, armados: armadosProy }}
+                        datosFormulario={localDatos}
+                        setDatosFormulario={setLocalDatosDirty}
+                        theme={theme}
+                        disabled={!puedeEditar}
+                        solo="armados"
+                        armadosCols={1}
+                      />
+                    </div>
+                  )}
                   {/* Columna formulario */}
-                  <div className={`p-4 space-y-3 ${isDesktop ? 'w-1/2 overflow-y-auto' : ''}`}>
+                  <div className={`p-4 space-y-3 ${isDesktop ? 'w-[33%] shrink-0 overflow-y-auto' : ''}`} data-prueba="col-ferreteria">
                     {/* Armados + ferretería (igual que el formulario) */}
                     {/* Los armados salen del PROYECTO, no de la configuración del usuario:
                         si no, lo que se edita en la pestaña Armados no se veía aquí. */}
@@ -2740,6 +2756,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                       disabled={!puedeEditar}
                       subirConValor={subirActivas}
                       sugeridasAcero={sugeridasPorAcero(punto?.id, cablesAceroProyecto)}
+                      solo={isDesktop ? 'ferreteria' : null}
                     />
                   </div>
                 </div>

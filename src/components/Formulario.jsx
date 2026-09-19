@@ -500,16 +500,23 @@ export const BloqueLevantamiento = ({ config, datosFormulario, setDatosFormulari
 };
 
 // 2. BLOQUE LIQUIDACIÓN
-export const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario, theme, disabled, subirConValor, sugeridasAcero = {} }) => {
+// `solo` parte el bloque en sus dos mitades, para poder ponerlas en columnas distintas
+// (la pestaña Revisión en PC). Sin él se dibujan las dos seguidas, como siempre.
+// `armadosCols` es cuántas columnas lleva la grilla de armados: 3 de siempre, o 1 cuando
+// van en una tira vertical propia. Las clases van literales porque Tailwind no ve las
+// que se arman con plantillas.
+export const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario, theme, disabled, subirConValor, sugeridasAcero = {}, solo = null, armadosCols = 3 }) => {
   const armadoSeleccionadoId = datosFormulario.armadoSeleccionadoId || null;
   const armadoObj = config.armados.find(a => a.id === armadoSeleccionadoId) || null;
+  const verArmados = solo !== 'ferreteria';
+  const verFerreteria = solo !== 'armados';
 
   return (
     <div className={`space-y-4 animate-in fade-in py-2 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-      {config.armados.filter(a => a.visible !== false).length > 0 && (
+      {verArmados && config.armados.filter(a => a.visible !== false).length > 0 && (
         <div>
           <h3 className={`text-xs font-black ${theme.text} opacity-70 uppercase mb-2 ml-1`}>ARMADOS</h3>
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid gap-2 ${armadosCols === 1 ? 'grid-cols-1' : 'grid-cols-3'}`}>
             {config.armados.filter(a => a.visible !== false).map(armado => {
               const isSelected = armadoSeleccionadoId === armado.id;
               return (
@@ -536,16 +543,18 @@ export const BloqueLiquidacion = ({ config, datosFormulario, setDatosFormulario,
         </div>
       )}
 
-      <ListaContadores
-        config={config}
-        datos={datosFormulario.ferreteriaFinal || {}}
-        setDatos={(nuevos) => setDatosFormulario(prev => ({ ...prev, ferreteriaFinal: nuevos }))}
-        theme={theme}
-        disabled={disabled}
-        armadoSeleccionado={armadoObj}
-        subirConValor={subirConValor}
-        sugeridasAcero={sugeridasAcero}
-      />
+      {verFerreteria && (
+        <ListaContadores
+          config={config}
+          datos={datosFormulario.ferreteriaFinal || {}}
+          setDatos={(nuevos) => setDatosFormulario(prev => ({ ...prev, ferreteriaFinal: nuevos }))}
+          theme={theme}
+          disabled={disabled}
+          armadoSeleccionado={armadoObj}
+          subirConValor={subirConValor}
+          sugeridasAcero={sugeridasAcero}
+        />
+      )}
     </div>
   );
 };
