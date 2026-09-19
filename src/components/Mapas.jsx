@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPinOff, Compass } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
-import { TRAZO_ACERO_VACIO } from '../utils/cablesAcero';
+import { TRAZO_ACERO_VACIO, hayTrazoAcero } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
 import { exigeNorte, anguloEtiquetaFibra, gestoDosDedos } from '../utils/giroMapa';
 import { instalarGiro } from '../utils/giroLeaflet';
@@ -668,10 +668,12 @@ export const MapaReal = ({
   const fibrasApoyadas = new Set(!modoAcero ? []
     : cableAceroSeleccionado ? (cableAceroSeleccionado.fibras || []).map(String)
     : trazoAcero.fibras);
-  // Con la barra de acero abierta y sin estar trazando, el cable se elige tocando su
-  // línea en el mapa, igual que en la lista. Mientras se traza no: ahí cada toque es del
-  // dibujo (postes, fibras apoyadas, medio tramo) y no debe significar dos cosas.
-  const puedeElegirAcero = modoAcero && !trazandoAcero;
+  // Con la barra de acero abierta y el trazo vacío, el cable se elige tocando su línea en
+  // el mapa, igual que en la lista. Con un trazo empezado no: ahí cada toque es del dibujo
+  // (postes, fibras apoyadas, medio tramo) y no debe significar dos cosas.
+  // Lo que manda es el TRAZO, no `dibujandoFibra`: en acero ese queda encendido todo el
+  // rato (es lo que deja tocar los postes), así que mirarlo apagaba la selección siempre.
+  const puedeElegirAcero = modoAcero && !hayTrazoAcero(trazoAcero);
   const capaAcero = (
     <>
       {lineasAcero.map(c => {
