@@ -706,6 +706,22 @@ gratis, pero triángulos, cuadrados y globitos habría que dibujarlos a mano. Si
 si a la distancia todo pasa a ser círculo —más rápido, pero se pierde la forma que hoy
 dice de un vistazo qué es cada cosa—.
 
+**El zoom se queda donde lo dejás (18/09).** Molestaba que al soltar el pellizco el
+mapa "se regresara": Leaflet trae `zoomSnap` en **1**, así que solo admitía niveles
+enteros y al terminar el gesto redondeaba. Ahora está en **0,5**, o sea que se queda
+en medios (17 · 17,5 · 18). `zoomDelta` sigue en **1**, para que el doble toque salte
+un nivel entero, que es predecible. El precio: entre niveles la imagen se estira un
+poco, porque cada nivel entero tiene su propia foto. Si hace falta afinar más, los
+siguientes escalones serían cuartos (0,25) o libre del todo (0).
+
+Ojo con una consecuencia: los cortes de **agrupar** y de **ocultar etiquetas** usan el
+zoom redondeado, así que 17,4 se comporta como 17 y 17,6 como 18. Con zoom fraccionario
+esos cambios se notan a mitad del gesto, no al soltar.
+
+Y un apunte de vocabulario, porque confunde: las lupas **+/−** de la barra superior
+**no son zoom**, cambian el tamaño de los íconos (`iconSize`). El mapa no tiene botones
+de zoom propios (`zoomControl={false}`).
+
 > **PENDIENTE DE QUITAR:** el número de **ZOOM** flotante abajo a la izquierda es
 > **temporal** y solo lo ve el admin (`mostrarZoom`). Está para fijar con datos los
 > umbrales de las fases 4 y 5. Cuando estén decididos, se quita de `App.jsx`,

@@ -763,7 +763,12 @@ export const MapaReal = ({
       <div ref={rotanteRef} style={setGiro
         ? { position: 'absolute', left: '50%', top: '50%', width: '150vmax', height: '150vmax', transform: `translate(-50%, -50%) rotate(${giroEfectivo}deg)`, transformOrigin: '50% 50%' }
         : { position: 'absolute', inset: 0 }}>
-      <MapContainer center={viewState.center} zoom={viewState.zoom} maxZoom={22} style={{ height: "100%", width: "100%" }} zoomControl={false}>
+      {/* zoomSnap 0,5: el zoom se queda en medios (17 · 17,5 · 18) en vez de volver
+          siempre al entero más cercano, que es lo que hacía sentir que "se regresaba"
+          al soltar el pellizco. zoomDelta 1 deja el doble toque saltando un nivel
+          entero, que es predecible. Entre niveles la imagen se estira un poco: es el
+          precio de poder quedarse a mitad de camino. */}
+      <MapContainer center={viewState.center} zoom={viewState.zoom} maxZoom={22} zoomSnap={0.5} zoomDelta={1} style={{ height: "100%", width: "100%" }} zoomControl={false}>
         {mapStyle === 'vector' && (
           <TileLayer attribution='© OpenStreetMap contributors © CARTO' url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} />
         )}
