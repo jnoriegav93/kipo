@@ -459,9 +459,12 @@ export const MapaReal = ({
     // blanco; el resto, del color del día con borde blanco. Solo cambia el número.
     const relleno = esMedioTramo ? '#facc15' : color;
     const tinta = esMedioTramo ? '#000' : '#fff';
+    // El medio tramo lleva borde negro, igual que su marcador suelto: de lejos tiene
+    // que decir lo mismo que de cerca.
+    const borde = esMedioTramo ? '#000' : 'white';
     return L.divIcon({
       className: 'grupo-icon',
-      html: `<div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${relleno}; border:2px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+      html: `<div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${relleno}; border:2px solid ${borde}; border-radius:50%; display:flex; align-items:center; justify-content:center;">
           <span style="color:${tinta}; font-weight:900; font-size:${fuente}px; line-height:1;">${g.cantidad}</span>
         </div>`,
       iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2],
@@ -963,14 +966,14 @@ export const MapaReal = ({
             const rellenoMT = enAjuste ? '#f59e0b' : ancladoAFibra ? '#16a34a' : marcaCorr > 0 ? '#ea580c'
               : '#facc15';
             const bordeMT = isEnOrden ? '3px solid #15803d' : isEnSeleccion ? '3px solid #7c3aed'
-              : (isInRecorrido || isSelected) ? '3px solid #ea580c' : '2px solid #fff';
+              : (isInRecorrido || isSelected) ? '3px solid #ea580c' : '2px solid #000';
             customIcon = L.divIcon({
               className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
               html: `<div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${rellenoMT}; border:${bordeMT}; border-radius:50%; display:flex; align-items:center; justify-content:center;">
                           ${labelHtml}
                           ${isEnOrden
                             ? `<span style="color:#000; font-weight:900; font-size:${Math.max(9, Math.round(baseSize * 0.45))}px; line-height:1;">${posOrden}</span>`
-                            : `<div style="width:${dot}px; height:${dot}px; background:#fff; border-radius:50%;"></div>`}
+                            : `<div style="width:${dot}px; height:${dot}px; background:#000; border-radius:50%;"></div>`}
                         </div>`,
               iconSize: [baseSize, baseSize], iconAnchor: [baseSize / 2, baseSize / 2]
             });
