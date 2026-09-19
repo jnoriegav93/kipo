@@ -432,6 +432,34 @@ Renumerar**: solo llena el ítem mientras se crea el punto.
 
 ---
 
+## Renumerar items: alcance y los repetidos (19/09)
+
+RENUMERAR ITEMS ya no reescribe siempre el proyecto entero. Arriba se elige **qué
+renumerar**, con la cantidad de cada opción a la vista:
+
+- **CON POSICIÓN**, que es lo que viene marcado: solo los puntos con `ordenTendido`.
+- **TODOS**: también los que no la tienen, que van al final por orden de creación, como
+  se hacía antes. Antes esto no se elegía: se avisaba y punto.
+
+Los conteos de cada grupo y la vista previa siguen esa elección, y la elección se recuerda
+por proyecto en `localStorage`, junto con los prefijos y los ceros.
+
+**Los repetidos.** Dejar puntos fuera trae un riesgo: los que no se renumeran conservan su
+ítem, y ese ítem puede ser el que el correlativo nuevo le da a otro. Se detecta comparando
+los ítems nuevos contra los que se quedan como están —ignorando mayúsculas y espacios, o
+avisaría de menos— y se resuelve **agregando una `b` al final** (`P50` → `P50b`); si esa ya
+estuviera ocupada sigue con `P50bb`, para no cambiar un duplicado por otro. Se avisa
+cuántos son y se hace: **no hay nada que elegir** (decidido con el usuario el 19/09). Los
+renombres se escriben en el mismo viaje que el resto y salen marcados en la vista previa.
+Ojo: un grupo **sin marcar** también conserva sus ítems, así que también puede chocar.
+
+La cuenta vive en `src/utils/renumerarItems.js`, fuera de la pantalla: probada con Node
+(31 casos) y la pantalla en Chrome con `harness-diseno/renumerar.html`, fuera de git (19
+comprobaciones: el alcance, los conteos por grupo, el aviso, y que se manden exactamente
+las escrituras esperadas). En producción desde el 19/09/26 (**SELLO: 19/09/26, 11:31**).
+
+---
+
 ## El punto azul con cono de linterna (17/09)
 
 El punto azul ahora lleva un cono que apunta hacia donde mira el equipo, como la
