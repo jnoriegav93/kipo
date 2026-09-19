@@ -627,6 +627,46 @@ el seleccionado, el temporal, el resaltado y los del trazo en curso.
 
 ---
 
+## Mil puntos en pantalla: aligerar el mapa (18/09, en curso)
+
+Un proyecto pasó los **mil puntos** y en el celular se siente al **alejarse y al mover**
+el mapa. Dos causas medidas, no supuestas: hoy se dibuja **un elemento por cada punto
+que pasa el filtro de días**, no por lo que entra en pantalla
+([filtrosVisibilidad.js:11](src/utils/filtrosVisibilidad.js#L11)), y el HTML de cada
+marcador **se arma de nuevo en cada redibujo** (no está memorizado).
+
+Conviene no mezclar los dos casos, porque las soluciones difieren: **al mover** pesan
+los mil elementos y su reconstrucción; **al alejarse** los mil entran en la vista y el
+navegador los pinta todos — ahí dibujar solo lo visible **no sirve**, porque todo es
+visible.
+
+Plan acordado con el usuario, por fases:
+
+1. **Hecho:** fuera las sombras de los tres marcadores masivos (el `drop-shadow` del
+   triángulo era el peor, por ser un filtro). Se conservó el **anillo** del cuadrado,
+   que es información de selección y no decoración.
+2. Memorizar los íconos para que no se reconstruyan en cada redibujo. Exige sacar el
+   marcador a su propio componente.
+3. Dibujar solo lo visible, con margen y **lista de excepciones** que se dibujan siempre
+   (el seleccionado, el temporal, el resaltado, los del trazo en curso, el que se
+   arrastra), o se rompen esas interacciones.
+4. Lejos: símbolo simple y **etiquetas ocultas por zoom**, con aviso de que están
+   activas pero ocultas.
+5. **Agrupar por cercanía** bajo cierto zoom: la burbuja muestra solo la cantidad y los
+   grupos van **separados por tipo** (postes, medios tramos, cámaras).
+
+El lienzo (canvas) queda para el final y solo si hace falta: los círculos salen casi
+gratis, pero triángulos, cuadrados y globitos habría que dibujarlos a mano. Sin decidir:
+si a la distancia todo pasa a ser círculo —más rápido, pero se pierde la forma que hoy
+dice de un vistazo qué es cada cosa—.
+
+> **PENDIENTE DE QUITAR:** el número de **ZOOM** flotante abajo a la izquierda es
+> **temporal** y solo lo ve el admin (`mostrarZoom`). Está para fijar con datos los
+> umbrales de las fases 4 y 5. Cuando estén decididos, se quita de `App.jsx`,
+> `VistaMapa.jsx` y `Mapas.jsx`.
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
