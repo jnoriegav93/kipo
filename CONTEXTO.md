@@ -494,11 +494,19 @@ Tailwind no ve las que se arman con plantillas.
 **Tres cosas que costaron esta tanda:**
 
 - **`shrink-0` en las tres columnas.** Sin eso un hijo flex cede ancho según su contenido:
-  la prueba midió la columna de la foto en **69 px** en vez de 517. **Pasó dos veces el
-  mismo día**: los botones flotantes FOTOS / MOVER / DÍA del mapa son `w-14 h-14`, o sea
-  cuadrados por clase, y aun así salían achatados por ser hijos de una columna flex sin
-  alto de sobra (arreglado el 19/09, **SELLO: 19/09/26, 20:36**). Si algo con medidas
-  fijas aparece deformado, sospechar de flex antes que del tamaño de pantalla.
+  la prueba midió la columna de la foto en **69 px** en vez de 517.
+- **El modo `compacto` redefine alturas de Tailwind.** `src/index.css` trae reglas como
+  `.compacto .h-14 { height: 2.5rem }` (y `h-24`, `h-20`, `h-16`, `h-12`, `h-10`, `w-10`)
+  que se aplican cuando la ventana es chica: `App.jsx` le pone la clase `compacto` al
+  contenedor raíz. **Cambian el alto pero casi nunca el ancho**, así que un `w-14 h-14`
+  sale de 56×40 y parece achatado. Los botones flotantes del mapa (FOTOS / MOVER / DÍA)
+  se arreglaron pasando de `h-14` a **`aspect-square`**: el alto sale del ancho y no hay
+  altura que pisar (**SELLO: 19/09/26, 21:09**). Antes de eso se les puso `shrink-0`
+  culpando a flex, **y no era la causa**: si algo con medidas fijas sale deformado en
+  ventana chica, mirar primero las reglas `.compacto` de `index.css`.
+  La prueba (`harness-diseno/botones.html`, fuera de git) mide los botones con la clase
+  `compacto` activa **y también uno "como estaba"**, que debe salir 56×40: sin ese
+  control la prueba no distinguiría el fallo y habría dado por bueno el arreglo anterior.
 - **Los avisos flotantes del mapa van debajo de la barra de herramientas.** El "Sin GPS"
   de `Mapas.jsx` salía en `top-4` y se montaba encima de los botones del `Header`, que
   flota sobre el mapa (`absolute top-0`, `z-[50]`) mientras el aviso va con `z-[5000]`.
