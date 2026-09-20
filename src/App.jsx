@@ -2592,7 +2592,11 @@ function App() {
       )}
 
       {/* Mapa de fondo en PC mientras el formulario o las fotos están abiertos (panel a la derecha) */}
-      {isDesktop && (vista === 'formulario' || modalOpen === 'MODO_FOTOS') && (() => {
+      {/* Solo cuando el mapa de verdad NO está montado (formulario, detalle...). Si ya
+          estás en el mapa, se queda el tuyo tal como lo dejaste —se puede seguir moviendo
+          y haciendo zoom—, en vez de taparlo con un segundo mapa que además dibuja todos
+          los puntos sin agrupar ni recortar al encuadre. */}
+      {isDesktop && vista !== 'mapa' && (vista === 'formulario' || modalOpen === 'MODO_FOTOS') && (() => {
         const pAct = puntoTemporal || (puntosVisiblesMapa || []).find(p => p.id === puntoSeleccionado);
         if (!pAct || !pAct.coords) return null;
         const lista = (puntosVisiblesMapa || []).some(p => p.id === pAct.id)
