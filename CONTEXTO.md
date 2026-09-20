@@ -494,7 +494,17 @@ Tailwind no ve las que se arman con plantillas.
 **Tres cosas que costaron esta tanda:**
 
 - **`shrink-0` en las tres columnas.** Sin eso un hijo flex cede ancho según su contenido:
-  la prueba midió la columna de la foto en **69 px** en vez de 517.
+  la prueba midió la columna de la foto en **69 px** en vez de 517. **Pasó dos veces el
+  mismo día**: los botones flotantes FOTOS / MOVER / DÍA del mapa son `w-14 h-14`, o sea
+  cuadrados por clase, y aun así salían achatados por ser hijos de una columna flex sin
+  alto de sobra (arreglado el 19/09, **SELLO: 19/09/26, 20:36**). Si algo con medidas
+  fijas aparece deformado, sospechar de flex antes que del tamaño de pantalla.
+- **Los avisos flotantes del mapa van debajo de la barra de herramientas.** El "Sin GPS"
+  de `Mapas.jsx` salía en `top-4` y se montaba encima de los botones del `Header`, que
+  flota sobre el mapa (`absolute top-0`, `z-[50]`) mientras el aviso va con `z-[5000]`.
+  Ahora arranca en `calc(60px + env(safe-area-inset-top))`: los botones miden 40 px y
+  empiezan a 12 px del borde, más el hueco de la barra de estado del teléfono. Cualquier
+  aviso nuevo ahí arriba tiene que respetar esa cuenta, no un número a ojo.
 - **"PC" no mira el ancho.** `useIsDesktop` es `(hover: hover) and (pointer: fine)`, o sea
   "¿tiene mouse?": una ventana angosta en una laptop sigue contando como PC. Se decidió
   con el usuario **no** poner umbral de ancho, porque la app se usa a pantalla completa.
