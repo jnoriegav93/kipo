@@ -815,21 +815,36 @@ export const MapaReal = ({
         )}
         {mapStyle === 'google' && (
           <>
+            {/* Repartido entre mt0–mt3: el navegador solo abre ~6 descargas por dominio,
+                así que con un único servidor las teselas hacían cola de a 6. El service
+                worker ya cachea mt[0-9], así que la caché sigue valiendo igual.
+                `updateWhenZooming` en false: no se piden teselas durante la animación del
+                zoom, solo al terminar. Se ve un instante borroso a cambio de no lanzar
+                (y descartar) decenas de peticiones por cada pellizco. */}
             <TileLayer
               attribution='© Google Maps'
-              url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+              url="https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+              subdomains="0123"
               maxZoom={22}
               maxNativeZoom={21}
+              updateWhenZooming={false}
               eventHandlers={makeTileHandlers('google')}
             />
-            {/* Capa de nombres de calles (CARTO solo etiquetas, sin negocios ni POIs) */}
-            <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
-              subdomains="abcd"
-              maxZoom={22}
-              maxNativeZoom={20}
-              opacity={0.9}
-            />
+            {/* Nombres de calles: SOLO si se encienden. Es un segundo juego de teselas y
+                con internet lento le compite el cupo de descargas al satélite. Con
+                `detectRetina` pide las del doble de resolución, que es lo que las hace
+                legibles sobre la foto aérea. */}
+            {mostrarEtiquetas?.calles && (
+              <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
+                subdomains="abcd"
+                maxZoom={22}
+                maxNativeZoom={20}
+                detectRetina
+                updateWhenZooming={false}
+                opacity={1}
+              />
+            )}
           </>
         )}
 
@@ -1210,7 +1225,9 @@ export const MiniMapaRevision = ({ puntos = [], puntoActivo, obtenerColorDia, mo
   return (
     <MapContainer center={center} zoom={19} maxZoom={22} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
       {/* Base: Google Maps satélite + capa de etiquetas de calles */}
-      <TileLayer url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" maxZoom={22} maxNativeZoom={21} />
+      {/* Mismo reparto entre mt0–mt3 y sin pedir teselas durante el zoom que el mapa
+          principal: si no, esta pantalla vuelve a hacer cola de a 6 por dominio. */}
+      <TileLayer url="https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" subdomains="0123" maxZoom={22} maxNativeZoom={21} updateWhenZooming={false} />
       <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} opacity={0.9} />
       <RecenterMini center={center} />
       {conCoords.map(p => {

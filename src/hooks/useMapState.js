@@ -4,19 +4,23 @@ export const useMapState = () => {
   
   const [iconSize, setIconSize] = useState(1);
   const [mapStyle, setMapStyle] = useState('google');
-  const [mostrarEtiquetas, setMostrarEtiquetas] = useState({ item: false, pasivo: false, fibra: false });
+  // `calles` son los nombres de calle del mapa: apagados por defecto porque son un
+  // SEGUNDO juego de teselas y con internet lento le quitan cupo de descarga al satélite.
+  const [mostrarEtiquetas, setMostrarEtiquetas] = useState({ item: false, pasivo: false, fibra: false, calles: false });
   const [menuEtiquetasAbierto, setMenuEtiquetasAbierto] = useState(false);
-  const savedEtiquetasRef = useRef({ item: false, pasivo: false, fibra: false });
+  const savedEtiquetasRef = useRef({ item: false, pasivo: false, fibra: false, calles: false });
 
   const toggleMenuEtiquetas = () => {
     if (menuEtiquetasAbierto) {
       // Cerrar: guardar selección actual y ocultar etiquetas del mapa
       savedEtiquetasRef.current = { ...mostrarEtiquetas };
-      setMostrarEtiquetas(prev => ({ item: false, pasivo: false, fibra: prev.fibra }));
+      // `calles` se conserva igual que `fibra`: es una capa del mapa, no un rótulo de
+      // punto, y no tiene por qué apagarse al cerrar el menú.
+      setMostrarEtiquetas(prev => ({ item: false, pasivo: false, fibra: prev.fibra, calles: prev.calles }));
       setMenuEtiquetasAbierto(false);
     } else {
       // Abrir: restaurar selección guardada
-      setMostrarEtiquetas(prev => ({ ...savedEtiquetasRef.current, fibra: prev.fibra }));
+      setMostrarEtiquetas(prev => ({ ...savedEtiquetasRef.current, fibra: prev.fibra, calles: prev.calles }));
       setMenuEtiquetasAbierto(true);
     }
   };
