@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Pane, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPinOff, Compass } from 'lucide-react';
+import { Compass } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
 import { TRAZO_ACERO_VACIO, hayTrazoAcero } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
@@ -258,6 +258,7 @@ export const MapaReal = ({
   onTocarFibraAcero,
   onSeleccionarAcero,
   cableAceroSeleccionado = null,
+  onGpsError,
 }) => {
 
   const [miUbicacion, setMiUbicacion] = useState(null);
@@ -288,6 +289,11 @@ export const MapaReal = ({
     );
     return () => navigator.geolocation.clearWatch(watchId);
   }, [vigilanciaID]);
+
+  // El aviso de "sin GPS" ya no se pinta acá: se avisa hacia afuera para que salga en la
+  // misma columna que el nombre del proyecto y lo EMPUJE hacia abajo, en vez de flotar
+  // por encima y taparlo.
+  useEffect(() => { onGpsError?.(gpsError); }, [gpsError, onGpsError]);
 
   // Brújula del equipo: solo para pintar el cono. Si no hay, no pasa nada.
   const { rumbo, estado: estadoBrujula, pedirPermiso } = useRumbo();
@@ -736,21 +742,6 @@ export const MapaReal = ({
           filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 9px ${colorTrazo});
         }
       `}</style>
-
-      {gpsError && (
-        // Debajo de la barra de herramientas, que flota sobre el mapa: sus botones miden
-        // 40 px y arrancan a 12 px del borde, más el hueco de la barra de estado del
-        // teléfono. Antes salía en top-4 y se montaba encima de esos botones.
-        <div
-          className="absolute right-4 z-[5000] animate-in fade-in slide-in-from-right-2"
-          style={{ top: 'calc(60px + env(safe-area-inset-top))' }}
-        >
-          <button onClick={reintentarGPS} className="bg-red-500/90 hover:bg-red-600 backdrop-blur-md text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl border border-white/20 transition-all active:scale-95 cursor-pointer">
-            <MapPinOff size={14} />
-            <span>Sin GPS. Toca para reintentar</span>
-          </button>
-        </div>
-      )}
 
       {/* Las etiquetas no se apagaron: están ocultas porque de lejos se pisan entre sí.
           Se avisa para que nadie las dé por perdidas y las vuelva a tocar. */}

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Eye, EyeOff, Edit3, Trash2, Plus, ArrowLeft, Cable, Move, X, Link2, Camera, FolderInput, Check, Copy, Scissors, RefreshCw, CalendarPlus, CornerDownRight } from 'lucide-react';
+import { Eye, EyeOff, Edit3, Trash2, Plus, ArrowLeft, Cable, Move, X, Link2, Camera, FolderInput, Check, Copy, Scissors, RefreshCw, CalendarPlus, CornerDownRight, MapPinOff } from 'lucide-react';
 import { MapaReal } from '../components/Mapas';
 import BarraFibra from '../components/BarraFibra';
 import BarraAcero from '../components/BarraAcero';
@@ -15,7 +15,7 @@ const haversine = (lat1, lng1, lat2, lng2) => {
 const VistaMapa = ({
   theme, isDesktop = false, mapStyle, mapViewState, setMapViewState, handleMapaClick,
   puntosVisiblesMapa, iconSize, obtenerColorDia, puntoSeleccionado,
-  handlePuntoClick, puntoTemporal, gpsTrigger, yaSaltoAlInicio,
+  handlePuntoClick, puntoTemporal, gpsTrigger, setGpsTrigger, yaSaltoAlInicio,
   giro = 0, setGiro,   // giro del mapa en grados; 0 es el norte arriba de siempre
   mostrarZoom = false, // TEMPORAL: número de zoom en pantalla, para afinar umbrales
   setYaSaltoAlInicio, isDark, verDetalle, iniciarEdicion,
@@ -164,6 +164,9 @@ const VistaMapa = ({
   const fotoMapaInputRef = useRef(null);
   const [pickerDestino, setPickerDestino] = useState(null); // { foto, puntoId } para foto sin sección
   const [pickerTab, setPickerTab] = useState(null);
+  // El mapa avisa si se quedó sin GPS. Se guarda acá, y no dentro del mapa, para poder
+  // pintarlo en la misma columna que el nombre del proyecto y que lo empuje hacia abajo.
+  const [sinGps, setSinGps] = useState(false);
 
   const abrirPopup = (foto) => {
     setFotoSeleccionada(foto);
@@ -304,6 +307,7 @@ const VistaMapa = ({
             setGiro={setGiro}
             mostrarZoom={mostrarZoom}
             gpsTrigger={gpsTrigger}
+            onGpsError={setSinGps}
             yaSaltoAlInicio={yaSaltoAlInicio}
             setYaSaltoAlInicio={setYaSaltoAlInicio}
             conexionSeleccionada={conexionSeleccionada}
@@ -576,6 +580,18 @@ const VistaMapa = ({
         {/* Info proyecto + botones flotantes (esquina superior derecha) */}
         {!modoSupervision && nombreProyecto && (
           <div className={`absolute ${isDesktop ? 'top-20' : 'top-2'} right-3 z-40 flex flex-col items-end gap-1.5`}>
+            {/* Sin GPS: va PRIMERO en la columna, así empuja al nombre del proyecto hacia
+                abajo en vez de taparlo. Sin aviso, el nombre sube solo. Reintenta por la
+                misma vía que el botón de GPS del encabezado (gpsTrigger). */}
+            {sinGps && (
+              <button
+                onClick={() => setGpsTrigger?.(t => t + 1)}
+                className="rounded-lg px-2 py-1 bg-red-500 shadow-md flex items-center gap-1.5 active:scale-95"
+              >
+                <MapPinOff size={13} strokeWidth={2.5} className="text-white shrink-0" />
+                <span className="text-[11px] font-bold text-white leading-tight">Sin GPS. Toca para reintentar</span>
+              </button>
+            )}
             {/* Overlay nombre */}
             <div className={`rounded-lg px-2 py-1 pointer-events-none ${proyectoEsCompartido ? 'bg-brand-500' : 'bg-slate-900'}`}>
               <p className="text-[11px] font-bold text-white leading-tight max-w-[200px] truncate uppercase">{nombreProyecto} · {totalPuntosProyecto} pts</p>
@@ -711,7 +727,9 @@ const VistaMapa = ({
                       const expandido = diaExpandido === dia.id;
                       const fechaCorta = (dia.fecha || '').replace(/(\d{4})/, m => m.slice(-2));
                       return (
-                        <div key={dia.id} className="flex items-stretch rounded-lg border-2 border-slate-900 bg-white shadow-md overflow-hidden">
+                        // shrink-0: sin esto, con muchos días la columna los aplasta en
+                        // vez de desbordar, y por eso tampoco llegaba a aparecer el scroll
+                        <div key={dia.id} className="shrink-0 flex items-stretch rounded-lg border-2 border-slate-900 bg-white shadow-md overflow-hidden">
                           {expandido && (
                             <>
                               {/* Color (cicla colores) — cuadrado, a la izquierda */}

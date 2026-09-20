@@ -2095,6 +2095,7 @@ function App() {
           coloresDia={COLORES_DIA}
           proyectoActivoId={(mapaSupervision ? mapaSupervision.proyecto : proyectoActual)?.id}
           gpsTrigger={gpsTrigger}
+          setGpsTrigger={setGpsTrigger}
           giro={GIRO_MAPA_ACTIVO && esAdmin ? giro : 0}
           setGiro={GIRO_MAPA_ACTIVO && esAdmin ? setGiro : undefined}
           mostrarZoom={esAdmin}

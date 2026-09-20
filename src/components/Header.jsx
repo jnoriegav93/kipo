@@ -58,14 +58,14 @@ export default function Header({
             className={`
               flex items-center justify-center w-10 h-10 rounded-xl border-2 transition-all duration-300 relative active:scale-95
               ${estadoSync === 'synced'
-                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
+                ? 'bg-white border-emerald-500 text-emerald-600'
                 : estadoSync === 'syncing'
-                  ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'
+                  ? 'bg-white border-yellow-500 text-yellow-600'
                   : estadoSync === 'error'
-                    ? 'bg-red-500/10 border-red-500/50 text-red-400'
+                    ? 'bg-white border-red-500 text-red-600'
                     : estadoSync === 'offline'
-                      ? 'bg-slate-700/50 border-slate-600 text-slate-500'
-                      : `${theme.bg} ${theme.border} text-slate-400`
+                      ? 'bg-white border-slate-400 text-slate-500'
+                      : `bg-white ${theme.border} text-slate-400`
               }
             `}
           >
@@ -96,7 +96,7 @@ export default function Header({
           {/* 2. DÍAS — abre el panel de días en el mapa */}
           <button
             onClick={toggleMenuDias}
-            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${menuDiasAbierto ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${menuDiasAbierto ? 'bg-white border-brand-500 text-brand-600' : `bg-white ${theme.text} ${theme.border}`}`}
             title="Días"
           >
             <CalendarDays size={20} />
@@ -105,7 +105,7 @@ export default function Header({
           {/* 3. ETIQUETAS */}
           <button
             onClick={toggleMenuEtiquetas}
-            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${menuEtiquetasAbierto || mostrarEtiquetas.item || mostrarEtiquetas.pasivo ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+            className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${menuEtiquetasAbierto || mostrarEtiquetas.item || mostrarEtiquetas.pasivo ? 'bg-white border-brand-500 text-brand-600' : `bg-white ${theme.text} ${theme.border}`}`}
           >
             <Tag size={20} />
           </button>
@@ -114,7 +114,7 @@ export default function Header({
           {onToggleSimbologia && (
             <button
               onClick={onToggleSimbologia}
-              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${simbologiaAbierta || simbologiaActiva ? 'bg-brand-50 border-brand-500 text-brand-600' : `${theme.bg} ${theme.text} ${theme.border}`}`}
+              className={`p-2 rounded-xl border-2 font-bold transition-all active:scale-95 ${simbologiaAbierta || simbologiaActiva ? 'bg-white border-brand-500 text-brand-600' : `bg-white ${theme.text} ${theme.border}`}`}
               title="Simbología por armado"
             >
               <Shapes size={20} />
