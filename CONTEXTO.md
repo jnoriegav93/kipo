@@ -279,6 +279,17 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **El imán es por ramal, no general (20/09).** Antes el imán de la barra de fibra
+  ajustaba los postes de **todas** las fibras visibles de una sola vez. Ahora cada ramal
+  tiene el suyo en su fila de la lista y solo mueve los postes cercanos a **esa** fibra;
+  el general se retiró para no tener dos botones iguales con distinto alcance. Por dentro,
+  `modoAjuste` dejó de ser booleano: es `fibraAjuste` (el id del ramal), y `modoAjuste`
+  queda **derivado** porque el mapa y la barra lo usan para el aviso y el anclaje. Sigue
+  mostrando la vista previa antes de mover nada. **Ojo con `setModoAjuste`:** ya no es un
+  setter de React sino un `useCallback`, así que el linter lo exige en las dependencias de
+  `aplicarAjuste`.
+  Cada fila lleva además su **basurero**, que primero selecciona el ramal —así queda
+  resaltado en el mapa mientras se decide— y después pide la confirmación de siempre.
 - **Los cables sin fibra palpitan en rojo (20/09).** Con el modo acero abierto, un cable
   que no tiene **ninguna** fibra apoyada se dibuja en rojo y palpitando, para que salte a
   la vista lo que falta completar. Solo en ese modo: fuera de él el mapa se ve como
