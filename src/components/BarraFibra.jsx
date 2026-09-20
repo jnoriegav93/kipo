@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair, Magnet, RotateCcw } from 'lucide-react';
+import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair, Magnet, RotateCcw, Plus } from 'lucide-react';
 import { CAPACIDADES, getColorFibra, longitudFibra } from '../utils/fibraUtils';
 
 // Editor de un ramal ya guardado. Es presentacional: los cambios viven arriba,
@@ -65,6 +65,10 @@ export default function BarraFibra({
   modoAjuste = false,
   setModoAjuste,
   onAjustarFibra,
+  // El disquete arranca el trazo cuando no se está dibujando, así que la barra
+  // necesita saber y poder cambiar ese estado.
+  dibujandoFibra = false,
+  setDibujandoFibra,
   umbralAjuste = 3,
   setUmbralAjuste,
   previewAjuste = [],
@@ -233,17 +237,24 @@ export default function BarraFibra({
           <Undo2 size={18} />
         </button>
 
-        {/* GUARDAR — pide nombre y capacidad */}
+        {/* EMPEZAR / GUARDAR — el mismo botón hace las dos cosas según el momento.
+            Sin dibujar, arranca el trazo: hasta entonces los toques del mapa sirven para
+            ELEGIR una fibra, no para clavar vértices (una fibra puede empezar en
+            cualquier sitio, así que si no se separan los dos estados, cada intento de
+            seleccionar creaba el primer vértice de una fibra nueva). */}
         <button
-          onClick={() => (panel === 'guardar' ? setPanel(null) : abrirGuardar())}
-          disabled={!puedeGuardar}
-          className={`${btnBase} border-2 ${puedeGuardar
+          onClick={() => {
+            if (!dibujandoFibra) { setDibujandoFibra?.(true); setPanel(null); return; }
+            if (!puedeGuardar) return;
+            if (panel === 'guardar') setPanel(null); else abrirGuardar();
+          }}
+          className={`${btnBase} border-2 ${!dibujandoFibra || puedeGuardar
             ? 'bg-blue-600 text-white border-blue-700 active:scale-95'
             : `${btnDisabled} opacity-40 cursor-not-allowed`
             }`}
-          title="Guardar ramal"
+          title={dibujandoFibra ? 'Guardar ramal' : 'Empezar un ramal nuevo'}
         >
-          <Save size={18} />
+          {dibujandoFibra ? <Save size={18} /> : <Plus size={18} strokeWidth={3} />}
         </button>
 
         {/* LISTA DE FIBRAS — el contador abre el listado */}

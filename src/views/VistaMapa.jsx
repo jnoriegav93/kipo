@@ -50,6 +50,7 @@ const VistaMapa = ({
   modoAjuste = false,
   setModoAjuste,
   onAjustarFibra,
+  onOlvidarAjuste,
   umbralAjuste = 3,
   setUmbralAjuste,
   previewAjuste = [],
@@ -541,7 +542,9 @@ const VistaMapa = ({
                 setDibujandoFibra(false);
                 setPuntosRecorrido([]);
                 setConexionSeleccionada(null);
-                setModoAjuste?.(false);
+                // Olvida el ajuste ENTERO, deshacer incluido: al volver a entrar ya no
+                // debe seguir ofreciendo deshacer un movimiento de la sesión anterior.
+                onOlvidarAjuste?.();
               }}
             />
             )}
@@ -1074,7 +1077,9 @@ const VistaMapa = ({
             </>
           ) : (
             <>
-              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(true); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
+              {/* Entra a fibra SIN dibujar: así se pueden tocar las fibras para elegirlas.
+                  El trazo lo arranca el disquete de la barra. */}
+              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(false); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
               {proyectoTipo === 'instalacionPostes' && (
                 <button onClick={() => fotoMapaInputRef.current?.click()} className={pill}><Camera size={20} strokeWidth={2.5} /> FOTO</button>
               )}
@@ -1146,7 +1151,7 @@ const VistaMapa = ({
               // --- Sin selección: FIBRA / AGREGAR ---
               <>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(true); }}
+                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(false); }}
                   className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${theme.card} ${theme.text} hover:opacity-80`}
                 >
                   <Cable size={24} strokeWidth={2.5} /> FIBRA

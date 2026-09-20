@@ -886,6 +886,21 @@ export const MapaReal = ({
                   }
                 } : {}}
               />
+              {/* Mientras no se está trazando, la fibra se toca para ELEGIRLA. La línea
+                  visible tiene 3-4 px: esta, invisible y ancha, es la que recibe el dedo,
+                  igual que en el cable de acero. */}
+              {modoFibraLinea && !dibujandoFibra && (
+                <Polyline
+                  positions={f.positions}
+                  pathOptions={{ color: '#000', opacity: 0, weight: 22 }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e);
+                      if (handleConexionClick) handleConexionClick({ ...f.datos, id: f.id });
+                    }
+                  }}
+                />
+              )}
               {/* Trazando acero, la fibra se toca para marcarla como apoyada. La línea
                   visible es fina y punteada: esta, invisible y ancha, recibe el toque. */}
               {trazandoAcero && (

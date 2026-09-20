@@ -1619,6 +1619,9 @@ function App() {
   const [fibraAjuste, setFibraAjuste] = React.useState(null);
   const modoAjuste = fibraAjuste != null;
   const setModoAjuste = React.useCallback((v) => { if (!v) setFibraAjuste(null); }, []);
+  // Al salir del modo fibra se olvida TODO el ajuste, deshacer incluido: volver a entrar
+  // es otra sesión, y deshacer un movimiento hecho hace rato es más peligroso que útil.
+  const olvidarAjuste = React.useCallback(() => { setFibraAjuste(null); setDeshacerAjuste(null); }, []);
   const [umbralAjuste, setUmbralAjuste] = React.useState(3);
   const [deshacerAjuste, setDeshacerAjuste] = React.useState(null);
   const [aplicandoAjuste, setAplicandoAjuste] = React.useState(false);
@@ -2180,6 +2183,7 @@ function App() {
           modoAjuste={modoAjuste}
           setModoAjuste={setModoAjuste}
           onAjustarFibra={(con) => setFibraAjuste(con?.id ?? null)}
+          onOlvidarAjuste={olvidarAjuste}
           umbralAjuste={umbralAjuste}
           setUmbralAjuste={setUmbralAjuste}
           previewAjuste={previewAjuste}
