@@ -511,6 +511,21 @@ Tailwind no ve las que se arman con plantillas.
   casos, incluido que con 7, 8, 14, 15, 28, 29, 36, 57 y 100 días no se pierda ni se repita
   ninguno). **El render no lleva prueba**: el panel vive dentro de `VistaMapa` y montarlo
   exige el mapa entero. En producción desde el 19/09/26 (**SELLO: 19/09/26, 21:40**).
+- **Los grupos miden lo mismo que un día; lo que cambia es el borde (19/09).** Un día es un
+  botón de 36 px dentro de un marco con `border-2`, o sea **40 px** de fuera a fuera. El
+  grupo, al ser un botón suelto con el borde incluido, medía 36 y se veía más chico: ahora
+  va `w-10` con `border-[3px]`, mismo exterior y borde más grueso como única diferencia.
+  **FOTOS y MOVER se mudaron a la esquina izquierda**, porque a la derecha se montaban
+  encima del panel abierto; la etiqueta del punto seleccionado, que vivía ahí, subió un
+  piso. El panel **se arrastra para desplazarlo, solo con ratón**: en el teléfono el dedo
+  ya lo mueve por `overflow-y-auto` y activarlo en ambos lo desplazaría el doble; si el
+  arrastre movió de verdad, el clic posterior se cancela para no abrir el día donde
+  empezaste (**SELLO: 19/09/26, 21:57**).
+- **La nubecita no está separada del resto.** Medido en `harness-diseno/encabezado.html`
+  (fuera de git): las seis piezas del encabezado son de **40×40** y los huecos, de **4 px
+  iguales**. Lo que la hace ver desprendida es su **borde verde** de "sincronizado" contra
+  el borde oscuro de las demás. Si alguna vez molesta, es el borde lo que hay que igualar,
+  no el espaciado. Esa misma prueba confirma que las seis quedaron con **fondo blanco**.
 - **El modo `compacto` redefine alturas de Tailwind.** `src/index.css` trae reglas como
   `.compacto .h-14 { height: 2.5rem }` (y `h-24`, `h-20`, `h-16`, `h-12`, `h-10`, `w-10`)
   que se aplican cuando la ventana es chica: `App.jsx` le pone la clase `compacto` al
