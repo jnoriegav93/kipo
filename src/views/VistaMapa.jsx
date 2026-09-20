@@ -216,7 +216,9 @@ const VistaMapa = ({
     return (
       // shrink-0: sin esto, con muchos días la columna los aplasta en vez de
       // desbordar, y por eso tampoco llegaba a aparecer el scroll
-      <div key={dia.id} className="shrink-0 flex items-stretch rounded-lg border-2 border-slate-900 bg-white shadow-md overflow-hidden">
+      // El alto va en píxeles, igual que el grupo, para que los dos midan lo mismo pase
+      // lo que pase con el modo compacto
+      <div key={dia.id} className="shrink-0 h-[40px] flex items-stretch rounded-lg border-2 border-slate-900 bg-white shadow-md overflow-hidden">
         {expandido && (
           <>
             {/* Color (cicla colores) — cuadrado, a la izquierda */}
@@ -261,16 +263,26 @@ const VistaMapa = ({
   const pintarCasillasDias = (casillas) => casillas.map(c => {
     if (c.tipo === 'dia') return pintarFilaDia(c.dia);
     const abierto = gruposAbiertos.includes(c.id);
-    const nDias = diasDeCasilla(c).length;
+    const suyos = diasDeCasilla(c);
+    const nDias = suyos.length;
+    // Mismo color que los días que agrupa: si comparten color usa ese, y si no, el del
+    // primero. Visible mientras alguno de sus días lo esté, igual que un día suelto.
+    const colores = [...new Set(suyos.map(d => d.color))];
+    const colorGrupo = colores.length === 1 ? colores[0] : (suyos[0]?.color || '#9ca3af');
+    const algunoVisible = suyos.some(d => diasVisibles.includes(d.id));
     return (
       <div key={c.id} className="shrink-0 flex flex-col items-end gap-1">
         <button
           onClick={() => setGruposAbiertos(prev => (
             prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]
           ))}
-          // Mismo tamaño exterior que un día (40 px: su botón de 36 más el borde de 2 del
-          // marco), pero con el borde MÁS GRUESO, que es lo que distingue a un grupo.
-          className={`w-10 h-10 shrink-0 rounded-lg border-[3px] border-slate-900 shadow-md font-black text-[11px] flex items-center justify-center active:opacity-80 ${abierto ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}
+          // Mismo tamaño y mismo color que un día: lo ÚNICO que distingue a un grupo es
+          // el borde más grueso. Las medidas van en píxeles porque el modo compacto
+          // redefine w-10/h-10 (no w-9) y dejaría los grupos más chicos que los días.
+          className="shrink-0 w-[40px] h-[40px] rounded-lg border-[3px] border-slate-900 shadow-md font-black text-[11px] flex items-center justify-center active:opacity-80"
+          style={algunoVisible
+            ? { backgroundColor: colorGrupo, color: '#fff' }
+            : { backgroundColor: '#fff', color: '#0f172a' }}
           title={`${c.etiqueta}: ${nDias} día${nDias === 1 ? '' : 's'} · ${puntosDeCasilla(c)} pts`}
         >
           {c.etiqueta}
@@ -877,8 +889,8 @@ const VistaMapa = ({
 
       {/* Etiqueta proyecto - Ddía del punto seleccionado (texto suelto, izquierda, sobre la barra) */}
       {puntoSeleccionado && etiquetaPuntoSel && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
-        // Por encima de FOTOS / MOVER, que ahora ocupan esta esquina
-        <div className="absolute bottom-[19rem] left-4 z-[400] pointer-events-none max-w-[55%]">
+        // Sube solo cuando FOTOS / MOVER se corrieron a esta esquina
+        <div className={`absolute left-4 z-[400] pointer-events-none max-w-[55%] ${menuDiasAbierto ? 'bottom-[19rem]' : 'bottom-24'}`}>
           <span className="block truncate text-[13px] font-black text-slate-900" style={{ textShadow: '0 1px 2px rgba(255,255,255,0.9)' }}>
             {etiquetaPuntoSel}
           </span>
@@ -887,9 +899,9 @@ const VistaMapa = ({
 
       {/* Botones flotantes CÁMARA + MOVER (sobre la barra inferior, solo cuando hay punto seleccionado) */}
       {puntoSeleccionado && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
-        // A la IZQUIERDA: a la derecha se montaban encima del panel de días cuando está
-        // abierto. La etiqueta del punto seleccionado, que vivía acá, se subió un piso.
-        <div className="absolute bottom-24 left-4 z-[400] flex flex-col items-center gap-2">
+        // Se corren a la izquierda SOLO con el panel de días abierto, que es cuando se
+        // montarían encima. Cerrado el panel, vuelven a su sitio de siempre.
+        <div className={`absolute bottom-24 z-[400] flex flex-col items-center gap-2 ${menuDiasAbierto ? 'left-4' : 'right-4'}`}>
           {/* Punto SIN día: asignar día por fecha (arriba de FOTOS) */}
           {puntoSinDia && onAsignarDiasSueltos && (
             <button

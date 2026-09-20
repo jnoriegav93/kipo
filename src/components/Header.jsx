@@ -56,7 +56,7 @@ export default function Header({
           <button
             onClick={onClickSync}
             className={`
-              flex items-center justify-center w-10 h-10 rounded-xl border-2 transition-all duration-300 relative active:scale-95
+              flex items-center justify-center p-2 rounded-xl border-2 transition-all duration-300 relative active:scale-95
               ${estadoSync === 'synced'
                 ? 'bg-white border-emerald-500 text-emerald-600'
                 : estadoSync === 'syncing'
