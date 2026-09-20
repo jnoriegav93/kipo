@@ -2573,7 +2573,9 @@ function App() {
             <MiniMapaRevision
               puntos={lista}
               puntoActivo={pAct}
-              obtenerColorDia={obtenerColorDia}
+              // Se arma igual que para el mapa: en App no existe ninguna variable
+              // `obtenerColorDia`, solo este mismo cálculo pasado como prop.
+              obtenerColorDia={(diaId) => filtrosVisibilidad.obtenerColorDia(diaId, proyectos)}
               mostrarEtiquetas={mostrarEtiquetas}
             />
           </div>

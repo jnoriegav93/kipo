@@ -1183,7 +1183,8 @@ export const MiniMapaRevision = ({ puntos = [], puntoActivo, obtenerColorDia, mo
         const dot = activo ? 20 : 12;
         // El color lo manda el día del punto, para que este mapa no se vea distinto al
         // del usuario. Al activo lo distingue el TAMAÑO y el halo, no un color aparte.
-        const color = obtenerColorDia ? obtenerColorDia(p) : (activo ? '#f97316' : '#3b82f6');
+        // Recibe el DÍA del punto, no el punto: es la misma función que usa el mapa.
+        const color = obtenerColorDia ? obtenerColorDia(p.diaId) : (activo ? '#f97316' : '#3b82f6');
         const halo = activo ? `0 0 0 4px ${obtenerColorDia ? 'rgba(255,255,255,.65)' : 'rgba(249,115,22,.35)'},` : '';
         const icon = L.divIcon({
           className: '',
