@@ -795,7 +795,7 @@ const VistaMapa = ({
           {puntoSinDia && onAsignarDiasSueltos && (
             <button
               onClick={onAsignarDiasSueltos}
-              className="w-14 h-14 shrink-0 bg-purple-600 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-purple-800"
+              className="w-14 aspect-square shrink-0 bg-purple-600 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-purple-800"
             >
               <CalendarPlus size={22} strokeWidth={2.5} />
               <span className="text-[9px] font-black tracking-wide">DÍA</span>
@@ -804,7 +804,7 @@ const VistaMapa = ({
           {abrirCamaraDirecta && (
             <button
               onClick={abrirCamaraDirecta}
-              className="w-14 h-14 shrink-0 bg-orange-500 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-orange-700"
+              className="w-14 aspect-square shrink-0 bg-orange-500 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-orange-700"
             >
               <Camera size={22} strokeWidth={2.5} />
               <span className="text-[9px] font-black tracking-wide">FOTOS</span>
@@ -812,7 +812,7 @@ const VistaMapa = ({
           )}
           <button
             onClick={iniciarMover}
-            className="w-14 h-14 shrink-0 bg-slate-900 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-slate-700"
+            className="w-14 aspect-square shrink-0 bg-slate-900 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border-b-4 border-slate-700"
           >
             <Move size={22} strokeWidth={2.5} />
             <span className="text-[9px] font-black tracking-wide">MOVER</span>
