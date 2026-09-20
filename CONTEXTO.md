@@ -279,6 +279,13 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Los cables sin fibra palpitan en rojo (20/09).** Con el modo acero abierto, un cable
+  que no tiene **ninguna** fibra apoyada se dibuja en rojo y palpitando, para que salte a
+  la vista lo que falta completar. Solo en ese modo: fuera de él el mapa se ve como
+  siempre. Se anima **`stroke-opacity`**, no una sombra: una línea de Leaflet es un
+  `<path>` de SVG y no le sirve lo de `pulse-blue` (que sí vale para el punto azul, que es
+  un `div`). La clase entra por `pathOptions.className`. Si además está seleccionado
+  conserva su grosor, así el aviso no tapa cuál está elegido.
 - **Borrar una fibra suelta su apoyo (20/09).** El cable **no** se borra: es ferretería
   propia, tendida entre dos postes, y sus metros no dependen de ninguna fibra. Lo que se
   borra es la **vinculación**: el id de la fibra sale de `fibras` de cada cable que la
