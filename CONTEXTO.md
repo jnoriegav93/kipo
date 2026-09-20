@@ -279,6 +279,20 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Entrar a FIBRA ya no arranca el trazo (20/09).** Las fibras no se podían elegir en el
+  mapa: al tocarlas salía el primer vértice de una fibra nueva. **Misma causa que tuvo el
+  cable de acero:** el botón FIBRA encendía además el modo dibujo, así que
+  `dibujandoFibra` estaba siempre activo, cualquier toque clavaba un vértice y la
+  condición que ya existía para elegir una fibra (`modoFibraLinea && !dibujandoFibra`) no
+  se cumplía jamás. Ahora **el disquete de la barra arranca el trazo** y hace dos cosas
+  según el momento: empezar un ramal, o guardarlo cuando ya hay línea. Mientras no se
+  dibuja, tocar una fibra la elige y queda marcada también en la lista. Lleva la misma
+  **banda invisible de 22 px** del acero, porque su línea visible tiene 3-4 px y era
+  imposible acertarle. Ojo si se vuelve a tocar esto: el conflicto nace de que una fibra
+  **puede empezar en cualquier sitio**, sin poste debajo, a diferencia del cable.
+- **El deshacer del ajuste se olvida al cerrar la barra (20/09).** Antes solo se limpiaba
+  al usarlo, así que salir de fibra y volver a entrar seguía ofreciendo deshacer un
+  movimiento de la sesión anterior (**SELLO: 20/09/26, 01:02** y siguiente).
 - **El imán es por ramal, no general (20/09).** Antes el imán de la barra de fibra
   ajustaba los postes de **todas** las fibras visibles de una sola vez. Ahora cada ramal
   tiene el suyo en su fila de la lista y solo mueve los postes cercanos a **esa** fibra;
