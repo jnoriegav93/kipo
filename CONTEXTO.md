@@ -535,8 +535,27 @@ Tailwind no ve las que se arman con plantillas.
   sin ese control, un verde no probaría nada. Los huecos entre botones sí eran correctos:
   4 px iguales.
 - **FOTOS y MOVER se corren solo cuando el panel de días está abierto**, que es cuando se
-  montarían encima; cerrado el panel vuelven a la derecha de siempre. La etiqueta del punto
-  seleccionado sube de piso únicamente en ese caso.
+  montarían encima: pasan de `right-4` a `right-16`, o sea **se corren lo justo y siguen a
+  la derecha**; no cambian de lado. (Mudarlos a la esquina izquierda fue un malentendido y
+  duró un despliegue.) El panel de días además **no lleva barra de desplazamiento**: la
+  clase `sin-barra` de `index.css` la oculta, porque desde que se arrastra sobraba, se
+  comía ancho y tapaba los cuadrados. Sigue desplazándose con el dedo, la rueda y el
+  arrastre (**SELLO: 19/09/26, 22:34**).
+- **Dos trampas del harness que hicieron que una prueba midiera de más (19/09).** Las dos
+  salieron el mismo día y conviene recordarlas antes de fiarse de un verde:
+  - **Una clase arbitraria de Tailwind que solo exista en `harness-diseno` NO se genera.**
+    El escaneo mira `./src` y `./index.html` (ver `tailwind.config.js`), así que un
+    `max-h-[300px]` puesto solo en el harness no llega nunca al CSS: el panel se quedó sin
+    límite de alto, no desbordaba y la prueba medía otra cosa. En el harness, esas medidas
+    van en **estilo inline**. (Las clases arbitrarias que además existen en `src`, como
+    `w-[45%]`, sí se generan; por eso otras pruebas se salvaron de casualidad.)
+  - **El Chrome de las pruebas usa barras SUPERPUESTAS**, que no reservan ancho: entonces
+    `offsetWidth - clientWidth` da 0 con o sin la clase y no distingue nada (el flag
+    `--disable-features=OverlayScrollbar` no lo cambió). Lo que sí separa los dos casos es
+    la regla aplicada: `scrollbar-width: none` contra `auto`.
+  En ambos casos **el panel de control fue lo que delató el problema**: al salir idéntico
+  al caso bueno, quedó claro que la prueba no medía nada. Sin control, habría cantado
+  victoria dos veces.
 - **El modo `compacto` redefine alturas de Tailwind.** `src/index.css` trae reglas como
   `.compacto .h-14 { height: 2.5rem }` (y `h-24`, `h-20`, `h-16`, `h-12`, `h-10`, `w-10`)
   que se aplican cuando la ventana es chica: `App.jsx` le pone la clase `compacto` al
