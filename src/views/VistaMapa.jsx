@@ -871,16 +871,18 @@ const VistaMapa = ({
 
       {/* Botones CONFIRMAR / CANCELAR tras soltar el marcador */}
       {pendingCoords && (
-        <div className="absolute bottom-24 left-4 right-4 z-[400] flex gap-3">
+        // Centrados y del ancho que pida su texto: con left-4/right-4 y flex-1 se
+        // estiraban de borde a borde de la pantalla.
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[400] flex gap-3">
           <button
             onClick={cancelarMover}
-            className="flex-1 h-12 rounded-xl border-2 border-slate-300 bg-white font-black text-slate-900 text-sm active:scale-95 transition-transform shadow-md"
+            className="h-12 px-8 rounded-xl border-2 border-slate-300 bg-white font-black text-slate-900 text-sm active:scale-95 transition-transform shadow-md"
           >
             CANCELAR
           </button>
           <button
             onClick={confirmarMover}
-            className="flex-1 h-12 rounded-xl bg-green-600 text-white font-black text-sm active:scale-95 transition-transform shadow-lg border-b-4 border-green-800 active:border-b-0 active:mt-1"
+            className="h-12 px-8 rounded-xl bg-green-600 text-white font-black text-sm active:scale-95 transition-transform shadow-lg border-b-4 border-green-800 active:border-b-0 active:mt-1"
           >
             CONFIRMAR
           </button>

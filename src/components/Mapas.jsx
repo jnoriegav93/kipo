@@ -1158,7 +1158,10 @@ const RecenterMini = ({ center }) => {
   return null;
 };
 
-export const MiniMapaRevision = ({ puntos = [], puntoActivo }) => {
+// `obtenerColorDia` y `mostrarEtiquetas` son opcionales: sin ellos se comporta como
+// siempre (azul y rótulos), que es lo que necesita Revisión. El mapa que queda detrás
+// del panel de fotos sí los pasa, para no verse distinto al mapa del usuario.
+export const MiniMapaRevision = ({ puntos = [], puntoActivo, obtenerColorDia, mostrarEtiquetas }) => {
   const conCoords = (puntos || []).filter(p => p.coords && p.coords.lat != null && p.coords.lng != null);
   const c = puntoActivo && puntoActivo.coords;
   if (!c || c.lat == null || c.lng == null) {
@@ -1173,12 +1176,19 @@ export const MiniMapaRevision = ({ puntos = [], puntoActivo }) => {
       <RecenterMini center={center} />
       {conCoords.map(p => {
         const activo = puntoActivo && p.id === puntoActivo.id;
-        const label = (p.datos && p.datos.numero) || '';
+        // Con `mostrarEtiquetas` los rótulos siguen lo que el usuario tenga elegido en su
+        // mapa; sin él (Revisión) se muestran siempre, como antes.
+        const verEtiqueta = mostrarEtiquetas ? !!mostrarEtiquetas.item : true;
+        const label = verEtiqueta ? ((p.datos && p.datos.numero) || '') : '';
         const dot = activo ? 20 : 12;
+        // El color lo manda el día del punto, para que este mapa no se vea distinto al
+        // del usuario. Al activo lo distingue el TAMAÑO y el halo, no un color aparte.
+        const color = obtenerColorDia ? obtenerColorDia(p) : (activo ? '#f97316' : '#3b82f6');
+        const halo = activo ? `0 0 0 4px ${obtenerColorDia ? 'rgba(255,255,255,.65)' : 'rgba(249,115,22,.35)'},` : '';
         const icon = L.divIcon({
           className: '',
           html: `<div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-${dot / 2}px);">
-              <div style="width:${dot}px;height:${dot}px;background:${activo ? '#f97316' : '#3b82f6'};border:2px solid #fff;border-radius:50%;box-shadow:${activo ? '0 0 0 4px rgba(249,115,22,.35),' : ''}0 1px 3px rgba(0,0,0,.5);"></div>
+              <div style="width:${dot}px;height:${dot}px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:${halo}0 1px 3px rgba(0,0,0,.5);"></div>
               ${label ? `<span style="font-size:9px;font-weight:800;color:#111;background:rgba(255,255,255,.85);border-radius:3px;padding:0 3px;margin-top:1px;white-space:nowrap;line-height:1.3;">${label}</span>` : ''}
             </div>`,
           iconSize: [60, dot + 16],

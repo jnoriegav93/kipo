@@ -326,6 +326,10 @@ export default function VerDetalle({
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3" style={{ paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
 
+        {/* Las dos tarjetas de arriba van una al lado de la otra cuando hay ancho, para
+            que la pantalla no quede tan larga. En el teléfono siguen apiladas. */}
+        <div className="lg:grid lg:grid-cols-2 lg:gap-x-3">
+
         {/* INFO DEL POSTE */}
         <div className={`${theme.card} border-2 ${theme.border} rounded-xl p-3 mb-3`}>
           <h3 className={`text-xs font-black ${theme.text} uppercase mb-2 opacity-70`}>Info del Poste</h3>
@@ -363,6 +367,8 @@ export default function VerDetalle({
 
             <div className="col-span-2"><span className={`font-bold ${theme.text} opacity-60`}>Extras:</span> <span className={`font-black ${theme.text}`}>{datos.extrasSeleccionados?.join(', ') || '-'}</span></div>
           </div>
+        </div>
+
         </div>
 
         {/* CONSOLIDADO FERRETERÍAS */}

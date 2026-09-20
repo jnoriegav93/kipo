@@ -2570,7 +2570,12 @@ function App() {
           : [...(puntosVisiblesMapa || []), pAct];
         return (
           <div className="fixed inset-0 z-[150]">
-            <MiniMapaRevision puntos={lista} puntoActivo={pAct} />
+            <MiniMapaRevision
+              puntos={lista}
+              puntoActivo={pAct}
+              obtenerColorDia={obtenerColorDia}
+              mostrarEtiquetas={mostrarEtiquetas}
+            />
           </div>
         );
       })()}

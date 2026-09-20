@@ -323,6 +323,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
   const [viewingPhoto, setViewingPhoto] = useState(null);
   const [viewingBlobUrl, setViewingBlobUrl] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // { section, item } | null
+  // Se tocó algo: se tomó, se retomó o se borró una foto. Mientras siga en false, el
+  // botón de salir dice ATRÁS, porque no hay nada que guardar (cada foto se guarda sola
+  // al tomarla). Va acá arriba a propósito: se usa mucho más abajo, y un `const` no sube.
+  const [huboCambios, setHuboCambios] = useState(false);
   // Si la foto abierta está PENDIENTE (aún no subida) pero su archivo está en el equipo,
   // mostrar la foto REAL (full) desde el blob local, no solo la miniatura.
   useEffect(() => {
@@ -702,6 +706,8 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
 
   const handleFileChange = (e) => {
     if (!e.target.files || e.target.files.length === 0 || !activeCaptureRef.current) return;
+    // Entró una foto (nueva o retomada): el botón de salir pasa a decir GUARDAR FOTOS
+    setHuboCambios(true);
 
     const file = e.target.files[0];
     const now = Date.now();
@@ -1092,6 +1098,7 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
     setConfirmDelete(null);
     if (!objetivo) return;
     const { section, item } = objetivo;
+    setHuboCambios(true);
     // Snapshot de la foto ANTES de quitarla → papelera (15 días, restaurable). El archivo
     // de Storage NO se toca: lo borra la purga del servidor al vencer.
     const fotoBorrada = fotosActuales?.[section]?.[item];
@@ -1451,8 +1458,10 @@ export default function PhotoManager({ onClose, datos, setDatos, proyectoActual,
           </button>
         ) : (
           <div className="flex items-center gap-2">
+            {/* Sin tocar nada no hay nada que guardar (cada foto se guarda al tomarla),
+                así que el botón dice ATRÁS; cambia de rótulo en cuanto se toca algo. */}
             <button onClick={onClose} className="flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest border-2 border-slate-300 active:scale-95 transition-all shadow-md">
-              GUARDAR FOTOS
+              {huboCambios ? 'GUARDAR FOTOS' : 'ATRÁS'}
             </button>
             {proyectoActual?.tipo !== 'levantamiento' && (
               <button onClick={() => setMenuSecciones(v => !v)}
