@@ -598,6 +598,28 @@ Tailwind no ve las que se arman con plantillas.
   En ambos casos **el panel de control fue lo que delató el problema**: al salir idéntico
   al caso bueno, quedó claro que la prueba no medía nada. Sin control, habría cantado
   victoria dos veces.
+- **Carga del satélite con internet lento (20/09).** Tres cosas, por orden de impacto:
+  - **Un solo dominio era el cuello de botella.** Todas las teselas salían de
+    `mt1.google.com` y el navegador abre ~6 descargas **por dominio**: hacían cola de a 6.
+    Ahora se reparten entre `mt0`–`mt3` (`subdomains="0123"`). El service worker ya
+    cacheaba `mt[0-9]`, así que la caché siguió valiendo. El `MiniMapaRevision` llevaba el
+    mismo fallo y se corrigió a la par.
+  - **Los nombres de calle son un SEGUNDO juego de teselas** que se pedía siempre y le
+    quitaba cupo al satélite. Pasaron a ser opcionales, con botón **CALLES** junto a ITEM /
+    PASIVO / FIBRA, **apagados por defecto**. Encendidos van con `detectRetina` (doble
+    resolución), que es lo que los hace legibles sobre la foto aérea. Se conservan al
+    cerrar el menú, igual que FIBRA: son una capa del mapa, no un rótulo de puntos.
+  - **`updateWhenZooming={false}`**: no se piden teselas durante la animación del zoom,
+    solo al terminar. Un instante borroso a cambio de no lanzar y descartar decenas de
+    peticiones por pellizco.
+  **Pendiente de decidir:** cuando una tesela falla se sustituye por un píxel transparente
+  y **no se reintenta nunca** (`makeTileHandlers` en `Mapas.jsx`). Con internet lento los
+  tiempos agotados son frecuentes y dejan cuadros en blanco hasta volver a pasar por ahí
+  con otro zoom; además esas respuestas no se cachean. Un reintento lo arreglaría, pero
+  cambia el comportamiento sin señal.
+- **Cuidado al medir bases de lint:** filtrar por `problems` se pierde los archivos con
+  **un solo** problema, porque ESLint escribe `1 problem` en singular. Pasó con
+  `useMapState.js`: la base parecía cero y en realidad era 1.
 - **Ese segundo mapa ya no se monta si estás en el mapa (20/09).** La condición ahora
   incluye `vista !== 'mapa'`: viniendo del formulario o del detalle se sigue montando
   (ahí el mapa real no existe y quedaría media pantalla vacía en PC), pero **estando en
