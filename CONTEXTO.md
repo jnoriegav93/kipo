@@ -494,7 +494,10 @@ Tailwind no ve las que se arman con plantillas.
 **Tres cosas que costaron esta tanda:**
 
 - **`shrink-0` en las tres columnas.** Sin eso un hijo flex cede ancho según su contenido:
-  la prueba midió la columna de la foto en **69 px** en vez de 517.
+  la prueba midió la columna de la foto en **69 px** en vez de 517. Lo mismo le pasaba al
+  **panel de días** del mapa: sus filas no lo llevaban y, con muchos días, la columna
+  (`max-h-[65vh]`) las aplastaba en vez de desbordar — por eso tampoco llegaba a aparecer
+  el scroll que ya estaba puesto. Un `shrink-0` arregla las dos cosas a la vez.
 - **El modo `compacto` redefine alturas de Tailwind.** `src/index.css` trae reglas como
   `.compacto .h-14 { height: 2.5rem }` (y `h-24`, `h-20`, `h-16`, `h-12`, `h-10`, `w-10`)
   que se aplican cuando la ventana es chica: `App.jsx` le pone la clase `compacto` al
@@ -507,12 +510,22 @@ Tailwind no ve las que se arman con plantillas.
   La prueba (`harness-diseno/botones.html`, fuera de git) mide los botones con la clase
   `compacto` activa **y también uno "como estaba"**, que debe salir 56×40: sin ese
   control la prueba no distinguiría el fallo y habría dado por bueno el arreglo anterior.
-- **Los avisos flotantes del mapa van debajo de la barra de herramientas.** El "Sin GPS"
-  de `Mapas.jsx` salía en `top-4` y se montaba encima de los botones del `Header`, que
-  flota sobre el mapa (`absolute top-0`, `z-[50]`) mientras el aviso va con `z-[5000]`.
-  Ahora arranca en `calc(60px + env(safe-area-inset-top))`: los botones miden 40 px y
-  empiezan a 12 px del borde, más el hueco de la barra de estado del teléfono. Cualquier
-  aviso nuevo ahí arriba tiene que respetar esa cuenta, no un número a ojo.
+- **Los avisos del mapa no flotan sobre el nombre del proyecto: lo empujan.** El "Sin GPS"
+  se pintaba dentro de `Mapas.jsx` con `position: absolute` y se montaba encima de los
+  botones del `Header` y del rótulo del proyecto. Ahora `MapaReal` **solo avisa hacia
+  afuera** (`onGpsError`) y el aviso se pinta como **primer hijo** de la columna de la
+  esquina superior derecha de `VistaMapa.jsx`, la misma del nombre del proyecto: cuando
+  aparece lo empuja hacia abajo y, cuando no está, el nombre sube solo. El reintento va por
+  `gpsTrigger`, la misma vía del botón de GPS, para no duplicar la lógica interna del mapa
+  (**SELLO: 19/09/26, 21:29**). Cualquier aviso nuevo de esa esquina va en esa columna, no
+  flotando aparte.
+- **`bg-brand-50` no existe.** La paleta `brand` de `tailwind.config.js` define **solo los
+  tonos 500 y 600**. Los botones del encabezado (días, etiquetas, simbología) usaban
+  `bg-brand-50` para el estado activo: Tailwind no genera esa clase, así que quedaban
+  **sin fondo** y sobre el satélite se veía el mapa a través. El de sincronización tenía el
+  mismo efecto con fondos al 10 % de opacidad (`bg-emerald-500/10`). Ahora todos llevan
+  `bg-white` y el color del estado en el borde y el icono. **Antes de usar un tono de
+  `brand`, comprobar que exista en la config.**
 - **"PC" no mira el ancho.** `useIsDesktop` es `(hover: hover) and (pointer: fine)`, o sea
   "¿tiene mouse?": una ventana angosta en una laptop sigue contando como PC. Se decidió
   con el usuario **no** poner umbral de ancho, porque la app se usa a pantalla completa.
