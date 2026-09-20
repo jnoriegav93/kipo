@@ -566,6 +566,15 @@ Tailwind no ve las que se arman con plantillas.
 - **En el panel de fotos, el botón de salir dice ATRÁS hasta que se toca algo.** Antes
   decía siempre GUARDAR FOTOS aunque no guardara nada: cada foto se guarda sola al tomarla.
   Pasa a GUARDAR FOTOS si se tomó, se retomó o se borró alguna (**SELLO: 19/09/26, 23:33**).
+- **Pantalla negra al abrir las fotos (19/09), y cómo se llegó a ella.** En `App.jsx`
+  **no existe** ninguna variable `obtenerColorDia`: solo existe como *nombre de prop*, con
+  la función armada en línea (`(diaId) => filtrosVisibilidad.obtenerColorDia(diaId, ...)`).
+  Al pasarle `obtenerColorDia={obtenerColorDia}` al minimapa del panel de fotos se
+  referenció algo inexistente y reventó al montar. **Ni ESLint ni Vite lo detectan y el
+  build pasa**, tal como avisa `CLAUDE.md`. Detrás había un segundo fallo tapado por el
+  primero: esa función recibe un **`diaId`**, no el punto, así que el color habría salido
+  vacío igual. Antes de pasar una prop "que ya existe", comprobar que existe **como
+  variable** en ese archivo y con qué argumento se la llama.
 - **Dos cosas que salieron al verificar esa tanda, y conviene no repetir:**
   - **Un `const` no sube.** El estado nuevo quedó declarado *después* de sus usos y habría
     reventado al tomar la primera foto. Lo delató el grep de verificación, no el lint.
