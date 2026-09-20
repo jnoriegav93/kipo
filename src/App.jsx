@@ -1818,6 +1818,22 @@ function App() {
   const borrarConexion = async (con) => {
             setConexiones(prev => prev.filter(c => c.id !== con.id));
             setConexionSeleccionada(null);
+            // Los cables de acero que la sostenían SUELTAN la fibra. El cable se queda
+            // como está (es ferretería propia: sus postes y sus metros no dependen de
+            // ninguna fibra), solo deja de anotar una que ya no existe. Sus ids van a la
+            // papelera para poder rehacer el apoyo si la fibra vuelve.
+            const idFibra = String(con.id);
+            const cablesApoyo = (cablesAcero || []).filter(c => (c.fibras || []).map(String).includes(idFibra));
+            if (cablesApoyo.length) {
+              const sinLaFibra = (c) => (c.fibras || []).filter(f => String(f) !== idFibra);
+              setCablesAcero(prev => prev.map(c => (
+                cablesApoyo.some(x => String(x.id) === String(c.id)) ? { ...c, fibras: sinLaFibra(c) } : c
+              )));
+              for (const c of cablesApoyo) {
+                fbUpdateDoc(doc(db, 'cablesAcero', String(c.id)), { fibras: sinLaFibra(c) })
+                  .catch(e => console.error('Soltar la fibra del cable de acero:', e));
+              }
+            }
             // A la papelera (con las coords de sus puntos AL MOMENTO del borrado)
             try {
               const { enviarAPapelera } = await import('./utils/papelera');
@@ -1833,7 +1849,7 @@ function App() {
                 proyectoId: con.proyectoId || null,
                 proyectoNombre: proyectos.find(p => p.id === con.proyectoId)?.nombre || '',
                 nombre: `Fibra ${con.capacidad || ''} (${idsPts.length} puntos)`.trim(),
-                meta: { puntos: metaPuntos },
+                meta: { puntos: metaPuntos, cablesApoyo: cablesApoyo.map(c => String(c.id)) },
               });
             } catch (e) { console.error('Papelera fibra:', e); }
             import("firebase/firestore").then(({ deleteDoc, doc: fbDoc }) => {

@@ -1,7 +1,7 @@
 // PAPELERA — soft-delete a nivel usuario. Nada se borra de verdad: se guarda un snapshot
 // completo del elemento (con su id original) y vive 15 días hasta que la purga del servidor
 // lo elimine (junto con sus archivos de Storage). NUNCA borra archivos aquí.
-import { collection, addDoc, deleteDoc, doc, setDoc, updateDoc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, setDoc, updateDoc, getDoc, getDocs, onSnapshot, query, where, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { soltarDePostesBorrados } from './fibraUtils';
 
@@ -99,6 +99,13 @@ export const restaurarPunto = async (entrada) => {
 export const restaurarFibra = async (entrada, puntosActuales) => {
   const fibra = soltarDePostesBorrados(entrada.snapshot || {}, puntosActuales || [], (entrada.meta && entrada.meta.puntos) || []);
   await setDoc(doc(db, entrada.coleccionOriginal || 'conexiones', String(entrada.idOriginal)), fibra);
+  // Vuelve a apoyarse en los cables de acero que la sostenían al borrarla (meta.cablesApoyo).
+  // Los que ya no existan se saltan sin ruido: updateDoc no crea documentos.
+  for (const idCable of (entrada.meta && entrada.meta.cablesApoyo) || []) {
+    try {
+      await updateDoc(doc(db, 'cablesAcero', String(idCable)), { fibras: arrayUnion(String(entrada.idOriginal)) });
+    } catch { /* ese cable ya no está: nada que rehacer */ }
+  }
   await quitarDePapelera(entrada.id);
   return { ok: true };
 };
