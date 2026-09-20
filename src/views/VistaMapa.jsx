@@ -3,6 +3,7 @@ import { Eye, EyeOff, Edit3, Trash2, Plus, ArrowLeft, Cable, Move, X, Link2, Cam
 import { MapaReal } from '../components/Mapas';
 import BarraFibra from '../components/BarraFibra';
 import BarraAcero from '../components/BarraAcero';
+import { agruparDias, diasDeCasilla, puntosDeCasilla } from '../utils/agruparDias';
 
 const haversine = (lat1, lng1, lat2, lng2) => {
   const R = 6371000;
@@ -167,6 +168,87 @@ const VistaMapa = ({
   // El mapa avisa si se quedó sin GPS. Se guarda acá, y no dentro del mapa, para poder
   // pintarlo en la misma columna que el nombre del proyecto y que lo empuje hacia abajo.
   const [sinGps, setSinGps] = useState(false);
+  // Qué grupos del panel de días están abiertos (S1, M1…). Se pueden abrir varios.
+  const [gruposAbiertos, setGruposAbiertos] = useState([]);
+
+  // ── Panel de días ───────────────────────────────────────────────────────────
+  // El plegado (cuántas casillas y qué cuelga de cada una) vive en utils/agruparDias;
+  // acá solo se dibuja. Una casilla es un día suelto o un grupo: el grupo es un
+  // cuadrado igual que un día y, al tocarlo, muestra lo que tiene dentro (un mes
+  // muestra sus semanas; una semana, sus días).
+  const pintarFilaDia = (dia) => {
+    const visible = diasVisibles.includes(dia.id);
+    const expandido = diaExpandido === dia.id;
+    const fechaCorta = (dia.fecha || '').replace(/(\d{4})/, m => m.slice(-2));
+    return (
+      // shrink-0: sin esto, con muchos días la columna los aplasta en vez de
+      // desbordar, y por eso tampoco llegaba a aparecer el scroll
+      <div key={dia.id} className="shrink-0 flex items-stretch rounded-lg border-2 border-slate-900 bg-white shadow-md overflow-hidden">
+        {expandido && (
+          <>
+            {/* Color (cicla colores) — cuadrado, a la izquierda */}
+            <button
+              onClick={() => {
+                const idx = coloresDia.indexOf(dia.color);
+                const next = coloresDia[(idx + 1) % (coloresDia.length || 1)];
+                if (cambiarColorDia && proyectoActivoId) cambiarColorDia(proyectoActivoId, dia.id, next);
+              }}
+              className="w-9 border-r-2 border-slate-900 active:opacity-80"
+              style={{ backgroundColor: dia.color }}
+              title="Cambiar color"
+            />
+            {/* Info: cantidad de puntos (arriba, negro) + fecha (abajo, gris) */}
+            <div className="flex flex-col justify-center px-2 py-1 border-r-2 border-slate-900">
+              <span className="text-[11px] font-black text-slate-900 leading-none whitespace-nowrap">{dia.count} pts</span>
+              <span className="text-[9px] font-bold text-slate-400 leading-none mt-0.5 whitespace-nowrap">{fechaCorta}</span>
+            </div>
+            {/* Ojo (visibilidad) — cuadrado */}
+            <button
+              onClick={() => toggleVisibilidadDia && toggleVisibilidadDia(dia.id)}
+              className="w-9 flex items-center justify-center border-r-2 border-slate-900 bg-white active:bg-slate-100"
+              title={visible ? 'Ocultar' : 'Mostrar'}
+            >
+              {visible ? <Eye size={14} className="text-slate-900" strokeWidth={2.5} /> : <EyeOff size={14} className="text-slate-400" strokeWidth={2.5} />}
+            </button>
+          </>
+        )}
+        {/* Número del día (toca para expandir/comprimir) */}
+        <button
+          onClick={() => setDiaExpandido && setDiaExpandido(expandido ? null : dia.id)}
+          className="w-9 h-9 font-black text-sm active:opacity-80 flex items-center justify-center shrink-0"
+          style={visible ? { backgroundColor: dia.color, color: '#fff' } : { backgroundColor: '#fff', color: '#0f172a' }}
+          title={`Día ${dia.numero}`}
+        >
+          {dia.numero}
+        </button>
+      </div>
+    );
+  };
+
+  const pintarCasillasDias = (casillas) => casillas.map(c => {
+    if (c.tipo === 'dia') return pintarFilaDia(c.dia);
+    const abierto = gruposAbiertos.includes(c.id);
+    const nDias = diasDeCasilla(c).length;
+    return (
+      <div key={c.id} className="shrink-0 flex flex-col items-end gap-1">
+        <button
+          onClick={() => setGruposAbiertos(prev => (
+            prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]
+          ))}
+          className={`w-9 h-9 shrink-0 rounded-lg border-2 border-slate-900 shadow-md font-black text-[11px] flex items-center justify-center active:opacity-80 ${abierto ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}
+          title={`${c.etiqueta}: ${nDias} día${nDias === 1 ? '' : 's'} · ${puntosDeCasilla(c)} pts`}
+        >
+          {c.etiqueta}
+        </button>
+        {/* Lo que cuelga del grupo, con una guía a la derecha para que se lea como suyo */}
+        {abierto && (
+          <div className="flex flex-col items-end gap-1 pr-1.5 border-r-2 border-slate-400">
+            {pintarCasillasDias(c.hijos)}
+          </div>
+        )}
+      </div>
+    );
+  });
 
   const abrirPopup = (foto) => {
     setFotoSeleccionada(foto);
@@ -722,54 +804,7 @@ const VistaMapa = ({
                       );
                     })()}
 
-                    {diasPanelData.map(dia => {
-                      const visible = diasVisibles.includes(dia.id);
-                      const expandido = diaExpandido === dia.id;
-                      const fechaCorta = (dia.fecha || '').replace(/(\d{4})/, m => m.slice(-2));
-                      return (
-                        // shrink-0: sin esto, con muchos días la columna los aplasta en
-                        // vez de desbordar, y por eso tampoco llegaba a aparecer el scroll
-                        <div key={dia.id} className="shrink-0 flex items-stretch rounded-lg border-2 border-slate-900 bg-white shadow-md overflow-hidden">
-                          {expandido && (
-                            <>
-                              {/* Color (cicla colores) — cuadrado, a la izquierda */}
-                              <button
-                                onClick={() => {
-                                  const idx = coloresDia.indexOf(dia.color);
-                                  const next = coloresDia[(idx + 1) % (coloresDia.length || 1)];
-                                  if (cambiarColorDia && proyectoActivoId) cambiarColorDia(proyectoActivoId, dia.id, next);
-                                }}
-                                className="w-9 border-r-2 border-slate-900 active:opacity-80"
-                                style={{ backgroundColor: dia.color }}
-                                title="Cambiar color"
-                              />
-                              {/* Info: cantidad de puntos (arriba, negro) + fecha (abajo, gris) */}
-                              <div className="flex flex-col justify-center px-2 py-1 border-r-2 border-slate-900">
-                                <span className="text-[11px] font-black text-slate-900 leading-none whitespace-nowrap">{dia.count} pts</span>
-                                <span className="text-[9px] font-bold text-slate-400 leading-none mt-0.5 whitespace-nowrap">{fechaCorta}</span>
-                              </div>
-                              {/* Ojo (visibilidad) — cuadrado */}
-                              <button
-                                onClick={() => toggleVisibilidadDia && toggleVisibilidadDia(dia.id)}
-                                className="w-9 flex items-center justify-center border-r-2 border-slate-900 bg-white active:bg-slate-100"
-                                title={visible ? 'Ocultar' : 'Mostrar'}
-                              >
-                                {visible ? <Eye size={14} className="text-slate-900" strokeWidth={2.5} /> : <EyeOff size={14} className="text-slate-400" strokeWidth={2.5} />}
-                              </button>
-                            </>
-                          )}
-                          {/* Número del día (toca para expandir/comprimir) */}
-                          <button
-                            onClick={() => setDiaExpandido && setDiaExpandido(expandido ? null : dia.id)}
-                            className="w-9 h-9 font-black text-sm active:opacity-80 flex items-center justify-center shrink-0"
-                            style={visible ? { backgroundColor: dia.color, color: '#fff' } : { backgroundColor: '#fff', color: '#0f172a' }}
-                            title={`Día ${dia.numero}`}
-                          >
-                            {dia.numero}
-                          </button>
-                        </div>
-                      );
-                    })}
+                    {pintarCasillasDias(agruparDias(diasPanelData))}
                   </>
                 )}
               </div>
