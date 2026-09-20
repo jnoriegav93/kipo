@@ -685,10 +685,27 @@ export const MapaReal = ({
       {lineasAcero.map(c => {
         const sel = cableAceroSeleccionado && String(cableAceroSeleccionado.id) === String(c.id);
         const pos = [[c.a.coords.lat, c.a.coords.lng], [c.b.coords.lat, c.b.coords.lng]];
+        // Sin ninguna fibra apoyada: rojo y palpitando, pero SOLO mientras se trabaja con
+        // el acero. Fuera de ese modo el mapa se ve como siempre. Si además está elegido,
+        // conserva su grosor, así el aviso no tapa cuál tenés seleccionado.
+        const avisaSinFibra = modoAcero && !(c.fibras || []).length;
         return (
           <React.Fragment key={`ac-${c.id}`}>
-            <Polyline positions={pos} interactive={false} pathOptions={{ color: '#0f172a', weight: sel ? 9 : 6, opacity: 0.85 }} />
-            <Polyline positions={pos} interactive={false} pathOptions={{ color: sel ? '#fbbf24' : '#e2e8f0', weight: sel ? 5 : 3, dashArray: '4,5' }} />
+            <Polyline
+              positions={pos}
+              interactive={false}
+              pathOptions={{ color: avisaSinFibra ? '#7f1d1d' : '#0f172a', weight: sel ? 9 : 6, opacity: 0.85 }}
+            />
+            <Polyline
+              positions={pos}
+              interactive={false}
+              pathOptions={{
+                color: avisaSinFibra ? '#ef4444' : (sel ? '#fbbf24' : '#e2e8f0'),
+                weight: sel ? 5 : 3,
+                dashArray: '4,5',
+                className: avisaSinFibra ? 'acero-sin-fibra' : undefined,
+              }}
+            />
             {/* La línea visible es fina: esta, invisible y ancha, es la que recibe el dedo */}
             {puedeElegirAcero && (
               <Polyline
@@ -729,6 +746,13 @@ export const MapaReal = ({
     <div className="h-full w-full relative z-0">
       <style>{`
         @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.5); } 70% { box-shadow: 0 0 0 15px rgba(37, 99, 235, 0); } 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); } }
+
+        /* Cable de acero sin ninguna fibra apoyada: palpita en rojo mientras se trabaja
+           con el acero, para que salte a la vista lo que falta completar. Se anima la
+           opacidad del trazo, que es lo que se puede animar en una línea de Leaflet (es
+           un <path> de SVG, no una caja con sombra). */
+        @keyframes latido-acero { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.25; } }
+        .acero-sin-fibra { animation: latido-acero 1.2s ease-in-out infinite; }
 
         /* Dibujando fibra: el puntero es un círculo del color de la capacidad, del
            tamaño de un poste, para ver dónde va a caer el vértice libre.
