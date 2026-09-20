@@ -498,6 +498,19 @@ Tailwind no ve las que se arman con plantillas.
   **panel de días** del mapa: sus filas no lo llevaban y, con muchos días, la columna
   (`max-h-[65vh]`) las aplastaba en vez de desbordar — por eso tampoco llegaba a aparecer
   el scroll que ya estaba puesto. Un `shrink-0` arregla las dos cosas a la vez.
+- **El panel de días se pliega cuando son muchos (19/09).** Los días sueltos nunca pasan de
+  **7**: al aparecer el octavo, los 7 anteriores se pliegan en una **semana** (`S1`, `S2`…);
+  y al aparecer la **quinta** semana, las 4 anteriores se pliegan en un **mes** (`M1`, `M2`…).
+  Se pliega siempre **lo más viejo**, así que lo reciente —con lo que se trabaja— queda a la
+  vista. Tocar un grupo lo abre y muestra lo que tiene dentro: un mes muestra sus **semanas**,
+  una semana sus **días**, y se pueden abrir varios a la vez.
+  **La regla es "al superar", no "al completar"**: con 4 semanas todavía no hay mes, hace
+  falta la quinta, por simetría con los 7 días sueltos. Para que se pliegue al completar la
+  cuarta, quitar el `-1` de `bloquesPlegados`.
+  La cuenta vive en `src/utils/agruparDias.js`, fuera de la interfaz, probada con Node (26
+  casos, incluido que con 7, 8, 14, 15, 28, 29, 36, 57 y 100 días no se pierda ni se repita
+  ninguno). **El render no lleva prueba**: el panel vive dentro de `VistaMapa` y montarlo
+  exige el mapa entero. En producción desde el 19/09/26 (**SELLO: 19/09/26, 21:40**).
 - **El modo `compacto` redefine alturas de Tailwind.** `src/index.css` trae reglas como
   `.compacto .h-14 { height: 2.5rem }` (y `h-24`, `h-20`, `h-16`, `h-12`, `h-10`, `w-10`)
   que se aplican cuando la ventana es chica: `App.jsx` le pone la clase `compacto` al
