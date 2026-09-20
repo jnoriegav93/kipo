@@ -835,7 +835,7 @@ const VistaMapa = ({
                 onPointerUp={diasPointerUp}
                 onPointerLeave={diasPointerUp}
                 onClickCapture={diasClickCapture}
-                className="flex flex-col gap-1 items-end max-h-[65vh] overflow-y-auto py-0.5 cursor-grab active:cursor-grabbing"
+                className="sin-barra flex flex-col gap-1 items-end max-h-[65vh] overflow-y-auto py-0.5 cursor-grab active:cursor-grabbing"
               >
                 {diasPanelData.length === 0 ? (
                   <div className="bg-white border-2 border-slate-900 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-600 shadow-md">Sin días</div>
@@ -889,8 +889,7 @@ const VistaMapa = ({
 
       {/* Etiqueta proyecto - Ddía del punto seleccionado (texto suelto, izquierda, sobre la barra) */}
       {puntoSeleccionado && etiquetaPuntoSel && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
-        // Sube solo cuando FOTOS / MOVER se corrieron a esta esquina
-        <div className={`absolute left-4 z-[400] pointer-events-none max-w-[55%] ${menuDiasAbierto ? 'bottom-[19rem]' : 'bottom-24'}`}>
+        <div className="absolute bottom-24 left-4 z-[400] pointer-events-none max-w-[55%]">
           <span className="block truncate text-[13px] font-black text-slate-900" style={{ textShadow: '0 1px 2px rgba(255,255,255,0.9)' }}>
             {etiquetaPuntoSel}
           </span>
@@ -901,7 +900,9 @@ const VistaMapa = ({
       {puntoSeleccionado && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
         // Se corren a la izquierda SOLO con el panel de días abierto, que es cuando se
         // montarían encima. Cerrado el panel, vuelven a su sitio de siempre.
-        <div className={`absolute bottom-24 z-[400] flex flex-col items-center gap-2 ${menuDiasAbierto ? 'left-4' : 'right-4'}`}>
+        // Con el panel de días abierto se corren hacia la izquierda lo justo para dejarlo
+        // libre (el panel ocupa ~52 px desde el borde), pero SIGUEN a la derecha.
+        <div className={`absolute bottom-24 z-[400] flex flex-col items-center gap-2 ${menuDiasAbierto ? 'right-16' : 'right-4'}`}>
           {/* Punto SIN día: asignar día por fecha (arriba de FOTOS) */}
           {puntoSinDia && onAsignarDiasSueltos && (
             <button

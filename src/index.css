@@ -45,6 +45,14 @@ details > summary {
   max-width: 100vw;
 }
 
+/* Paneles que se desplazan arrastrando (el de días del mapa): la barra sobra, se come
+   ancho y encima tapa los cuadrados. Sigue desplazándose con el dedo y con la rueda. */
+.sin-barra {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* Edge viejo */
+}
+.sin-barra::-webkit-scrollbar { display: none; }   /* Chrome, Safari */
+
 /* MODO COMPACTO (clase `compacto` en la raíz, ver hooks/usePantallaCompacta.js).
    Mismo diseño, medidas más chicas: en una laptop de 768 px de alto entra bastante más
    en pantalla. Se ajusta todo desde aquí; no toca el mapa ni los anchos de columna. */
