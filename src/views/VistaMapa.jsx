@@ -171,6 +171,39 @@ const VistaMapa = ({
   // Qué grupos del panel de días están abiertos (S1, M1…). Se pueden abrir varios.
   const [gruposAbiertos, setGruposAbiertos] = useState([]);
 
+  // Arrastrar el panel de días para desplazarlo. En el teléfono el dedo ya lo desplaza
+  // solo (overflow-y-auto), así que esto se activa SOLO con ratón: si valiera para los
+  // dos, en el teléfono el dedo movería el panel dos veces. Un arrastre no debe abrir
+  // el día que se tocó al empezar, así que el clic de después se cancela.
+  const panelDiasRef = useRef(null);
+  const arrastreDias = useRef(null);
+  const huboArrastreDias = useRef(false);
+  const UMBRAL_ARRASTRE = 5;
+
+  const diasPointerDown = (e) => {
+    if (e.pointerType !== 'mouse' || !panelDiasRef.current) return;
+    arrastreDias.current = { y0: e.clientY, scroll0: panelDiasRef.current.scrollTop, movido: false };
+  };
+  const diasPointerMove = (e) => {
+    const a = arrastreDias.current;
+    const el = panelDiasRef.current;
+    if (!a || !el) return;
+    const dy = e.clientY - a.y0;
+    if (!a.movido && Math.abs(dy) < UMBRAL_ARRASTRE) return;
+    a.movido = true;
+    el.scrollTop = a.scroll0 - dy;
+  };
+  const diasPointerUp = () => {
+    huboArrastreDias.current = !!arrastreDias.current?.movido;
+    arrastreDias.current = null;
+  };
+  const diasClickCapture = (e) => {
+    if (!huboArrastreDias.current) return;
+    huboArrastreDias.current = false;
+    e.stopPropagation();
+    e.preventDefault();
+  };
+
   // ── Panel de días ───────────────────────────────────────────────────────────
   // El plegado (cuántas casillas y qué cuelga de cada una) vive en utils/agruparDias;
   // acá solo se dibuja. Una casilla es un día suelto o un grupo: el grupo es un
@@ -235,7 +268,9 @@ const VistaMapa = ({
           onClick={() => setGruposAbiertos(prev => (
             prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]
           ))}
-          className={`w-9 h-9 shrink-0 rounded-lg border-2 border-slate-900 shadow-md font-black text-[11px] flex items-center justify-center active:opacity-80 ${abierto ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}
+          // Mismo tamaño exterior que un día (40 px: su botón de 36 más el borde de 2 del
+          // marco), pero con el borde MÁS GRUESO, que es lo que distingue a un grupo.
+          className={`w-10 h-10 shrink-0 rounded-lg border-[3px] border-slate-900 shadow-md font-black text-[11px] flex items-center justify-center active:opacity-80 ${abierto ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}
           title={`${c.etiqueta}: ${nDias} día${nDias === 1 ? '' : 's'} · ${puntosDeCasilla(c)} pts`}
         >
           {c.etiqueta}
@@ -781,7 +816,15 @@ const VistaMapa = ({
 
             {/* PANEL DE DÍAS */}
             {menuDiasAbierto && (
-              <div className="flex flex-col gap-1 items-end max-h-[65vh] overflow-y-auto py-0.5">
+              <div
+                ref={panelDiasRef}
+                onPointerDown={diasPointerDown}
+                onPointerMove={diasPointerMove}
+                onPointerUp={diasPointerUp}
+                onPointerLeave={diasPointerUp}
+                onClickCapture={diasClickCapture}
+                className="flex flex-col gap-1 items-end max-h-[65vh] overflow-y-auto py-0.5 cursor-grab active:cursor-grabbing"
+              >
                 {diasPanelData.length === 0 ? (
                   <div className="bg-white border-2 border-slate-900 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-600 shadow-md">Sin días</div>
                 ) : (
@@ -834,7 +877,8 @@ const VistaMapa = ({
 
       {/* Etiqueta proyecto - Ddía del punto seleccionado (texto suelto, izquierda, sobre la barra) */}
       {puntoSeleccionado && etiquetaPuntoSel && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
-        <div className="absolute bottom-24 left-4 z-[400] pointer-events-none max-w-[55%]">
+        // Por encima de FOTOS / MOVER, que ahora ocupan esta esquina
+        <div className="absolute bottom-[19rem] left-4 z-[400] pointer-events-none max-w-[55%]">
           <span className="block truncate text-[13px] font-black text-slate-900" style={{ textShadow: '0 1px 2px rgba(255,255,255,0.9)' }}>
             {etiquetaPuntoSel}
           </span>
@@ -843,7 +887,9 @@ const VistaMapa = ({
 
       {/* Botones flotantes CÁMARA + MOVER (sobre la barra inferior, solo cuando hay punto seleccionado) */}
       {puntoSeleccionado && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
-        <div className="absolute bottom-24 right-4 z-[400] flex flex-col items-center gap-2">
+        // A la IZQUIERDA: a la derecha se montaban encima del panel de días cuando está
+        // abierto. La etiqueta del punto seleccionado, que vivía acá, se subió un piso.
+        <div className="absolute bottom-24 left-4 z-[400] flex flex-col items-center gap-2">
           {/* Punto SIN día: asignar día por fecha (arriba de FOTOS) */}
           {puntoSinDia && onAsignarDiasSueltos && (
             <button
