@@ -556,6 +556,24 @@ Tailwind no ve las que se arman con plantillas.
   En ambos casos **el panel de control fue lo que delató el problema**: al salir idéntico
   al caso bueno, quedó claro que la prueba no medía nada. Sin control, habría cantado
   victoria dos veces.
+- **El mapa detrás del panel de fotos es OTRO mapa (19/09).** En PC, al abrir las fotos,
+  `App.jsx` monta encima a pantalla completa un `MiniMapaRevision` — el mismo componente de
+  Revisión—, que dibuja **sus propios** marcadores. Por eso parecía que el modo fotos
+  "cambiaba" los iconos a celeste y encendía etiquetas: el mapa del usuario sigue debajo,
+  intacto. Ahora ese minimapa acepta `obtenerColorDia` y `mostrarEtiquetas` (opcionales,
+  así Revisión no cambia): respeta el color del día, **resalta el activo por tamaño y halo
+  en vez de por color**, y solo rotula si el usuario tiene las etiquetas encendidas.
+- **En el panel de fotos, el botón de salir dice ATRÁS hasta que se toca algo.** Antes
+  decía siempre GUARDAR FOTOS aunque no guardara nada: cada foto se guarda sola al tomarla.
+  Pasa a GUARDAR FOTOS si se tomó, se retomó o se borró alguna (**SELLO: 19/09/26, 23:33**).
+- **Dos cosas que salieron al verificar esa tanda, y conviene no repetir:**
+  - **Un `const` no sube.** El estado nuevo quedó declarado *después* de sus usos y habría
+    reventado al tomar la primera foto. Lo delató el grep de verificación, no el lint.
+  - **El conteo de lint puede moverse sin que hayas roto nada.** El conjunto del mapa pasó
+    de 46 a 47 por un error que **ya existe en HEAD** (`tabsConfig cannot be modified`,
+    `react-hooks/immutability`): al correrse las líneas, el compilador corta en otro punto
+    y lo deja ver. Antes de dar por propio un número que sube, lintear **ese archivo suelto
+    desde HEAD** y comparar.
 - **El modo `compacto` redefine alturas de Tailwind.** `src/index.css` trae reglas como
   `.compacto .h-14 { height: 2.5rem }` (y `h-24`, `h-20`, `h-16`, `h-12`, `h-10`, `w-10`)
   que se aplican cuando la ventana es chica: `App.jsx` le pone la clase `compacto` al
