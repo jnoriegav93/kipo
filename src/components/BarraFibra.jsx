@@ -64,6 +64,7 @@ export default function BarraFibra({
   onCentrar,
   modoAjuste = false,
   setModoAjuste,
+  onAjustarFibra,
   umbralAjuste = 3,
   setUmbralAjuste,
   previewAjuste = [],
@@ -257,16 +258,8 @@ export default function BarraFibra({
           {totalFibras}
         </button>
 
-        {/* AJUSTAR — jala los postes cercanos hasta apoyarlos en la fibra */}
-        <button
-          onClick={() => { setModoAjuste?.(!modoAjuste); setPanel(null); }}
-          className={`${btnBase} border-2 ${modoAjuste
-            ? 'bg-amber-500 text-black border-amber-600'
-            : btnNormal}`}
-          title="Ajustar postes a la fibra"
-        >
-          <Magnet size={18} />
-        </button>
+        {/* El imán ya no vive acá: cada ramal tiene el suyo en la lista, para ajustar
+            solo sus postes y no los de todo el proyecto de una. */}
 
         <div className={`w-[1px] h-7 ${isDark ? 'bg-slate-600' : 'bg-slate-400'} shrink-0`} />
 
@@ -473,10 +466,28 @@ export default function BarraFibra({
                   </button>
                   <button
                     onClick={() => onCentrar?.(c)}
-                    className={`shrink-0 w-8 h-8 mr-1 rounded-lg flex items-center justify-center ${theme.text} opacity-60 active:opacity-100`}
+                    className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${theme.text} opacity-60 active:opacity-100`}
                     title="Centrar el mapa en este ramal"
                   >
                     <Crosshair size={15} strokeWidth={2.5} />
+                  </button>
+                  {/* AJUSTAR: jala hasta la línea los postes cercanos a ESTE ramal, no a
+                      todos. Cierra el panel para dejar ver la vista previa en el mapa. */}
+                  <button
+                    onClick={() => { onAjustarFibra?.(c); setPanel(null); }}
+                    className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-amber-600 opacity-80 active:opacity-100"
+                    title="Ajustar los postes de este ramal"
+                  >
+                    <Magnet size={15} strokeWidth={2.5} />
+                  </button>
+                  {/* BORRAR: primero lo deja seleccionado, así queda resaltado en el mapa
+                      mientras se decide, y después pide confirmación. */}
+                  <button
+                    onClick={() => { setConexionSeleccionada?.(c); onEliminarConexion?.(c); }}
+                    className="shrink-0 w-8 h-8 mr-1 rounded-lg flex items-center justify-center text-red-500 opacity-80 active:opacity-100"
+                    title="Eliminar este ramal"
+                  >
+                    <Trash2 size={15} strokeWidth={2.5} />
                   </button>
                 </div>
 

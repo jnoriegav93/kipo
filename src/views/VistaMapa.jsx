@@ -49,6 +49,7 @@ const VistaMapa = ({
   onActualizarConexion,
   modoAjuste = false,
   setModoAjuste,
+  onAjustarFibra,
   umbralAjuste = 3,
   setUmbralAjuste,
   previewAjuste = [],
@@ -505,6 +506,7 @@ const VistaMapa = ({
               nombreSugerido={nombreSugeridoFibra}
               modoAjuste={modoAjuste}
               setModoAjuste={setModoAjuste}
+              onAjustarFibra={onAjustarFibra}
               umbralAjuste={umbralAjuste}
               setUmbralAjuste={setUmbralAjuste}
               previewAjuste={previewAjuste}

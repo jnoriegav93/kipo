@@ -1612,7 +1612,13 @@ function App() {
   // Jala los postes cercanos hasta apoyarlos sobre la línea, perpendicularmente.
   // La coordenada anterior se guarda solo mientras dure la sesión de fibra: la
   // buena es la nueva, la vieja únicamente sirve para deshacer si el umbral se pasó.
-  const [modoAjuste, setModoAjuste] = React.useState(false);
+  // Qué fibra se está ajustando (su id), o null. Antes era un booleano y el imán movía
+  // los postes de TODAS las fibras de una: ahora se ajusta un ramal a la vez, desde su
+  // propia fila en la lista. `modoAjuste` se conserva derivado porque el mapa y la barra
+  // lo usan para pintar el aviso y el anclaje.
+  const [fibraAjuste, setFibraAjuste] = React.useState(null);
+  const modoAjuste = fibraAjuste != null;
+  const setModoAjuste = React.useCallback((v) => { if (!v) setFibraAjuste(null); }, []);
   const [umbralAjuste, setUmbralAjuste] = React.useState(3);
   const [deshacerAjuste, setDeshacerAjuste] = React.useState(null);
   const [aplicandoAjuste, setAplicandoAjuste] = React.useState(false);
@@ -1624,7 +1630,8 @@ function App() {
   const analisisAjuste = React.useMemo(() => {
     if (!modoAjuste || !proyectoActual) return { mover: [], apoyados: [] };
     const buscar = (id) => todosLosPuntos.find(p => String(p.id) === String(id));
-    const fibras = conexionesVisiblesMapa.map(c => {
+    // SOLO la fibra elegida: los postes cercanos a otras no se tocan.
+    const fibras = conexionesVisiblesMapa.filter(c => String(c.id) === String(fibraAjuste)).map(c => {
       const vs = verticesDeConexion(c, buscar);
       return vs.length >= 2
         ? { id: c.id, capacidad: c.capacidad || 12, vertices: vs, largo: longitudFibra(vs) }
@@ -1640,7 +1647,7 @@ function App() {
       else mover.push({ id: p.id, antes: { lat: p.coords.lat, lng: p.coords.lng }, destino: m.destino });
     });
     return { mover, apoyados };
-  }, [modoAjuste, umbralAjuste, conexionesVisiblesMapa, todosLosPuntos, proyectoActual]);
+  }, [modoAjuste, fibraAjuste, umbralAjuste, conexionesVisiblesMapa, todosLosPuntos, proyectoActual]);
   const previewAjuste = analisisAjuste.mover;
 
   // Escribe coordenadas nuevas en lote. Se reutiliza para aplicar y para deshacer.
@@ -1668,7 +1675,9 @@ function App() {
       console.error('Error ajustando postes:', e);
       setAlertData({ title: 'Error', message: 'No se pudieron mover los postes.' });
     } finally { setAplicandoAjuste(false); }
-  }, [aplicandoAjuste, previewAjuste, escribirCoords, setAlertData]);
+    // `setModoAjuste` ya no es un setter de React sino un useCallback estable, así que
+    // el linter pide declararlo. No recalcula nada: no tiene dependencias propias.
+  }, [aplicandoAjuste, previewAjuste, escribirCoords, setAlertData, setModoAjuste]);
 
   const revertirAjuste = React.useCallback(async () => {
     if (aplicandoAjuste || !deshacerAjuste?.length) return;
@@ -2170,6 +2179,7 @@ function App() {
           nombreSugeridoFibra={nombreSugeridoFibra}
           modoAjuste={modoAjuste}
           setModoAjuste={setModoAjuste}
+          onAjustarFibra={(con) => setFibraAjuste(con?.id ?? null)}
           umbralAjuste={umbralAjuste}
           setUmbralAjuste={setUmbralAjuste}
           previewAjuste={previewAjuste}
