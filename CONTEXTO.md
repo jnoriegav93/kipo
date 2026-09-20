@@ -598,6 +598,16 @@ Tailwind no ve las que se arman con plantillas.
   En ambos casos **el panel de control fue lo que delató el problema**: al salir idéntico
   al caso bueno, quedó claro que la prueba no medía nada. Sin control, habría cantado
   victoria dos veces.
+- **Ese segundo mapa ya no se monta si estás en el mapa (20/09).** La condición ahora
+  incluye `vista !== 'mapa'`: viniendo del formulario o del detalle se sigue montando
+  (ahí el mapa real no existe y quedaría media pantalla vacía en PC), pero **estando en
+  el mapa se queda el del usuario tal como lo dejó** — no se mueve ni se centra en el
+  poste, y se puede seguir moviendo y haciendo zoom, porque el panel ocupa solo la franja
+  derecha y **no lleva ningún fondo que cubra la pantalla** (comprobado antes de tocar:
+  de haberlo, el mapa habría quedado visible pero bloqueado). Gasta bastante menos: se
+  dejan de tener dos mapas de Leaflet vivos, y el segundo dibujaba **un marcador por
+  punto visible sin agrupar ni recortar al encuadre**, justo lo que se arregló en el mapa
+  real para los proyectos de más de mil puntos.
 - **El mapa detrás del panel de fotos es OTRO mapa (19/09).** En PC, al abrir las fotos,
   `App.jsx` monta encima a pantalla completa un `MiniMapaRevision` — el mismo componente de
   Revisión—, que dibuja **sus propios** marcadores. Por eso parecía que el modo fotos
