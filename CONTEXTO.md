@@ -279,6 +279,16 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Borrar una fibra suelta su apoyo (20/09).** El cable **no** se borra: es ferretería
+  propia, tendida entre dos postes, y sus metros no dependen de ninguna fibra. Lo que se
+  borra es la **vinculación**: el id de la fibra sale de `fibras` de cada cable que la
+  sostenía. Antes quedaba ahí para siempre, y al rehacer un ramal el cable terminaba con
+  la fibra vieja **y** la nueva, sin forma de quitar la vieja desde la app (al editar el
+  cable venía cargada, y como no está en el mapa no se puede destildar). Si la fibra vuelve
+  de la papelera, **el apoyo se rehace**: los cables afectados se guardan en
+  `meta.cablesApoyo` y `restaurarFibra` los vuelve a vincular con `arrayUnion`; los que ya
+  no existan se saltan. Ojo: esto **escribe en los cables** al borrar la fibra, así que sin
+  señal queda pendiente hasta que vuelva la conexión.
 - **Ciclo de vida.** Borrar uno de sus dos postes borra el cable (papelera tipo
   `acero`, que lo restaura si existen sus dos postes). Borrar su **medio tramo** no lo
   borra: el cable se queda sin medio tramo, sale "SIN MEDIO TRAMO" en la lista y se
