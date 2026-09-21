@@ -724,8 +724,14 @@ export const MapaReal = ({
         // está elegido, conserva su grosor, así el aviso no tapa cuál tenés seleccionado.
         // Los dos motivos avisan igual a propósito: cuál falta lo dice la lista.
         const avisaSinFibra = modoAcero && cableIncompleto(c);
+        // El estado va en la KEY a propósito: Leaflet aplica `className` SOLO al crear el
+        // trazo (`addClass` en _initPath) y su _updateStyle no lo toca nunca. Sin esto, la
+        // línea ya estaba dibujada antes de entrar al modo acero: cambiaba de color —eso sí
+        // lo hace setStyle— pero jamás recibía la clase, así que no palpitaba nunca.
+        // Cambiar la key la desmonta y la vuelve a crear, que es la única forma de que la
+        // clase entre. Solo ocurre al entrar o salir del modo, o al completar un cable.
         return (
-          <React.Fragment key={`ac-${c.id}`}>
+          <React.Fragment key={`ac-${c.id}-${avisaSinFibra ? 'falta' : 'ok'}`}>
             <Polyline
               positions={pos}
               interactive={false}

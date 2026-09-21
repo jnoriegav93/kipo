@@ -279,6 +279,16 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Leaflet aplica `className` SOLO al crear el trazo (21/09).** Su `_initPath` hace
+  `addClass(path, options.className)` y su `_updateStyle` **nunca** lo toca. Así que
+  cambiar `pathOptions.className` en react-leaflet no hace nada: el color sí cambia
+  (eso lo hace `setStyle`), la clase no. **Probado con Leaflet real**, no leyendo la
+  fuente: `setStyle` llevó el color de `#111` a `#ef4444` y dejó la clase en la inicial.
+  Por eso el cable de acero **nunca palpitó** —ni siquiera por falta de fibra, como se
+  creyó entregado—: la línea ya estaba dibujada antes de entrar al modo acero. El medio
+  tramo sí funcionaba porque es un **marcador**, y react-leaflet lo reemplaza entero.
+  Solución: meter el estado en la `key` de React para que el trazo se destruya y se
+  vuelva a crear. **Cualquier animación o clase sobre una polilínea necesita lo mismo.**
 - **Lo que falta asociar en el acero palpita (21/09).** Un cable palpita en rojo si no tiene
   fibras **o** no tiene medio tramo (antes solo por fibras), y un **medio tramo** palpita si
   no está en ningún cable. Los dos motivos del cable avisan **igual** a propósito: el mapa
