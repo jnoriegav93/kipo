@@ -13,11 +13,12 @@
   },
   "main": "index.js",
   "dependencies": {
-    "firebase-admin": "^13.10.0",
-    "firebase-functions": "^7.3.2",
+    "@fontsource/arimo": "^5.3.0",
     "@napi-rs/canvas": "^0.1.67",
+    "exceljs": "^4.4.0",
     "fflate": "^0.8.2",
-    "exceljs": "^4.4.0"
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^7.3.2"
   },
   "private": true
 }

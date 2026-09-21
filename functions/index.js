@@ -7,11 +7,39 @@ const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onObjectFinalized } = require('firebase-functions/v2/storage');
 const admin = require('firebase-admin');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const { Zip, ZipPassThrough } = require('fflate');
 const ExcelJS = require('exceljs');
 const crypto = require('crypto');
 const path = require('path');
+
+// ─── FUENTE DE LOS SELLOS Y DE LOS CROQUIS ───────────────────────────────────
+// Todo el dibujo pide "…px Arial", pero el contenedor donde corren las funciones NO
+// tiene Arial: el canvas caía a su tipografía por defecto, que es serif, y por eso
+// los sellos y los croquis salían con letra tipo Times en vez de la de la app.
+// El problema nunca estuvo en el nombre de la fuente, sino en que no había ninguna.
+//
+// Se incrusta Arimo: es libre y comparte las MÉTRICAS EXACTAS de Arial (la misma
+// familia Croscore que Liberation Sans), así que el texto ocupa lo mismo y no se
+// descuadra nada. Se registra con el alias "Arial" para que todo lo ya escrito la
+// encuentre sin tocar una línea de dibujo.
+//
+// Van las DOS variantes: sin la negrita, "bold …px Arial" volvería a caer al
+// respaldo y los títulos saldrían con otra letra que el resto.
+const FUENTES_SELLO = ['arimo-latin-400-normal.woff2', 'arimo-latin-700-normal.woff2'];
+for (const archivo of FUENTES_SELLO) {
+  try {
+    const ruta = path.join(__dirname, 'node_modules', '@fontsource', 'arimo', 'files', archivo);
+    // Devuelve null si no la pudo cargar; conviene enterarse por el log y no por un
+    // reporte con la letra cambiada.
+    if (GlobalFonts.registerFromPath(ruta, 'Arial') === null) {
+      console.error('[FUENTE] no se pudo registrar:', archivo);
+    }
+  } catch (e) {
+    // Sin fuente el reporte sale con otra letra, pero SALE: esto no puede tumbar nada.
+    console.error('[FUENTE] error registrando', archivo, e.message);
+  }
+}
 
 admin.initializeApp();
 const db = admin.firestore();

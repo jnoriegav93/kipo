@@ -279,6 +279,34 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **La letra de los sellos y croquis: faltaba la FUENTE, no el nombre (21/09).** Salían con
+  letra serif tipo Times. El código **ya pedía `…px Arial`** en los ~30 sitios de dibujo:
+  el problema era que el contenedor de las funciones **no tiene Arial** y el canvas caía a
+  su tipografía por defecto. Cambiar el nombre no habría arreglado nada.
+  Se incrusta **Arimo** (`@fontsource/arimo`, libre, mismas métricas exactas que Arial —
+  familia Croscore, como Liberation Sans) y se registra con el **alias `Arial`**, así todo
+  lo ya escrito la encuentra sin tocar una línea. Van las **dos** variantes: sin la 700,
+  `bold …px Arial` volvía al respaldo y los títulos salían con otra letra.
+  **`@napi-rs/canvas` acepta woff2** — se comprobó ejecutándolo: el mismo texto mide 225,8
+  con la fuente registrada y 693,1 sin ella. **Ojo con probarlo en Windows**: aquí ya hay
+  una Arial del sistema y la familia se mezcla (aparece un peso 900 que no es nuestro);
+  esa prueba local **no representa al servidor**.
+  El registro va en la línea ~35, **antes** del primer `createCanvas`, y envuelto en
+  try/catch: sin fuente el reporte sale con otra letra, pero sale.
+- **El croquis resalta el acero aunque cruce ramales (21/09).** Un cable con sus dos postes
+  en ramales distintos no se resaltaba en **ninguna** hoja: se exigía que los dos
+  estuvieran en el mismo grupo. Pasa de verdad, porque el reparto de postes por ramal es
+  **por cercanía a cada fibra**. Ahora cada hoja marca lo suyo; la **línea** sigue pidiendo
+  los dos extremos (con uno afuera apuntaría a un poste que no se dibuja).
+  **Los metros no cambian:** se cuentan una vez sobre todo el proyecto y se cargan al poste
+  que va **después** en el orden de tendido, así que el cable se liquida en el ramal de ese
+  poste.
+- **Las secciones del menú no se estiran a toda la pantalla (21/09).** Tope de **1100 px**,
+  encolumnadas a la izquierda, en **una sola regla** (`.seccion-menu` en index.css) para
+  poder moverlo desde un sitio. **No** la llevan el mapa, el modo Diseño ni los modales de
+  revisión: ahí el ancho sí se aprovecha (revisión de ferretería usa tres columnas).
+  `VistaPapelera` vive en **dos** sitios —sección del menú y modal del proyecto— y solo se
+  angosta la primera, mirando su prop `soloProyectos`.
 - **Un efecto con `ptsOrd` en las dependencias pisaba lo editado (21/09).** Síntoma
   reportado: en revisión de ferretería, el ✓ ordenaba la lista y **al instante volvía
   atrás**. Causa: el efecto que recarga el punto dependía de `[idx, ptsOrd]`, y `ptsOrd`
