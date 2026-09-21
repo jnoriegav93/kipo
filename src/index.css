@@ -50,11 +50,25 @@ details > summary {
    ancha, una lista de 1900 px obliga a barrer la vista de lado a lado para leer una fila.
    El ancho vive SOLO aquí, para poder moverlo desde un único sitio.
    NO la llevan el mapa, el modo Diseño ni los modales de revisión: ahí el espacio de más
-   sí se aprovecha (la revisión de ferretería usa tres columnas). */
+   sí se aprovecha (la revisión de ferretería usa tres columnas).
+
+   El borde y la sombra NO son adorno: sin ellos la sección se corta a media pantalla y
+   parece contenido mal terminado. Es el mismo tratamiento del panel del menú lateral
+   (shadow-2xl + border-r), para que se lea como lo que es: un panel. */
 .seccion-menu {
   width: 100%;
   max-width: 1100px;
+  border-right: 1px solid rgba(15, 23, 42, 0.14);
+  box-shadow: 6px 0 24px rgba(15, 23, 42, 0.10);
 }
+
+/* Y el fondo de atrás tiene que ser DISTINTO al del panel. En tema claro el tema define
+   `bg: bg-white` para la app y `card: bg-white` para las tarjetas: panel y vacío quedaban
+   del mismo blanco y ningún borde alcanzaba a separarlos. Se oscurece un punto solo
+   mientras hay una sección abierta; el mapa y los modales no lo llevan. */
+.fondo-seccion { background-color: #e8eaee; }
+.dark .fondo-seccion,
+.fondo-seccion.oscuro { background-color: #020617; }
 
 /* Paneles que se desplazan arrastrando (el de días del mapa): la barra sobra, se come
    ancho y encima tapa los cuadrados. Sigue desplazándose con el dedo y con la rueda. */

@@ -2052,8 +2052,17 @@ function App() {
   };
 
 
+  // Vistas que se abren DESDE EL MENÚ y se dibujan como un panel a la izquierda, sobre
+  // un fondo más oscuro. El mapa, el modo Diseño y el formulario no entran: usan toda la
+  // pantalla. Sin el fondo distinto el panel no se distingue, porque en tema claro la app
+  // y las tarjetas son las dos `bg-white` y el borde no separa nada.
+  const esSeccionMenu = ['proyectos', 'config', 'controlFerreteria', 'equipos',
+    'diagnostico', 'papelera', 'datosUsuario', 'admin'].includes(vista);
+
   return (
-    <div className={`${pantallaCompacta ? 'compacto ' : ''}h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
+    // Con sección abierta manda `fondo-seccion` y NO se pone `theme.bg`: esa clase de
+    // Tailwind pintaría `bg-white` encima y el fondo volvería a ser el mismo del panel.
+    <div className={`${pantallaCompacta ? 'compacto ' : ''}h-screen w-full flex flex-col ${esSeccionMenu ? `fondo-seccion ${isDark ? 'oscuro' : ''}` : theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
 
       {/* Indicador de perfil activo — solo admin (para saber qué perfil se está previsualizando) */}
       {esAdmin && (
