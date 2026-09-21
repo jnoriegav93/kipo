@@ -279,6 +279,15 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **El ACERO depende del trazo encendido (21/09).** Al separar los estados para poder
+  elegir fibras, el acero quedó inutilizable: sus toques marcan los **dos postes, el medio
+  tramo y las fibras apoyadas**, y todos pasan por `dibujandoFibra`
+  (`mapInteractions.handlePuntoClick`). A diferencia de la fibra, **el acero no tiene un
+  botón de "empezar"**: se traza tocando postes directamente. Así que el trazo se enciende
+  al pasar a ACERO y se apaga al volver a FIBRA. Y ojo con **volver a entrar**: los botones
+  FIBRA lo ponían en `false` fijo, así que si saliste con el acero activo, al reentrar
+  seguía muerto; ahora miran `modoLinea`. Si alguna vez se vuelve a tocar quién enciende el
+  trazo, **probar el acero**, no solo la fibra.
 - **Entrar a FIBRA ya no arranca el trazo (20/09).** Las fibras no se podían elegir en el
   mapa: al tocarlas salía el primer vértice de una fibra nueva. **Misma causa que tuvo el
   cable de acero:** el botón FIBRA encendía además el modo dibujo, así que
