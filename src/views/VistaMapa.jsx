@@ -1087,9 +1087,10 @@ const VistaMapa = ({
             </>
           ) : (
             <>
-              {/* Entra a fibra SIN dibujar: así se pueden tocar las fibras para elegirlas.
-                  El trazo lo arranca el disquete de la barra. */}
-              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(false); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
+              {/* Entra SIN dibujar: así se pueden tocar las fibras para elegirlas, y el
+                  trazo lo arranca el disquete. Salvo que se vuelva con el ACERO activo,
+                  que se traza tocando postes y necesita el trazo encendido de entrada. */}
+              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(modoLinea === 'acero'); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
               {proyectoTipo === 'instalacionPostes' && (
                 <button onClick={() => fotoMapaInputRef.current?.click()} className={pill}><Camera size={20} strokeWidth={2.5} /> FOTO</button>
               )}
@@ -1161,7 +1162,7 @@ const VistaMapa = ({
               // --- Sin selección: FIBRA / AGREGAR ---
               <>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(false); }}
+                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(modoLinea === 'acero'); }}
                   className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${theme.card} ${theme.text} hover:opacity-80`}
                 >
                   <Cable size={24} strokeWidth={2.5} /> FIBRA

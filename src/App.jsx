@@ -1970,6 +1970,11 @@ function App() {
       setCableAceroSeleccionado(null);
       setModoAjuste(false);
       setModoLinea(nuevo);
+      // El ACERO se traza tocando postes directamente: no tiene un botón de "empezar"
+      // como la fibra, así que necesita el trazo encendido o no se puede marcar nada
+      // (ni postes, ni medio tramo, ni las fibras que se apoyan). En FIBRA se apaga,
+      // que es lo que permite tocar una fibra para elegirla.
+      setDibujandoFibra(nuevo === 'acero');
     };
     const hayTrazo = modoLinea === 'acero' ? hayTrazoAcero(trazoAcero) : puntosRecorrido.length > 0;
     if (!hayTrazo) { cambiar(); return; }
