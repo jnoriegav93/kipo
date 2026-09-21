@@ -1,6 +1,6 @@
 // src/components/Sidebar.jsx
 import { useState, useEffect } from 'react';
-import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2, Image, DraftingCompass, Signpost } from 'lucide-react';
+import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2, Image, DraftingCompass, Signpost, X } from 'lucide-react';
 
 const ADMIN_UID = 'E8CaZVgP4eZnjnN3OKTVi7bmoJN2';
 
@@ -95,9 +95,11 @@ export default function Sidebar({
   const Divider = () => <div className={`h-px mx-3 ${divider}`} />;
 
   return (
-    <div className="fixed inset-0 z-[2000] flex">
+    // El contenedor tampoco recibe eventos: solo el panel. Así el mapa de atrás queda
+    // libre para arrastrarse y hacer zoom mientras el menú está abierto.
+    <div className="fixed inset-0 z-[2000] flex pointer-events-none">
       {/* Panel */}
-      <div className={`w-4/5 max-w-xs h-full shadow-2xl flex flex-col animate-in slide-in-from-left duration-200 border-r ${panel}`}>
+      <div className={`w-4/5 max-w-xs h-full shadow-2xl flex flex-col animate-in slide-in-from-left duration-200 border-r pointer-events-auto ${panel}`}>
 
         {/* Header */}
         <div className={`px-4 pb-4 border-b-2 ${header} shrink-0`} style={{ paddingTop: 'calc(20px + env(safe-area-inset-top, 0px))' }}>
@@ -121,6 +123,15 @@ export default function Sidebar({
             {!datosCompletos && !adminReturnEmail && (
               <div className="shrink-0 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-400/30" />
             )}
+            {/* CERRAR: antes el menú se cerraba tocando fuera, pero esa zona tapaba el
+                mapa y no dejaba moverlo. Ahora el cierre vive acá. */}
+            <button
+              onClick={() => setMenuAbierto(false)}
+              title="Cerrar menú"
+              className={`shrink-0 w-9 h-9 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${isDark ? 'border-slate-600 bg-slate-800' : 'border-slate-900 bg-white'}`}
+            >
+              <X size={18} strokeWidth={2.5} className={iconColor} />
+            </button>
             {/* Botón volver al admin */}
             {adminReturnEmail && !mostrarPasswordAdmin && (
               <button
@@ -295,10 +306,10 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Zona para cerrar tocando fuera. Va TRANSPARENTE a propósito: atenuaba y
-          desenfocaba el mapa, y el mapa tiene que verse igual con el menú abierto o
-          cerrado. Sigue recibiendo el toque, que es para lo único que existe. */}
-      <div className="flex-1" onClick={() => setMenuAbierto(false)} />
+      {/* A la derecha del panel NO va nada que reciba el dedo: con un div ahí, aunque
+          fuera transparente, el mapa no se podía arrastrar ni hacer zoom con el menú
+          abierto. El menú se cierra con la X de su cabecera. */}
+      <div className="flex-1 pointer-events-none" />
     </div>
   );
 }

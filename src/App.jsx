@@ -2145,14 +2145,20 @@ function App() {
           encima no recibe toques (`pointer-events-none` más abajo): es fondo y nada
           más, para que un clic en la zona descubierta no cree un punto sin querer. */}
       {(vista === 'mapa' || esSeccionMenu) && (
-        <div className={`flex-1 min-h-0 flex flex-col ${esSeccionMenu ? 'pointer-events-none' : ''}`}>
+        <div className="flex-1 min-h-0 flex flex-col">
         <VistaMapa
           theme={theme}
           isDesktop={isDesktop}
           mapStyle={mapStyle}
           mapViewState={mapViewState}
           setMapViewState={setMapViewState}
-          handleMapaClick={mapaSupervision
+          handleMapaClick={esSeccionMenu
+            // Con una sección abierta el mapa se puede arrastrar y hacer zoom, pero un
+            // toque NO crea un punto: la sección tapa parte de la pantalla y sería muy
+            // fácil dejar un punto suelto sin darse cuenta. Antes esto se lograba
+            // anulando todos los eventos, y por eso el mapa tampoco se movía.
+            ? () => {}
+            : mapaSupervision
             ? () => { setPuntoSeleccionado(null); setConexionSeleccionada(null); }
             : (e) => {
               if (modoMover || modoMoverPuntos) return;
@@ -2510,7 +2516,7 @@ function App() {
           modalPendiente={modalPendiente}
           setModalPendiente={setModalPendiente}
           setMostrarOverlayGPS={setMostrarOverlayGPS}
-          onVolver={volverVistaAnterior}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           notificacionesProyectos={{ ...notifProyectos, ...notifEditor }}
           marcarChatLeido={marcarChatLeido}
           conexiones={conexiones}
@@ -2539,7 +2545,7 @@ function App() {
         <VistaAdmin
           theme={theme}
           isDark={isDark}
-          onVolver={volverVistaAnterior}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           onLoginComo={() => {
             setProyectoActual(null);
             setVista('mapa');
@@ -2556,7 +2562,7 @@ function App() {
           titulo="Control de ferretería"
           concepto="Crea listas de los materiales que recibes y vincúlalas a tus proyectos para comparar lo recibido contra lo instalado."
           theme={theme} isDark={isDark}
-          onClose={volverVistaAnterior}
+          onClose={() => { volverVistaAnterior(); setMenuAbierto(true); }}
         />
       ) : (
         <VistaControlFerreteria
@@ -2567,7 +2573,7 @@ function App() {
           saveConfig={guardarConfiguracion}
           proyectos={proyectos}
           puntos={todosLosPuntos}
-          onVolver={volverVistaAnterior}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           setConfirmData={setConfirmData}
           setAlertData={setAlertData}
         />
@@ -2582,7 +2588,7 @@ function App() {
           saveConfig={guardarConfiguracion}
           setConfirmData={setConfirmData}
           setAlertData={setAlertData}
-          onVolver={volverVistaAnterior}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           marcarChatLeido={marcarChatLeido}
           notificacionesSupervisados={notifSupervisados}
           proyectosPropios={proyectos}
@@ -2626,7 +2632,7 @@ function App() {
         <VistaDiagnostico
           theme={theme}
           isDark={isDark}
-          onVolver={volverVistaAnterior}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           proyectos={todosLosProyectos}
         />
       )}
@@ -2635,7 +2641,7 @@ function App() {
         <VistaPapelera
           theme={theme}
           isDark={isDark}
-          onVolver={volverVistaAnterior}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           user={user}
           puntos={puntos}
           proyectos={proyectos}
@@ -2649,7 +2655,7 @@ function App() {
           theme={theme}
           config={config}
           guardarConfiguracion={guardarConfiguracion}
-          onVolver={volverVistaAnterior}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           user={user}
         />
       )}
@@ -2658,7 +2664,7 @@ function App() {
         <Configurador
           config={config}
           saveConfig={guardarConfiguracion}
-          volver={volverVistaAnterior}
+          volver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           modalState={{ modalOpen, setModalOpen, tempData, setTempData, setConfirmData, setAlertData }}
           theme={theme}
           tab={configTab}
