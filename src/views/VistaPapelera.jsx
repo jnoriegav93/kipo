@@ -118,10 +118,11 @@ export default function VistaPapelera({ theme, isDark, onVolver, user, puntos, p
   }, [visibles]);
 
   // Esta vista vive en DOS sitios: como sección del menú (soloProyectos) y como
-  // papelera del proyecto, dentro de un modal. Solo la del menú se angosta; la del
-  // modal tiene que seguir ocupando toda la pantalla, como cualquier otro modal.
+  // papelera del proyecto, dentro de un modal. La del menú es un panel angosto sobre el
+  // mapa —de eso se encarga `seccion-menu`, que ya la posiciona—; la del modal sigue
+  // ocupando toda la pantalla, como cualquier otro modal.
   return (
-    <div className={`fixed inset-y-0 left-0 z-[200] flex flex-col ${theme.bg} ${soloProyectos ? 'seccion-menu' : 'right-0'}`}>
+    <div className={`flex flex-col ${theme.bg} ${soloProyectos ? 'seccion-menu' : 'fixed inset-0 z-[200]'}`}>
       {/* Header */}
       <div className={`${theme.header} px-4 flex items-center gap-3 border-b-2 ${theme.border} shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
         <button onClick={onVolver} className={`p-2 rounded-xl border-2 ${theme.border} ${theme.text} active:scale-95`}><ArrowLeft size={22} /></button>

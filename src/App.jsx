@@ -2060,9 +2060,7 @@ function App() {
     'diagnostico', 'papelera', 'datosUsuario', 'admin'].includes(vista);
 
   return (
-    // Con sección abierta manda `fondo-seccion` y NO se pone `theme.bg`: esa clase de
-    // Tailwind pintaría `bg-white` encima y el fondo volvería a ser el mismo del panel.
-    <div className={`${pantallaCompacta ? 'compacto ' : ''}h-screen w-full flex flex-col ${esSeccionMenu ? `fondo-seccion ${isDark ? 'oscuro' : ''}` : theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
+    <div className={`${pantallaCompacta ? 'compacto ' : ''}h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
 
       {/* Indicador de perfil activo — solo admin (para saber qué perfil se está previsualizando) */}
       {esAdmin && (
@@ -2139,7 +2137,12 @@ function App() {
         esAdmin={esAdmin}
       />
 
-      {vista === 'mapa' && (
+      {/* El mapa sigue montado con una sección abierta: es EL MISMO mapa, en el estado
+          en que lo dejaste, no uno nuevo dibujado aparte. Mientras la sección esté
+          encima no recibe toques (`pointer-events-none` más abajo): es fondo y nada
+          más, para que un clic en la zona descubierta no cree un punto sin querer. */}
+      {(vista === 'mapa' || esSeccionMenu) && (
+        <div className={`flex-1 min-h-0 flex flex-col ${esSeccionMenu ? 'pointer-events-none' : ''}`}>
         <VistaMapa
           theme={theme}
           isDesktop={isDesktop}
@@ -2452,6 +2455,7 @@ function App() {
           }}
           onCancelarOrdenar={() => { setModoOrdenar(false); setOrdenSeleccion([]); setRetomarOrden(false); limpiarCorreccion(); setModalPendiente(`LISTA_PUNTOS_${ordenarProyId || proyectoActual?.id}`); setOrdenarProyId(null); setVista('proyectos'); }}
         />
+        </div>
       )}
       {vista === 'proyectos' && (
         <VistaProyectos
