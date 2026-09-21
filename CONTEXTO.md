@@ -279,6 +279,18 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Guardar posiciones escribe solo lo que cambia (21/09).** Antes se reescribían **todos**
+  los puntos del proyecto, uno por uno, aunque ya tuvieran esa misma posición: el bucle
+  escribía `i + 1` sin comparar contra `datos.ordenTendido`. Al retomar y agregar tres
+  postes se mandaban mil escrituras idénticas. Ahora se compara antes (`aNumerar` y
+  `aBorrar` en `guardarOrdenTendido`) y el resultado en la base es el mismo.
+  La pantalla de bloqueo dice **"Guardando…"** y ya no "Punto N de M": ese N pasó a ser el
+  número de **cambios**, y "punto 3 de 3" haría creer que el proyecto tiene tres. La barra
+  sí es real: avanza sobre lo que se está escribiendo.
+  **Queda pendiente** mandarlas en lotes (`writeBatch`, hasta 500, como ya hace
+  `escribirCoords` del imán): aun renumerando de cero serían tres viajes en vez de mil.
+  Se dejó fuera para no perder el avance visible y porque, con lo anterior, el caso normal
+  ya casi no escribe.
 - **El ACERO depende del trazo encendido (21/09).** Al separar los estados para poder
   elegir fibras, el acero quedó inutilizable: sus toques marcan los **dos postes, el medio
   tramo y las fibras apoyadas**, y todos pasan por `dibujandoFibra`
