@@ -598,25 +598,27 @@ Tailwind no ve las que se arman con plantillas.
   En ambos casos **el panel de control fue lo que delató el problema**: al salir idéntico
   al caso bueno, quedó claro que la prueba no medía nada. Sin control, habría cantado
   victoria dos veces.
-- **Carga del satélite con internet lento (20/09).** Tres cosas, por orden de impacto:
-  - **Un solo dominio era el cuello de botella.** Todas las teselas salían de
-    `mt1.google.com` y el navegador abre ~6 descargas **por dominio**: hacían cola de a 6.
-    Ahora se reparten entre `mt0`–`mt3` (`subdomains="0123"`). El service worker ya
-    cacheaba `mt[0-9]`, así que la caché siguió valiendo. El `MiniMapaRevision` llevaba el
-    mismo fallo y se corrigió a la par.
-  - **Los nombres de calle son un SEGUNDO juego de teselas** que se pedía siempre y le
-    quitaba cupo al satélite. Pasaron a ser opcionales, con botón **CALLES** junto a ITEM /
-    PASIVO / FIBRA, **apagados por defecto**. Encendidos van con `detectRetina` (doble
-    resolución), que es lo que los hace legibles sobre la foto aérea. Se conservan al
-    cerrar el menú, igual que FIBRA: son una capa del mapa, no un rótulo de puntos.
-  - **`updateWhenZooming={false}`**: no se piden teselas durante la animación del zoom,
-    solo al terminar. Un instante borroso a cambio de no lanzar y descartar decenas de
-    peticiones por pellizco.
-  **Pendiente de decidir:** cuando una tesela falla se sustituye por un píxel transparente
-  y **no se reintenta nunca** (`makeTileHandlers` en `Mapas.jsx`). Con internet lento los
-  tiempos agotados son frecuentes y dejan cuadros en blanco hasta volver a pasar por ahí
-  con otro zoom; además esas respuestas no se cachean. Un reintento lo arreglaría, pero
-  cambia el comportamiento sin señal.
+- **NO tocar la carga de teselas sin medir (20/09).** Un intento de acelerarla dejó el
+  mapa **a parches**, con la mayoría de los cuadros en blanco, y hubo que revertirlo
+  entero (**SELLO: 20/09/26, 21:46**). Lo que se probó y se deshizo:
+  - **Repartir entre `mt0`–`mt3`.** La idea era sortear el límite de ~6 descargas por
+    dominio. **No era la causa del fallo**: los cuatro servidores responden `200` con la
+    misma imagen (comprobado con `curl`). Pero tiene un coste que sí se pagó: la caché
+    está guardada **por dirección exacta**, así que todo lo cacheado bajo `mt1` quedó
+    inservible para tres de cada cuatro teselas. Si alguna vez se vuelve a intentar, hay
+    que contar con ese día de recarga.
+  - **`updateWhenZooming={false}`.** Es el sospechoso principal del mapa a parches: al no
+    pedir nada durante la animación, al soltar el zoom se piden **todas de golpe**, y con
+    internet lento eso multiplica los tiempos agotados.
+  **La raíz de fondo sigue ahí:** cuando una tesela falla se sustituye por un píxel
+  transparente y **no se reintenta nunca** (`makeTileHandlers` en `Mapas.jsx`), así que
+  cada fallo deja un hueco permanente hasta volver a pasar por esa zona con otro zoom; y
+  esas respuestas fallidas tampoco se cachean. Cualquier mejora de carga debería empezar
+  por ahí, y **medirse antes de subirla**.
+  Lo único de esa tanda que quedó en pie, porque no toca la red: los **nombres de calle**
+  son opcionales (botón **CALLES**, apagados por defecto) y con `detectRetina` cuando se
+  encienden. Se conservan al cerrar el menú, igual que FIBRA: son una capa del mapa, no un
+  rótulo de puntos.
 - **Cuidado al medir bases de lint:** filtrar por `problems` se pierde los archivos con
   **un solo** problema, porque ESLint escribe `1 problem` en singular. Pasó con
   `useMapState.js`: la base parecía cero y en realidad era 1.
