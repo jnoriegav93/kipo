@@ -279,6 +279,29 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Editor del trazo de una fibra (21/09).** Botón del trazo en cada fila de la lista de
+  ramales: abre la edición **en el mapa**. Los vértices salen como tiradores azules y se
+  arrastran apretando y moviendo, **sin espera previa** — dentro de la edición el tirador
+  no sirve para nada más, así que no hay gesto del que distinguirlo y el medio segundo de
+  "mantener presionado" solo estorbaría.
+  Dos botones **arman** la acción y el toque siguiente la ejecuta: **+** pide tocar la
+  línea (el vértice nace en el pie de la perpendicular, no donde cayó el dedo, o torcería
+  el trazo de entrada) y **−** pide tocar el vértice que sobra, y mientras está armado los
+  tiradores se ponen rojos. Con dos vértices el botón de quitar se apaga: menos de dos no
+  es una línea.
+  Al **soltar** un vértice, si hay un poste a menos de **2 m** se clava en su coordenada
+  exacta (`imantarAPoste`, gana el más cercano y no el primero de la lista).
+  Se trabaja sobre una **copia**: el mapa la dibuja a través de `previewFibra` y nada se
+  escribe hasta GUARDAR, así CANCELAR de verdad deja el ramal como estaba. Una sola
+  escritura al final.
+  Los tiradores van en su propio `Pane` (zIndex 410), **encima de todo**: son lo que hay
+  que poder agarrar sin pelear con los postes ni con las líneas.
+  Lógica pura en `edicionVertices.js`, probada con Node (27 comprobaciones + control).
+- **Un icono usado sin importar NO lo detecta nada (21/09).** Pasó otra vez: `Minus` en
+  `VistaMapa.jsx`. **ESLint dio limpio y el build compiló sin una queja**; se habría visto
+  como pantalla negra al abrir el editor. Lo cazó un barrido que compara los `<Componente>`
+  usados contra lo importado o declarado en el archivo
+  (`scratchpad/iconos-sin-importar.mjs`). Conviene pasarlo tras tocar JSX con iconos.
 - **La fibra es del todo independiente del poste (21/09).** Se quitaron `puntoId` de los
   vértices y `puntos`/`from`/`to` de la fibra: eran de cuando se dibujaba poste por poste.
   **Qué los usaba de verdad** (se verificó, no se supuso): soltar la fibra al borrar un

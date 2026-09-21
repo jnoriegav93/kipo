@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair, Magnet, RotateCcw, Plus } from 'lucide-react';
+import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair, Magnet, RotateCcw, Plus, Spline } from 'lucide-react';
 import { CAPACIDADES, getColorFibra, longitudFibra } from '../utils/fibraUtils';
 
 // Editor de un ramal ya guardado. Es presentacional: los cambios viven arriba,
@@ -62,6 +62,7 @@ export default function BarraFibra({
   onActualizar,
   onPreviewFibra,
   onCentrar,
+  onEditarVertices,          // abre la edición del trazo de ese ramal, en el mapa
   modoAjuste = false,
   setModoAjuste,
   onAjustarFibra,
@@ -481,6 +482,15 @@ export default function BarraFibra({
                     title="Centrar el mapa en este ramal"
                   >
                     <Crosshair size={15} strokeWidth={2.5} />
+                  </button>
+                  {/* EDITAR EL TRAZO: pasa a mover, agregar y quitar vértices de ESTE
+                      ramal. Cierra el panel, porque la edición ocurre toda en el mapa. */}
+                  <button
+                    onClick={() => { onEditarVertices?.(c); setPanel(null); }}
+                    className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-blue-600 opacity-80 active:opacity-100"
+                    title="Editar el trazo de este ramal"
+                  >
+                    <Spline size={15} strokeWidth={2.5} />
                   </button>
                   {/* AJUSTAR: jala hasta la línea los postes cercanos a ESTE ramal, no a
                       todos. Cierra el panel para dejar ver la vista previa en el mapa. */}

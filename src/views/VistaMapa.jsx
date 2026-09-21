@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Eye, EyeOff, Edit3, Trash2, Plus, ArrowLeft, Cable, Move, X, Link2, Camera, FolderInput, Check, Copy, Scissors, RefreshCw, CalendarPlus, CornerDownRight, MapPinOff } from 'lucide-react';
+import { Eye, EyeOff, Edit3, Trash2, Plus, Minus, ArrowLeft, Cable, Move, X, Link2, Camera, FolderInput, Check, Copy, Scissors, RefreshCw, CalendarPlus, CornerDownRight, MapPinOff } from 'lucide-react';
 import { MapaReal } from '../components/Mapas';
 import BarraFibra from '../components/BarraFibra';
 import BarraAcero from '../components/BarraAcero';
 import { agruparDias, diasDeCasilla, puntosDeCasilla } from '../utils/agruparDias';
+import { MIN_VERTICES, insertarVertice, quitarVertice, moverVertice, trazoCambio } from '../utils/edicionVertices';
 
 const haversine = (lat1, lng1, lat2, lng2) => {
   const R = 6371000;
@@ -146,6 +147,53 @@ const VistaMapa = ({
   // Capacidad que se está probando en el editor de la lista, para pintar la línea
   // de ese color antes de guardar.
   const [previewFibra, setPreviewFibra] = useState(null);
+  // ── EDICIÓN DEL TRAZO DE UN RAMAL ─────────────────────────────────────────
+  // Se trabaja sobre una copia: nada se escribe hasta GUARDAR, así CANCELAR de
+  // verdad deja el ramal como estaba. El mapa dibuja la copia a través de
+  // `previewFibra`, que ya existía para probar colores antes de guardar.
+  const [fibraEditando, setFibraEditando] = useState(null);   // el ramal completo
+  const [verticesEdicion, setVerticesEdicion] = useState(null);
+  const [accionVertice, setAccionVertice] = useState('mover'); // 'mover' | 'agregar' | 'quitar'
+  const [guardandoTrazo, setGuardandoTrazo] = useState(false);
+
+  const abrirEdicionTrazo = (con) => {
+    const vs = (Array.isArray(con?.vertices) ? con.vertices : [])
+      .filter(v => v?.lat != null && v?.lng != null)
+      .map(v => ({ lat: v.lat, lng: v.lng }));
+    if (vs.length < MIN_VERTICES) return;
+    setFibraEditando(con);
+    setVerticesEdicion(vs);
+    setAccionVertice('mover');
+    setPreviewFibra({ id: con.id, vertices: vs });
+  };
+
+  const cerrarEdicionTrazo = () => {
+    setFibraEditando(null);
+    setVerticesEdicion(null);
+    setAccionVertice('mover');
+    setPreviewFibra(null);
+  };
+
+  // Cada cambio actualiza la copia Y la vista previa: el trazo se ve moverse en el
+  // mapa mientras se edita, sin haber escrito nada todavía.
+  const cambiarVertices = (nuevos) => {
+    setVerticesEdicion(nuevos);
+    setPreviewFibra(p => (p ? { ...p, vertices: nuevos } : p));
+  };
+
+  const hayCambiosTrazo = !!fibraEditando && !!verticesEdicion &&
+    trazoCambio((fibraEditando.vertices || []).map(v => ({ lat: v.lat, lng: v.lng })), verticesEdicion);
+
+  const guardarTrazo = async () => {
+    if (!fibraEditando || !verticesEdicion || guardandoTrazo) return;
+    setGuardandoTrazo(true);
+    try {
+      await onActualizarConexion?.(fibraEditando, { vertices: verticesEdicion });
+      cerrarEdicionTrazo();
+    } finally {
+      setGuardandoTrazo(false);
+    }
+  };
   // Armado con la paleta desplegada en la simbología. Solo uno a la vez: la
   // paleta tapa el nombre, así que dos abiertas dejarían la lista ilegible.
   const [paletaArmado, setPaletaArmado] = useState(null);
@@ -412,6 +460,11 @@ const VistaMapa = ({
             ordenSeleccion={ordenSeleccion}
             simbologiaActiva={simbologiaActiva}
             coloresArmado={coloresArmado}
+            verticesEdicion={verticesEdicion}
+            accionVertice={accionVertice}
+            onMoverVertice={(i, punto) => cambiarVertices(moverVertice(verticesEdicion, i, punto))}
+            onQuitarVertice={(i) => cambiarVertices(quitarVertice(verticesEdicion, i))}
+            onAgregarVertice={(punto) => cambiarVertices(insertarVertice(verticesEdicion, punto))}
             previewAjuste={modoAjuste ? previewAjuste : []}
             apoyadosAjuste={modoAjuste ? apoyadosAjuste : []}
             modoAjuste={modoAjuste}
@@ -518,6 +571,7 @@ const VistaMapa = ({
               hayDeshacerAjuste={hayDeshacerAjuste}
               onDeshacerAjuste={onDeshacerAjuste}
               onPreviewFibra={setPreviewFibra}
+              onEditarVertices={abrirEdicionTrazo}
               onActualizar={onActualizarConexion}
               onCentrar={(con) => {
                 // Centro del ramal: promedio de sus vértices. En las fibras viejas,
@@ -558,6 +612,67 @@ const VistaMapa = ({
           <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none z-40">
             <div className={`${isDark ? 'bg-slate-800 text-slate-300 border-slate-600' : 'bg-white text-slate-600 border-slate-300'} px-4 py-2 rounded-full text-[11px] font-bold shadow-lg border-2`}>
               Presiona CERRAR para quedarte en el mapa
+            </div>
+          </div>
+        )}
+
+        {/* EDICIÓN DEL TRAZO de un ramal. Los dos botones ARMAN la acción y el toque
+            siguiente la ejecuta sobre el mapa: agregar pide tocar la línea, quitar pide
+            tocar el vértice. Volver a tocar el botón desarma y se vuelve a mover.
+            Nada se escribe hasta GUARDAR: CANCELAR deja el ramal como estaba. */}
+        {fibraEditando && verticesEdicion && (
+          <div className="absolute top-2 left-0 right-0 flex justify-center z-[420] px-3">
+            <div className="bg-slate-900/92 backdrop-blur-sm text-white px-2 py-2 rounded-2xl shadow-2xl flex items-center gap-1.5 max-w-full">
+              <div className="px-1.5 min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wide truncate max-w-[110px]">
+                  {fibraEditando.nombre || 'SIN NOMBRE'}
+                </p>
+                <p className="text-[9px] opacity-70 font-bold">
+                  {verticesEdicion.length} vértices
+                  {accionVertice === 'agregar' ? ' · toca la línea' : accionVertice === 'quitar' ? ' · toca un vértice' : ' · arrastra un vértice'}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setAccionVertice(a => (a === 'agregar' ? 'mover' : 'agregar'))}
+                title="Agregar un vértice: tocá la línea donde lo querés"
+                className={`w-9 h-9 shrink-0 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${accionVertice === 'agregar'
+                  ? 'bg-blue-500 border-blue-300'
+                  : 'bg-white/10 border-white/40'}`}
+              >
+                <Plus size={17} strokeWidth={3} />
+              </button>
+
+              <button
+                onClick={() => setAccionVertice(a => (a === 'quitar' ? 'mover' : 'quitar'))}
+                disabled={verticesEdicion.length <= MIN_VERTICES}
+                title="Quitar un vértice: tocá el que sobra"
+                className={`w-9 h-9 shrink-0 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${verticesEdicion.length <= MIN_VERTICES
+                  ? 'bg-white/5 border-white/20 opacity-40'
+                  : accionVertice === 'quitar'
+                    ? 'bg-red-500 border-red-300'
+                    : 'bg-white/10 border-white/40'}`}
+              >
+                <Minus size={17} strokeWidth={3} />
+              </button>
+
+              <div className="w-[1px] h-7 bg-white/25 shrink-0" />
+
+              <button
+                onClick={cerrarEdicionTrazo}
+                className="px-2.5 h-9 shrink-0 rounded-xl border-2 border-white/40 bg-white/10 text-[10px] font-black tracking-widest active:scale-95"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={guardarTrazo}
+                disabled={!hayCambiosTrazo || guardandoTrazo}
+                className={`px-2.5 h-9 shrink-0 rounded-xl border-2 text-[10px] font-black tracking-widest transition-all ${hayCambiosTrazo && !guardandoTrazo
+                  ? 'border-blue-300 bg-blue-600 active:scale-95'
+                  : 'border-white/20 bg-white/5 opacity-40'}`}
+              >
+                {guardandoTrazo ? 'GUARDANDO…' : 'GUARDAR'}
+              </button>
             </div>
           </div>
         )}

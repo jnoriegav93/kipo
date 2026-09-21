@@ -9,6 +9,7 @@ import { useRumbo } from '../hooks/useRumbo';
 import { exigeNorte, anguloEtiquetaFibra, gestoDosDedos } from '../utils/giroMapa';
 import { instalarGiro } from '../utils/giroLeaflet';
 import { agruparPuntos, ocultaEtiquetas, recortarAlEncuadre } from '../utils/agruparPuntos';
+import { puntoMasCercanoEnTrazo, imantarAPoste } from '../utils/edicionVertices';
 import { debeReintentar, esperaReintento, tocaRevisar, topeTeselas, recortarCacheTeselas } from '../utils/teselas';
 import { esPC } from '../hooks/useIsDesktop';
 
@@ -277,6 +278,13 @@ export const MapaReal = ({
   previewAjuste = [],
   modoAjuste = false,
   apoyadosAjuste = [],
+  // Edición del trazo de un ramal: los vértices que se están tocando y qué arma
+  // cada botón flotante ('mover' | 'agregar' | 'quitar').
+  verticesEdicion = null,
+  accionVertice = 'mover',
+  onMoverVertice,
+  onQuitarVertice,
+  onAgregarVertice,
   simbologiaActiva = false,
   coloresArmado = {},
   // Cable de acero: otra capa, que se dibuja desde la misma barra que la fibra
@@ -678,6 +686,69 @@ export const MapaReal = ({
   // es lo mismo con lo que se dibujan los cables: así lo que palpita y lo que cuenta
   // la barra hablan de los mismos elementos.
   const mediosTramosConCable = useMemo(() => idsMediosTramosConCable(lineasAcero), [lineasAcero]);
+  // ── EDICIÓN DEL TRAZO ──────────────────────────────────────────────────────
+  // Tirador de un vértice. Cambia de color según lo que esté armado: azul para
+  // mover (lo normal) y rojo cuando el botón de quitar está encendido, para que se
+  // vea que el próximo toque borra.
+  const iconoVertice = React.useCallback((quitando) => {
+    const d = 18;
+    const relleno = quitando ? '#ef4444' : '#2563eb';
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:${d}px;height:${d}px;box-sizing:border-box;background:${relleno};border:3px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.6);"></div>`,
+      iconSize: [d, d], iconAnchor: [d / 2, d / 2],
+    });
+  }, []);
+
+  const capaEdicionVertices = (Array.isArray(verticesEdicion) && verticesEdicion.length >= 2) ? (
+    <Pane name="edicion-vertices" style={{ zIndex: 410 }}>
+      {/* Franja invisible y ancha sobre el trazo: acertarle a una línea de 3 px con el
+          dedo es imposible. Solo escucha cuando el botón de agregar está armado, para
+          no robarle el toque a los tiradores ni a la selección del ramal. */}
+      {accionVertice === 'agregar' && (
+        <Polyline
+          positions={verticesEdicion.map(v => [v.lat, v.lng])}
+          pathOptions={{ color: '#2563eb', opacity: 0, weight: 26 }}
+          eventHandlers={{
+            click: (e) => {
+              L.DomEvent.stopPropagation(e);
+              // El vértice nace en el pie de la perpendicular, no donde cayó el dedo:
+              // insertarlo en el toque crudo torcería el trazo de entrada.
+              const donde = puntoMasCercanoEnTrazo(verticesEdicion, { lat: e.latlng.lat, lng: e.latlng.lng });
+              if (donde) onAgregarVertice?.(donde.punto);
+            },
+          }}
+        />
+      )}
+      {verticesEdicion.map((v, i) => (
+        <Marker
+          key={`vx-${i}`}
+          position={[v.lat, v.lng]}
+          draggable={accionVertice !== 'quitar'}
+          icon={iconoVertice(accionVertice === 'quitar')}
+          zIndexOffset={1200}
+          eventHandlers={{
+            click: (e) => {
+              L.DomEvent.stopPropagation(e);
+              if (accionVertice === 'quitar') onQuitarVertice?.(i);
+            },
+            // Se arrastra apretando y moviendo, sin espera previa: dentro de la
+            // edición el tirador no sirve para otra cosa, así que no hay gesto del
+            // que distinguirlo.
+            dragend: (e) => {
+              const ll = e.target.getLatLng();
+              // Al soltar, si hay un poste a menos de 2 m el vértice se clava en su
+              // coordenada exacta: así "parece" estar en el poste y además lo está,
+              // que es lo que después mide el conteo de apoyos y extremos.
+              const r = imantarAPoste({ lat: ll.lat, lng: ll.lng }, puntosVisiblesMapa);
+              onMoverVertice?.(i, r.punto);
+            },
+          }}
+        />
+      ))}
+    </Pane>
+  ) : null;
+
   const capaAcero = (
     <>
       {lineasAcero.map(c => {
@@ -968,6 +1039,10 @@ export const MapaReal = ({
         })}
 
         <Pane name="acero-sobre" style={{ zIndex: 405 }}>{modoAcero && capaAcero}</Pane>
+
+        {/* Tiradores del trazo en edición, por encima de todo: son lo que hay que poder
+            agarrar sin pelear con los postes ni con las líneas. */}
+        {capaEdicionVertices}
 
         {/* Controlador del marcador arrastrable (nativo Leaflet) */}
         <DragMoverController
