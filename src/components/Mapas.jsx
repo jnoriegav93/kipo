@@ -815,19 +815,15 @@ export const MapaReal = ({
         )}
         {mapStyle === 'google' && (
           <>
-            {/* Repartido entre mt0–mt3: el navegador solo abre ~6 descargas por dominio,
-                así que con un único servidor las teselas hacían cola de a 6. El service
-                worker ya cachea mt[0-9], así que la caché sigue valiendo igual.
-                `updateWhenZooming` en false: no se piden teselas durante la animación del
-                zoom, solo al terminar. Se ve un instante borroso a cambio de no lanzar
-                (y descartar) decenas de peticiones por cada pellizco. */}
+            {/* NO tocar la carga de teselas sin medir: repartirlas entre mt0–mt3 y
+                aplazar las peticiones al final del zoom dejó el mapa a parches (los
+                cuatro servidores responden bien, así que la culpa fue de pedirlas todas
+                de golpe al soltar, con los fallos quedando en blanco para siempre). */}
             <TileLayer
               attribution='© Google Maps'
-              url="https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
-              subdomains="0123"
+              url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
               maxZoom={22}
               maxNativeZoom={21}
-              updateWhenZooming={false}
               eventHandlers={makeTileHandlers('google')}
             />
             {/* Nombres de calles: SOLO si se encienden. Es un segundo juego de teselas y
@@ -841,7 +837,6 @@ export const MapaReal = ({
                 maxZoom={22}
                 maxNativeZoom={20}
                 detectRetina
-                updateWhenZooming={false}
                 opacity={1}
               />
             )}
@@ -1227,7 +1222,7 @@ export const MiniMapaRevision = ({ puntos = [], puntoActivo, obtenerColorDia, mo
       {/* Base: Google Maps satélite + capa de etiquetas de calles */}
       {/* Mismo reparto entre mt0–mt3 y sin pedir teselas durante el zoom que el mapa
           principal: si no, esta pantalla vuelve a hacer cola de a 6 por dominio. */}
-      <TileLayer url="https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" subdomains="0123" maxZoom={22} maxNativeZoom={21} updateWhenZooming={false} />
+      <TileLayer url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" maxZoom={22} maxNativeZoom={21} />
       <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} opacity={0.9} />
       <RecenterMini center={center} />
       {conCoords.map(p => {
