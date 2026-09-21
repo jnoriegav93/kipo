@@ -1971,10 +1971,19 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
         for (const c of cablesAcero || []) {
           const [ia, ib] = (c.puntos || []).map(String);
           const pa = puntoDelGrupo.get(ia), pb = puntoDelGrupo.get(ib);
-          if (!pa || !pb || pa.coords?.lat == null || pb.coords?.lat == null) continue;
+          // RESALTADO: se marca lo que esté en ESTA hoja, aunque el cable quede
+          // repartido entre dos ramales. Los postes de un mismo cable pueden caer en
+          // ramales distintos (el reparto es por cercanía a cada fibra), y antes eso
+          // descartaba el cable entero: ni sus postes ni su medio tramo salían rojos en
+          // ninguna de las dos hojas. Los ids que no sean de este grupo sobran sin
+          // molestar: solo se consultan contra los puntos de la hoja.
           idsApoyo.add(ia);
           idsApoyo.add(ib);
           if (c.medioTramo != null) idsApoyo.add(String(c.medioTramo));
+          // LÍNEA: solo con los dos extremos en esta hoja. Con uno afuera, el trazo
+          // apuntaría a un poste que la hoja no dibuja y se leería como un cable que
+          // sale hacia la nada.
+          if (!pa || !pb || pa.coords?.lat == null || pb.coords?.lat == null) continue;
           tramosAcero.push({
             a: pa.coords,
             b: pb.coords,

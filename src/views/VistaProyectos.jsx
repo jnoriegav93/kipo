@@ -746,7 +746,7 @@ const VistaProyectos = ({
   }
 
   return (
-    <div className={`flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
+    <div className={`seccion-menu flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
 
       {/* Si hay modalPendiente, no renderizar el contenido normal - solo el modal al final */}
       {modalPendiente ? null : proyectos.length === 0 ? (

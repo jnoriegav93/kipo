@@ -340,7 +340,7 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
   };
 
   return (
-    <div className={`flex-1 flex flex-col ${theme.bg} overflow-hidden relative`}>
+    <div className={`seccion-menu flex-1 flex flex-col ${theme.bg} overflow-hidden relative`}>
 
       <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
           <button onClick={() => { if (editId) setEditId(null); volver(); }}>

@@ -512,7 +512,7 @@ export default function VistaDiagnostico({ theme, isDark, onVolver, proyectos = 
   const card = isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200';
 
   return (
-    <div className={`w-full h-full flex flex-col ${isDark ? 'bg-slate-950' : 'bg-slate-100'}`}>
+    <div className={`seccion-menu h-full flex flex-col ${isDark ? 'bg-slate-950' : 'bg-slate-100'}`}>
       {/* Header */}
       <div className="bg-slate-900 px-4 flex items-center justify-between border-b-2 border-slate-700 shrink-0" style={{ paddingTop: '12px', paddingBottom: '12px' }}>
         <button onClick={onVolver} className="flex items-center gap-2 bg-white/10 text-white px-3 py-2 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all">

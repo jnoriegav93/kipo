@@ -1027,7 +1027,7 @@ const VistaAdmin = ({ theme, isDark, onVolver, onLoginComo, esAdmin = false, per
   useEffect(() => { cargarUsuarios(); }, []);
 
   return (
-    <div className={`flex-1 flex flex-col overflow-hidden ${theme.bg} ${theme.text}`}>
+    <div className={`seccion-menu flex-1 flex flex-col overflow-hidden ${theme.bg} ${theme.text}`}>
 
       {/* Header */}
       <div className={`shrink-0 px-4 py-3 border-b-2 ${theme.border} ${theme.header} flex items-center gap-3`}>

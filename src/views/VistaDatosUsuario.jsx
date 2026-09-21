@@ -31,7 +31,7 @@ const VistaDatosUsuario = ({
   };
 
   return (
-    <div className={`flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
+    <div className={`seccion-menu flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
 
       {/* HEADER */}
       <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0 z-20`}>
