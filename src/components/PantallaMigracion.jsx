@@ -29,8 +29,11 @@ export default function PantallaMigracion({ migracion, isOnline = true, theme })
         )}
 
         <p className={`mt-4 text-sm font-black ${theme.text}`}>
+          {/* Guardando posiciones no se cuenta por punto: ahora solo se escriben los que
+              CAMBIAN, así que "punto 3 de 3" haría creer que el proyecto tiene 3. La barra
+              de abajo sí avanza sobre lo que de verdad se está escribiendo. */}
           {esOrden
-            ? `Punto ${hechos} de ${total}`
+            ? 'Guardando…'
             : etapa === 'fotos'
               ? `Fotos: ${fotosHechos} de ${fotosTotal} punto${fotosTotal === 1 ? '' : 's'}`
               : `Puntos, fibras y cables: ${hechos} de ${total}`}

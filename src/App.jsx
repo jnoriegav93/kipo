@@ -606,18 +606,26 @@ function App() {
     });
     const guardar = async () => {
       setGuardandoOrden(true);
-      // Se bloquea la pantalla: son muchas escrituras, una por punto, y tocar algo a
-      // mitad dejaría el orden hecho a medias.
-      const total = orden.length + sinPosicion.length;
+      // Solo se escribe LO QUE CAMBIA. Antes se reescribían los puntos del proyecto uno
+      // por uno aunque ya tuvieran esa misma posición: al retomar y agregar tres postes
+      // se mandaban mil escrituras idénticas. El resultado en la base es el mismo.
+      const porIdOrden = new Map(ptsProy.map(p => [String(p.id), p]));
+      const posActual = (id) => porIdOrden.get(String(id))?.datos?.ordenTendido;
+      const aNumerar = orden
+        .map((id, i) => ({ id, pos: i + 1 }))
+        .filter(x => posActual(x.id) !== x.pos);
+      const aBorrar = sinPosicion.filter(id => posActual(id) != null);
+
+      const total = aNumerar.length + aBorrar.length;
       setMigracion({ modo: 'orden', etapa: 'datos', hechos: 0, total, destino: proyOrdenar?.nombre || '' });
       try {
-        for (let i = 0; i < orden.length; i++) {
-          await fbUpdateDoc(doc(db, 'puntos', String(orden[i])), { 'datos.ordenTendido': i + 1 });
+        for (let i = 0; i < aNumerar.length; i++) {
+          await fbUpdateDoc(doc(db, 'puntos', String(aNumerar[i].id)), { 'datos.ordenTendido': aNumerar[i].pos });
           setMigracion(m => (m ? { ...m, hechos: i + 1 } : m));
         }
-        for (let j = 0; j < sinPosicion.length; j++) {
-          await fbUpdateDoc(doc(db, 'puntos', String(sinPosicion[j])), { 'datos.ordenTendido': deleteField() });
-          setMigracion(m => (m ? { ...m, hechos: orden.length + j + 1 } : m));
+        for (let j = 0; j < aBorrar.length; j++) {
+          await fbUpdateDoc(doc(db, 'puntos', String(aBorrar[j])), { 'datos.ordenTendido': deleteField() });
+          setMigracion(m => (m ? { ...m, hechos: aNumerar.length + j + 1 } : m));
         }
         const posicion = new Map(orden.map((id, i) => [String(id), i + 1]));
         const quitar = new Set(sinPosicion.map(String));
