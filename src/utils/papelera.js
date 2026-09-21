@@ -3,7 +3,6 @@
 // lo elimine (junto con sus archivos de Storage). NUNCA borra archivos aquí.
 import { collection, addDoc, deleteDoc, doc, setDoc, updateDoc, getDoc, getDocs, onSnapshot, query, where, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { soltarDePostesBorrados } from './fibraUtils';
 
 // Extrae recursivamente los paths de Storage (_path/_pathHD) de las fotos de un punto,
 // para que la purga (a los 15 días) pueda borrar también los archivos.
@@ -93,12 +92,12 @@ export const restaurarPunto = async (entrada) => {
   return { ok: true };
 };
 
-// Fibra: vuelve sola, siempre, con su mismo id. Tiene trazo propio, así que no depende
-// de sus postes: de los que ya no existen se suelta al volver. meta.puntos guarda las
-// coordenadas de sus postes al borrarla ([{id, coords:{lat,lng}}]).
-export const restaurarFibra = async (entrada, puntosActuales) => {
-  const fibra = soltarDePostesBorrados(entrada.snapshot || {}, puntosActuales || [], (entrada.meta && entrada.meta.puntos) || []);
-  await setDoc(doc(db, entrada.coleccionOriginal || 'conexiones', String(entrada.idOriginal)), fibra);
+// Fibra: vuelve sola, siempre, con su mismo id y tal como estaba. Su trazo es suyo y
+// no depende de ningún poste, así que da igual cuáles existan ahora: vuelve al mismo
+// sitio del mapa. Antes había que soltarla de los postes desaparecidos; ya no toca
+// ninguno.
+export const restaurarFibra = async (entrada) => {
+  await setDoc(doc(db, entrada.coleccionOriginal || 'conexiones', String(entrada.idOriginal)), entrada.snapshot || {});
   // Vuelve a apoyarse en los cables de acero que la sostenían al borrarla (meta.cablesApoyo).
   // Los que ya no existan se saltan sin ruido: updateDoc no crea documentos.
   for (const idCable of (entrada.meta && entrada.meta.cablesApoyo) || []) {

@@ -279,6 +279,33 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **La fibra es del todo independiente del poste (21/09).** Se quitaron `puntoId` de los
+  vértices y `puntos`/`from`/`to` de la fibra: eran de cuando se dibujaba poste por poste.
+  **Qué los usaba de verdad** (se verificó, no se supuso): soltar la fibra al borrar un
+  poste, restaurarla de la papelera, y el respaldo de forma de las fibras viejas. **No** los
+  usaban la ferretería ni el conteo de apoyos/extremos (van por cercanía contra la
+  geometría), ni el KMZ, ni el reparto de ramales del Excel.
+  El **verde del imán** pasa a ser 100% por cercanía (< 0,3 m). Antes también miraba los
+  postes registrados como vértices, lo que pintaba de verde un poste movido lejos después
+  de dibujar: justo el que sí hay que ajustar. Ahora sale naranja, que es lo correcto.
+  Borrar un poste ya **no escribe nada** en ninguna fibra, y restaurar una fibra la deja en
+  el mismo sitio del mapa.
+- **Las fibras ya no van asociadas a un día (21/09).** Un ramal no pertenece a una jornada:
+  se recorre a lo largo de varias, y tiene su propio encendido en la barra de fibra. Solo
+  los **puntos** llevan día. **Ojo:** no basta con dejar de escribir `diaId` —
+  `getConexionesVisibles` filtraba con `diasVisibles.includes(c.diaId)` y con el campo
+  ausente eso da falso y **desaparecerían todas**. Se sacó la condición: las conexiones se
+  filtran solo por proyecto. Al crear, la fibra va al **proyecto activo**.
+- **Rescate único de fibras sin trazo (21/09).** Antes de borrar el respaldo se les
+  construye `vertices` desde la posición actual de sus postes (`migrarFibras.js`), una vez
+  por proyecto. Se eligió esto en vez de comprobar "¿quedan fibras viejas?" y confiar en la
+  respuesta. **No va en el efecto de mantenimiento del arranque**: ese corre al entrar el
+  usuario, cuando fibras y puntos todavía no se cargaron, y el plan saldría vacío.
+- **`Mapas.jsx` tenía una base de lint de 9, no la del conjunto (21/09).** Al limpiar surgió
+  un error y la primera hipótesis —que la memoización se rompía por el camino legado— era
+  **falsa**: `preserve-manual-memoization` ya estaba en HEAD. El único error nuevo era
+  `fibraAjusteId` sin uso, tras borrar `postesEnFibra`. **Comparar mensaje a mensaje contra
+  HEAD, no totales**, que un total igual puede esconder un error cambiado por otro.
 - **El rótulo de la revisión de ferretería también cuenta el acero (21/09).** Sobre la foto
   ya salía "48 FO — 2 apoyos — 1 extremo"; ahora suma una línea por cable de acero
   ("ACERO 3/16 — 1 extremo") y el rótulo completo aparece **también sobre el mini-mapa**,

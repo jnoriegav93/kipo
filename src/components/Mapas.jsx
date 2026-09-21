@@ -276,7 +276,6 @@ export const MapaReal = ({
   prefijoOrden = [],
   previewAjuste = [],
   modoAjuste = false,
-  fibraAjusteId = null,   // qué ramal se está ajustando: el verde solo mira ese
   apoyadosAjuste = [],
   simbologiaActiva = false,
   coloresArmado = {},
@@ -529,19 +528,6 @@ export const MapaReal = ({
     });
   }, [iconSize]);
 
-  // Postes clavados en el ramal QUE SE ESTÁ AJUSTANDO: se eligieron al dibujarlo, así
-  // que ya están apoyados y no hay nada que ajustar en ellos. Se pintan verdes para que
-  // solo queden sin marcar los que están fuera del umbral y habría que revisar.
-  // Antes juntaba los vértices de TODAS las fibras visibles, así que con el imán por
-  // ramal se veía medio proyecto en verde aunque no tuviera nada que ver con esa fibra.
-  const postesEnFibra = useMemo(() => {
-    const s = new Set();
-    if (fibraAjusteId == null) return s;
-    const fib = conexionesVisiblesMapa.find(c => String(c.id) === String(fibraAjusteId));
-    (Array.isArray(fib?.vertices) ? fib.vertices : []).forEach(v => { if (v?.puntoId) s.add(String(v.puntoId)); });
-    return s;
-  }, [conexionesVisiblesMapa, fibraAjusteId]);
-
   // Puntero con forma de poste mientras se dibuja. El '#' del color va escapado
   // porque va dentro de una URL de datos SVG.
   const colorTrazo = getColorFibra(capacidadFibra);
@@ -551,14 +537,8 @@ export const MapaReal = ({
   const { lineasFibra, etiquetasFibra, verticesSnap } = useMemo(() => {
     const segmentos = [];
 
-    // Coordenada de un poste por id. Solo hace falta para las fibras LEGADAS, que
-    // guardaban únicamente ids y sacaban su forma de dónde estuvieran los postes.
-    const coordDePunto = (id) => {
-      const p = puntosVisiblesMapa.find(x => String(x.id) === String(id));
-      return p?.coords?.lat != null ? { lat: p.coords.lat, lng: p.coords.lng } : null;
-    };
-
-    // 1. Descomponer conexiones en segmentos, cada uno ya con sus dos coordenadas
+    // 1. Descomponer conexiones en segmentos, cada uno ya con sus dos coordenadas.
+    // La fibra trae SIEMPRE su propia geometría: no hay que buscar ningún poste.
     conexionesVisiblesMapa.forEach(con => {
       // NUEVO: la fibra trae su propia geometría; no depende de ningún poste.
       // Si el ramal se está editando, se dibuja con su geometría PENDIENTE.
@@ -577,37 +557,18 @@ export const MapaReal = ({
             esSegmento: true
           });
         }
-        return;
       }
-      // LEGADO: lista de ids de poste. Se sigue dibujando igual que siempre.
-      if (con.puntos && con.puntos.length >= 2) {
-        for (let i = 0; i < con.puntos.length - 1; i++) {
-          const a = coordDePunto(con.puntos[i]), b = coordDePunto(con.puntos[i + 1]);
-          if (!a || !b) continue; // poste oculto o borrado: ese tramo no se dibuja
-          segmentos.push({
-            ...con,
-            idOriginal: con.id,
-            idSegmento: `${con.id}-${i}`,
-            from: con.puntos[i],
-            to: con.puntos[i + 1],
-            coordA: a, coordB: b,
-            esSegmento: true
-          });
-        }
-      } else {
-        const a = coordDePunto(con.from), b = coordDePunto(con.to);
-        if (!a || !b) return;
-        segmentos.push({ ...con, idOriginal: con.id, idSegmento: con.id, coordA: a, coordB: b });
-      }
+      // Sin dos vértices no hay línea que dibujar. Antes había aquí un segundo camino
+      // que reconstruía la forma desde los ids de sus postes: las fibras que lo
+      // necesitaban se migraron a trazo propio de una vez (`migrarFibras.js`).
     });
 
     // 1b. Etiquetas del ramal: al inicio, al final y cada 100 m. Cada una se gira
     // para seguir el sentido del tramo donde cae, así se lee sobre la línea.
     const etiquetas = [];
     conexionesVisiblesMapa.forEach(con => {
-      const pts = (Array.isArray(con.vertices) && con.vertices.length >= 2)
-        ? con.vertices.filter(v => v?.lat != null).map(v => ({ lat: v.lat, lng: v.lng }))
-        : ((con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean).map(coordDePunto).filter(Boolean));
+      const pts = (Array.isArray(con.vertices) ? con.vertices : [])
+        .filter(v => v?.lat != null).map(v => ({ lat: v.lat, lng: v.lng }));
       if (pts.length < 2) return;
 
       const segs = [];
@@ -665,8 +626,8 @@ export const MapaReal = ({
       lineasFibra.push({ id: idFibra, capacidad: segs[0].capacidad, datos: segs[0], positions });
     });
 
-    // Vértices a los que se puede imantar un poste al moverlo. Salen de los extremos
-    // de cada segmento ya resuelto, así sirve igual para fibras nuevas y viejas.
+    // Vértices a los que se puede imantar un poste al moverlo, sacados de los extremos
+    // de cada segmento ya resuelto.
     const vistos = new Set();
     const verticesSnap = [];
     segmentos.forEach(seg => {
@@ -684,7 +645,10 @@ export const MapaReal = ({
       etiquetasFibra: etiquetas,
       verticesSnap
     };
-  }, [conexionesVisiblesMapa, puntosVisiblesMapa]);
+    // `previewFibra` entra porque el trazo en edición se dibuja con su geometría
+    // pendiente. `puntosVisiblesMapa` salió: desde que la fibra tiene trazo propio,
+    // aquí dentro no se busca ningún poste.
+  }, [conexionesVisiblesMapa, previewFibra]);
 
   // Dentro del modo de líneas, la fibra solo se dibuja "en modo" cuando es ella la
   // que se está trazando; con el acero activo se ve como fuera del modo.
@@ -1052,10 +1016,13 @@ export const MapaReal = ({
           // Poste que el ajuste va a mover: se pinta ámbar para poder calibrar el
           // umbral viendo el efecto antes de aplicarlo.
           const enAjuste = previewAjuste.some(a => String(a.id) === String(p.id));
-          // Verde = no hay nada que ajustar: o es vértice del ramal, o ya está encima
-          // de la línea aunque nunca se registrara como vértice.
+          // Verde = no hay nada que ajustar: ya está sobre la línea (a menos de 0,3 m).
+          // Se mide por CERCANÍA y nada más. Antes también se miraba una lista de postes
+          // registrados como vértices del ramal, pero eso pintaba de verde un poste que
+          // se hubiera movido lejos después de dibujar la fibra: justo el que sí hay que
+          // ajustar. La fibra ya no guarda a qué postes toca.
           const ancladoAFibra = modoAjuste && !enAjuste &&
-            (postesEnFibra.has(String(p.id)) || apoyadosAjuste.some(id => String(id) === String(p.id)));
+            apoyadosAjuste.some(id => String(id) === String(p.id));
           const marcaCorr = modoCorregir ? (correccionSel.indexOf(p.id) + 1) : 0;
           // Al retomar, los ya ordenados llevan su número original y lo tocado
           // después sigue contando a partir de ellos.

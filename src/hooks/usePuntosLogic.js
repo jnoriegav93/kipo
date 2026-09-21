@@ -6,7 +6,6 @@ import { quitarCandidatasPorUrls } from '../utils/fotoHuerfanas';
 import { validarPunto } from '../utils/validarPunto';
 import { conItemAuto } from '../utils/itemsAuto';
 import { nombreTipoAcero } from '../utils/cablesAcero';
-import { soltarFibraDePunto } from '../utils/fibraUtils';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
@@ -23,7 +22,9 @@ export const usePuntosLogic = ({
   diaActual, proyectoActual,
   proyectos,
   asegurarDiaHoy,
-  puntos, setPuntos, conexiones, setConexiones, cablesAcero, setCablesAcero,
+  // Las fibras no entran: borrar un poste ya no las toca, porque su trazo es propio
+  // y no anota a qué postes llega.
+  puntos, setPuntos, cablesAcero, setCablesAcero,
   setVista,
   setConfirmData, setAlertData,
   agregarTarea, theme,
@@ -47,12 +48,8 @@ export const usePuntosLogic = ({
     const puntoABorrar = puntos.find(p => p.id === puntoSeleccionado);
     const identificador = formatId(puntoABorrar?.datos);
     const idSel = String(puntoSeleccionado);
-    // Las fibras tienen trazo propio: borrar el punto no las borra, las suelta de él y
-    // se quedan donde están
-    const buscarPunto = (id) => puntos.find(p => String(p.id) === String(id));
-    const fibrasSueltas = (conexiones || [])
-      .map(c => ({ id: String(c.id), cambios: soltarFibraDePunto(c, idSel, buscarPunto) }))
-      .filter(f => f.cambios);
+    // Las fibras NO se tocan: su trazo es propio y no guarda a qué postes toca, así que
+    // borrar un poste las deja exactamente donde están, sin escribir nada.
     // Un cable de acero sin uno de sus dos postes no se puede medir: se va con el poste.
     // Sin su medio tramo sí se queda; solo pierde dónde se apoyan las fibras.
     const cablesDelPunto = (cablesAcero || []).filter(c => (c.puntos || []).map(String).includes(idSel));
@@ -60,10 +57,9 @@ export const usePuntosLogic = ({
       c.medioTramo != null && String(c.medioTramo) === idSel && !cablesDelPunto.includes(c));
     const cuantos = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
     const notaCables = cablesDelPunto.length > 0 ? ` (y ${cuantos(cablesDelPunto.length, 'cable de acero', 'cables de acero')})` : '';
-    const notaQuedan = [
-      fibrasSueltas.length > 0 ? ` ${cuantos(fibrasSueltas.length, 'fibra se queda', 'fibras se quedan')} en su sitio.` : '',
-      cablesSinMedioTramo.length > 0 ? ` ${cuantos(cablesSinMedioTramo.length, 'cable de acero se queda', 'cables de acero se quedan')} sin medio tramo.` : '',
-    ].join('');
+    const notaQuedan = cablesSinMedioTramo.length > 0
+      ? ` ${cuantos(cablesSinMedioTramo.length, 'cable de acero se queda', 'cables de acero se quedan')} sin medio tramo.`
+      : '';
     setConfirmData({
       title: '¿Eliminar Poste?',
       message: `Irá a la Papelera por 15 días${notaCables}.${notaQuedan} Puedes restaurarlo desde el menú principal.`,
@@ -74,11 +70,9 @@ export const usePuntosLogic = ({
         // el usuario volvía a presionar ELIMINAR y el punto se duplicaba en la papelera.
         setConfirmData(null);
         setPuntoSeleccionado(null);
-        const cambiosFibra = new Map(fibrasSueltas.map(f => [f.id, f.cambios]));
         const idsCables = new Set(cablesDelPunto.map(c => String(c.id)));
         const idsSinMedioTramo = new Set(cablesSinMedioTramo.map(c => String(c.id)));
         setPuntos(prev => prev.filter(p => p.id !== puntoSeleccionado));
-        setConexiones(prev => prev.map(c => (cambiosFibra.has(String(c.id)) ? { ...c, ...cambiosFibra.get(String(c.id)) } : c)));
         setCablesAcero(prev => prev
           .filter(c => !idsCables.has(String(c.id)))
           .map(c => (idsSinMedioTramo.has(String(c.id)) ? { ...c, medioTramo: null } : c)));
@@ -110,10 +104,9 @@ export const usePuntosLogic = ({
         agregarTarea('borrar_punto', { coleccion: 'puntos', idDoc: idSel });
         cablesDelPunto.forEach(c => agregarTarea('borrar_punto', { coleccion: 'cablesAcero', idDoc: String(c.id) }));
 
-        // 3. Lo que se queda se actualiza: las fibras que se sueltan del punto y los cables
-        // de acero que pierden su medio tramo
-        fibrasSueltas.forEach(f => updateDoc(doc(db, 'conexiones', f.id), f.cambios)
-          .catch(e => console.error('Error soltando la fibra del punto borrado:', e)));
+        // 3. Lo que se queda se actualiza: los cables de acero que pierden su medio tramo.
+        // Las fibras no entran acá: no guardan a qué postes tocan, así que no hay nada
+        // que corregirles.
         cablesSinMedioTramo.forEach(c => updateDoc(doc(db, 'cablesAcero', String(c.id)), { medioTramo: null })
           .catch(e => console.error('Error quitando el medio tramo del cable de acero:', e)));
 

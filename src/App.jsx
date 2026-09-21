@@ -720,8 +720,8 @@ function App() {
       fechaToDiaId[fecha] = nuevo.id;
       return nuevo.id;
     };
+    // Solo los PUNTOS llevan día. Las fibras no: un ramal no pertenece a una jornada.
     const diaPunto = {}; puntosSel.forEach(p => { diaPunto[p.id] = asegurarDia(fechaDeDia(p.diaId)); });
-    const diaConex = {}; conexionesSel.forEach(c => { diaConex[c.id] = asegurarDia(fechaDeDia(c.diaId)); });
     const diaCable = {}; cablesSel.forEach(c => { diaCable[c.id] = asegurarDia(fechaDeDia(c.diaId)); });
 
     // Pantalla bloqueada hasta que estén los datos y las fotos (PantallaMigracion)
@@ -753,7 +753,8 @@ function App() {
 
       if (modo === 'cortar') {
         setPuntos(prev => prev.map(p => idsSet.has(p.id) ? { ...p, proyectoId: proyectoDestino.id, diaId: diaPunto[p.id] } : p));
-        setConexiones(prev => prev.map(c => (c.id in diaConex) ? { ...c, proyectoId: proyectoDestino.id, diaId: diaConex[c.id] } : c));
+        const idsConex = new Set(conexionesSel.map(c => String(c.id)));
+        setConexiones(prev => prev.map(c => idsConex.has(String(c.id)) ? { ...c, proyectoId: proyectoDestino.id } : c));
         setCablesAcero(prev => prev.map(c => (c.id in diaCable) ? { ...c, proyectoId: proyectoDestino.id, diaId: diaCable[c.id] } : c));
         // Se escribe directo y se espera cada uno, para mostrar el avance y desbloquear solo
         // al final. Sin señal, Firestore lo guarda en el equipo y lo manda al volver. Al
@@ -765,7 +766,7 @@ function App() {
         };
         await Promise.all([
           ...puntosSel.map(p => reasignar('puntos', p.id, diaPunto[p.id])),
-          ...conexionesSel.map(c => reasignar('conexiones', c.id, diaConex[c.id])),
+          ...conexionesSel.map(c => reasignar('conexiones', c.id, null)),
           ...cablesSel.map(c => reasignar('cablesAcero', c.id, diaCable[c.id])),
         ]);
         puntosAIndependizar = puntosSel.map(p => String(p.id));
@@ -788,14 +789,12 @@ function App() {
         const mapaConex = {};
         for (const c of conexionesSel) {
           const { id: _ocid, ...rest } = c;
+          // La copia lleva el mismo trazo y nada más: sin día y sin lista de postes,
+          // así que tampoco hay ids que remapear a los puntos copiados.
           const data = {
             ...rest,
             proyectoId: proyectoDestino.id,
-            diaId: diaConex[c.id],
             ownerId: user.uid,
-            puntos: (c.puntos || []).map(pid => mapaIds[pid] || pid),
-            from: mapaIds[c.from] || c.from,
-            to: mapaIds[c.to] || c.to,
             timestamp: new Date().toISOString(),
           };
           const ref = await addDoc(collection(db, 'conexiones'), data);
@@ -1039,7 +1038,7 @@ function App() {
     diaActual, proyectoActual,
     proyectos: todosLosProyectos,
     asegurarDiaHoy,
-    puntos: todosLosPuntos, setPuntos, conexiones, setConexiones, cablesAcero, setCablesAcero,
+    puntos: todosLosPuntos, setPuntos, cablesAcero, setCablesAcero,
     setVista,
     setConfirmData, setAlertData,
     agregarTarea, theme,
@@ -1261,6 +1260,41 @@ function App() {
       try { const { purgaAdaptativa } = await import('./utils/photoDB'); await purgaAdaptativa(); } catch {}
     })();
   }, [user?.uid]);
+
+  // ── RESCATE ÚNICO DE FIBRAS SIN TRAZO PROPIO ──────────────────────────────
+  // Las fibras viejas no guardaban su forma: se deducía de dónde estuvieran sus
+  // postes. Ese respaldo ya no existe, así que a las que llegaron sin `vertices` se
+  // los construimos una vez con la posición actual de esos postes y se guardan.
+  //
+  // NO va con el resto del mantenimiento de arriba: ese corre al entrar el usuario,
+  // cuando las fibras y los puntos todavía no se cargaron, y el plan saldría vacío.
+  // Aquí se espera a tenerlos, y se hace una sola vez por proyecto.
+  const fibrasRescatadas = React.useRef(new Set());
+  useEffect(() => {
+    const idProy = proyectoActual?.id;
+    if (!idProy || fibrasRescatadas.current.has(String(idProy))) return;
+    if (!conexiones?.length || !todosLosPuntos?.length) return;
+    const delProyecto = conexiones.filter(c => perteneceAProyecto(c, proyectoActual));
+    if (!delProyecto.length) return;
+    fibrasRescatadas.current.add(String(idProy));
+    (async () => {
+      const { planRescateFibras } = await import('./utils/migrarFibras');
+      const { rescatadas, perdidas } = planRescateFibras(delProyecto, todosLosPuntos);
+      if (!rescatadas.length && !perdidas.length) return;
+      if (rescatadas.length) {
+        setConexiones(prev => {
+          const nuevos = new Map(rescatadas.map(r => [r.id, r.vertices]));
+          return prev.map(c => nuevos.has(String(c.id)) ? { ...c, vertices: nuevos.get(String(c.id)) } : c);
+        });
+        for (const r of rescatadas) {
+          try {
+            await fbUpdateDoc(doc(db, 'conexiones', r.id), { vertices: r.vertices });
+          } catch (e) { console.error('Rescate de fibra sin trazo:', e); }
+        }
+      }
+      console.log(`Fibras: ${rescatadas.length} rescatadas, ${perdidas.length} sin postes vivos.`);
+    })();
+  }, [proyectoActual, conexiones, todosLosPuntos, setConexiones]);
 
   // Suscripción a fotosProyecto con coordenadas (capa de fotos en mapa)
   useEffect(() => {
@@ -1655,10 +1689,9 @@ function App() {
   const YA_APOYADO = 0.3; // metros: por debajo de esto, moverlo no cambia nada
   const analisisAjuste = React.useMemo(() => {
     if (!modoAjuste || !proyectoActual) return { mover: [], apoyados: [] };
-    const buscar = (id) => todosLosPuntos.find(p => String(p.id) === String(id));
     // SOLO la fibra elegida: los postes cercanos a otras no se tocan.
     const fibras = conexionesVisiblesMapa.filter(c => String(c.id) === String(fibraAjuste)).map(c => {
-      const vs = verticesDeConexion(c, buscar);
+      const vs = verticesDeConexion(c);
       return vs.length >= 2
         ? { id: c.id, capacidad: c.capacidad || 12, vertices: vs, largo: longitudFibra(vs) }
         : null;
@@ -1880,22 +1913,19 @@ function App() {
                   .catch(e => console.error('Soltar la fibra del cable de acero:', e));
               }
             }
-            // A la papelera (con las coords de sus puntos AL MOMENTO del borrado)
+            // A la papelera. No hace falta guardar dónde estaban sus postes: el trazo es
+            // suyo, así que al restaurarla vuelve exactamente al mismo sitio del mapa.
             try {
               const { enviarAPapelera } = await import('./utils/papelera');
-              const idsPts = (con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean).map(String);
-              const metaPuntos = idsPts.map(pid => {
-                const p = todosLosPuntos.find(x => String(x.id) === pid);
-                return { id: pid, coords: { lat: p?.coords?.lat ?? null, lng: p?.coords?.lng ?? null } };
-              });
+              const nVertices = (con.vertices || []).length;
               await enviarAPapelera({
                 uid: user.uid, tipo: 'fibra',
                 snapshot: JSON.parse(JSON.stringify(con)),
                 coleccionOriginal: 'conexiones', idOriginal: con.id,
                 proyectoId: con.proyectoId || null,
                 proyectoNombre: proyectos.find(p => p.id === con.proyectoId)?.nombre || '',
-                nombre: `Fibra ${con.capacidad || ''} (${idsPts.length} puntos)`.trim(),
-                meta: { puntos: metaPuntos, cablesApoyo: cablesApoyo.map(c => String(c.id)) },
+                nombre: `Fibra ${con.capacidad || ''} (${nVertices} vértices)`.trim(),
+                meta: { cablesApoyo: cablesApoyo.map(c => String(c.id)) },
               });
             } catch (e) { console.error('Papelera fibra:', e); }
             import("firebase/firestore").then(({ deleteDoc, doc: fbDoc }) => {
@@ -2222,7 +2252,6 @@ function App() {
           capacidadFibra={capacidadFibra}
           nombreSugeridoFibra={nombreSugeridoFibra}
           modoAjuste={modoAjuste}
-          fibraAjusteId={fibraAjuste}
           setModoAjuste={setModoAjuste}
           onAjustarFibra={(con) => setFibraAjuste(con?.id ?? null)}
           onOlvidarAjuste={olvidarAjuste}
@@ -2240,13 +2269,8 @@ function App() {
             const parche = {};
             if (cambios.nombre !== undefined) parche.nombre = String(cambios.nombre || '').trim();
             if (cambios.capacidad !== undefined) parche.capacidad = cambios.capacidad;
-            if (cambios.vertices !== undefined) {
-              parche.vertices = cambios.vertices;
-              // Se mantiene al día la lista de postes por los que pasa (compatibilidad)
-              parche.puntos = cambios.vertices.filter(v => v.puntoId).map(v => String(v.puntoId));
-              parche.from = parche.puntos[0] || null;
-              parche.to = parche.puntos[parche.puntos.length - 1] || null;
-            }
+            // Solo la geometría: la fibra ya no anota por qué postes pasa.
+            if (cambios.vertices !== undefined) parche.vertices = cambios.vertices;
             if (Object.keys(parche).length === 0) return;
             setConexiones(prev => prev.map(c => c.id === con.id ? { ...c, ...parche } : c));
             setConexionSeleccionada(prev => prev && prev.id === con.id ? { ...prev, ...parche } : prev);
@@ -2281,34 +2305,26 @@ function App() {
             if (puntosRecorrido.length < 2) return;
             const capFinal = capacidad || capacidadFibra;
 
-            // La fibra guarda su PROPIA geometría: una lista de vértices con coordenadas.
-            // Un vértice puede estar clavado en un poste (lleva puntoId) o ser libre.
-            // Mover o borrar un poste ya no deforma la fibra.
+            // La fibra guarda su PROPIA geometría y NADA MÁS: una lista de coordenadas.
+            // No anota a qué postes toca, así que mover o borrar un poste la deja igual.
+            // Mientras se dibuja, un vértice sí recuerda sobre qué poste cayó (para
+            // resaltarlo en el mapa), pero eso es estado vivo y no se guarda.
             const vertices = puntosRecorrido
               .filter(v => v && v.lat != null && v.lng != null)
-              .map(v => v.puntoId ? { lat: v.lat, lng: v.lng, puntoId: String(v.puntoId) } : { lat: v.lat, lng: v.lng });
+              .map(v => ({ lat: v.lat, lng: v.lng }));
             if (vertices.length < 2) return;
 
-            // Compatibilidad: el código que todavía lee ids (KMZ del servidor,
-            // exportadores) sigue viendo la lista de postes por los que pasa. Se irá
-            // retirando conforme esos consumidores aprendan a leer 'vertices'.
-            const idsPostes = vertices.filter(v => v.puntoId).map(v => v.puntoId);
-            const puntoInicialFibra = todosLosPuntos.find(x => String(x.id) === String(idsPostes[0]));
-            // Como el cable de acero: el día y el proyecto salen del primer poste, y solo si
-            // no toca ninguno, del día elegido en el mapa. Si no hay de dónde, se avisa.
-            const diaFibra = puntoInicialFibra?.diaId || diaActual;
-            const proyectoFibra = puntoInicialFibra?.proyectoId || proyectoActual?.id;
-            if (!diaFibra || !proyectoFibra) {
-              setAlertData({ title: 'No se pudo guardar', message: 'Toca al menos un poste al trazar la fibra, o elige un día en el mapa.' });
+            // La fibra va al proyecto ACTIVO. No lleva día: un ramal no pertenece a una
+            // jornada, se recorre a lo largo de varias, y tiene su propio encendido en
+            // la barra de fibra. Solo los puntos van asociados a un día.
+            const proyectoFibra = proyectoActual?.id;
+            if (!proyectoFibra) {
+              setAlertData({ title: 'No se pudo guardar', message: 'Elige un proyecto antes de trazar la fibra.' });
               return;
             }
             const datos = {
-              vertices,                    // ← geometría real, manda esta
+              vertices,
               nombre: (nombre || '').trim(),
-              puntos: idsPostes,           // legado
-              from: idsPostes[0] || null,
-              to: idsPostes[idsPostes.length - 1] || null,
-              diaId: diaFibra,
               proyectoId: String(proyectoFibra),
               ownerId: user.uid,
               capacidad: capFinal,

@@ -127,51 +127,16 @@ export const mejorProyeccion = (punto, fibras, umbralMetros) => {
   return ganadora;
 };
 
-// Vértices utilizables de una conexión: los propios si los tiene, y si es una
-// fibra vieja se deducen de sus postes.
-export const verticesDeConexion = (con, buscarPunto) => {
-  if (Array.isArray(con.vertices) && con.vertices.length >= 2) {
-    return con.vertices.filter(v => v && v.lat != null && v.lng != null).map(v => ({ lat: v.lat, lng: v.lng }));
-  }
-  const ids = (con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean);
-  return ids.map(id => buscarPunto(id)).filter(p => p?.coords).map(p => ({ lat: p.coords.lat, lng: p.coords.lng }));
-};
-
-// Borrar un poste no borra las fibras que pasan por él: las suelta. El vértice que
-// estaba clavado en el poste se queda en su sitio como vértice libre y el poste sale
-// de la lista de postes por los que pasa. Una fibra vieja, sin trazo propio, toma
-// primero el trazo de sus postes para no perder la forma. Devuelve los campos a
-// guardar, o null si la fibra no toca ese punto.
-export const soltarFibraDePunto = (con, puntoId, buscarPunto) => {
-  const id = String(puntoId);
-  const idsPostes = (con.puntos?.length >= 2 ? con.puntos : [con.from, con.to]).filter(Boolean).map(String);
-  const propios = Array.isArray(con.vertices) && con.vertices.length >= 2
-    ? con.vertices.filter(v => v && v.lat != null && v.lng != null)
-    : null;
-  const clavada = (propios || []).some(v => String(v.puntoId) === id);
-  if (!clavada && !idsPostes.includes(id)) return null;
-  const trazo = propios || idsPostes.map(pid => {
-    const p = buscarPunto(pid);
-    return p?.coords?.lat != null ? { lat: p.coords.lat, lng: p.coords.lng, puntoId: pid } : null;
-  }).filter(Boolean);
-  const vertices = trazo.map(v => (String(v.puntoId) === id ? { lat: v.lat, lng: v.lng } : v));
-  const puntos = vertices.filter(v => v.puntoId != null).map(v => String(v.puntoId));
-  return { vertices, puntos, from: puntos[0] || null, to: puntos[puntos.length - 1] || null };
-};
-
-// Una fibra que vuelve de la papelera no depende de sus postes: se suelta de los que ya
-// no existen, igual que si se hubieran borrado con ella afuera. A una fibra vieja sin
-// trazo propio le sirven las coordenadas que tenían sus postes al borrarla.
-export const soltarDePostesBorrados = (fibra, puntosActuales = [], puntosAlBorrar = []) => {
-  const actuales = new Map(puntosActuales.map(p => [String(p.id), p]));
-  const alBorrar = new Map(puntosAlBorrar.map(p => [String(p.id), p]));
-  const buscarPunto = (id) => actuales.get(String(id)) || alBorrar.get(String(id));
-  const ids = new Set([...(fibra.puntos || []), fibra.from, fibra.to, ...(fibra.vertices || []).map(v => v?.puntoId)]
-    .filter(id => id != null).map(String));
-  return [...ids].filter(id => !actuales.has(id)).reduce((f, id) => {
-    const cambios = soltarFibraDePunto(f, id, buscarPunto);
-    return cambios ? { ...f, ...cambios } : f;
-  }, fibra);
+// Vértices de una fibra. Su trazo es SUYO: no depende de ningún poste, así que no
+// hay nada que deducir ni respaldo al que caer. Una fibra sin dos vértices válidos
+// no se puede dibujar, y devuelve lista vacía.
+//
+// Antes esto tenía un segundo camino, para las fibras viejas que se dibujaban poste
+// por poste y guardaban solo sus ids. Esas se migraron a trazo propio de una vez
+// (`migrarFibras.js`) en vez de arrastrar el respaldo para siempre.
+export const verticesDeConexion = (con) => {
+  const vs = Array.isArray(con?.vertices) ? con.vertices : [];
+  return vs.filter(v => v && v.lat != null && v.lng != null).map(v => ({ lat: v.lat, lng: v.lng }));
 };
 
 // ── QUÉ FIBRAS TOCAN UN POSTE ───────────────────────────────────────────────

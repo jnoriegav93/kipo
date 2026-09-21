@@ -70,8 +70,8 @@ export default function VistaPapelera({ theme, isDark, onVolver, user, puntos, p
       if (it.tipo === 'punto') {
         await restaurarPunto(it);
       } else if (it.tipo === 'fibra') {
-        // Vuelve sola, aunque sus postes ya no existan: tiene trazo propio
-        await restaurarFibra(it, puntos || []);
+        // Vuelve al mismo sitio del mapa: su trazo es suyo y no depende de ningún poste
+        await restaurarFibra(it);
       } else if (it.tipo === 'acero') {
         const r = await restaurarCableAcero(it, puntos || []);
         if (!r.ok) {

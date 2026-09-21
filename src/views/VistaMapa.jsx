@@ -48,7 +48,6 @@ const VistaMapa = ({
   nombreSugeridoFibra = '',
   onActualizarConexion,
   modoAjuste = false,
-  fibraAjusteId = null,
   setModoAjuste,
   onAjustarFibra,
   onOlvidarAjuste,
@@ -416,7 +415,6 @@ const VistaMapa = ({
             previewAjuste={modoAjuste ? previewAjuste : []}
             apoyadosAjuste={modoAjuste ? apoyadosAjuste : []}
             modoAjuste={modoAjuste}
-            fibraAjusteId={fibraAjusteId}
             prefijoOrden={prefijoOrden}
             modoCorregir={modoCorregir}
             correccionSel={correccionSel}
