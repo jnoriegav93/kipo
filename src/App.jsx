@@ -1241,6 +1241,21 @@ function App() {
       //    hasta que el navegador la conceda.
       try { await navigator.storage?.persist?.(); } catch {}
 
+      // 4.5 Limpieza ÚNICA de las teselas guardadas como respuestas OPACAS. Hasta esta
+      //     versión se pedían sin CORS, y Chrome contabiliza una respuesta opaca
+      //     acolchada: una tesela de 4 KB ocupaba ~8 MB de cuota. Con eso el uso
+      //     parecía pasar el 80% siempre y la purga de abajo borraba el mapa guardado
+      //     en CADA arranque — por eso las imágenes nunca salían de la caché. Ya se
+      //     piden con CORS, pero las viejas siguen acolchando hasta que se suelten.
+      try {
+        if (!localStorage.getItem('kipo_teselas_cors')) {
+          for (const c of ['tiles-google', 'tiles-esri', 'tiles-carto']) {
+            try { await caches.delete(c); } catch { /* sin Cache API: no hay nada que soltar */ }
+          }
+          localStorage.setItem('kipo_teselas_cors', '1');
+        }
+      } catch { /* sin localStorage: se reintentará en el próximo arranque */ }
+
       // 5. Purga adaptativa: si el almacenamiento pasó el 80%, libera mapas y respaldos
       //    ya subidos (viejos primero). Las fotos pendientes nunca se tocan.
       try { const { purgaAdaptativa } = await import('./utils/photoDB'); await purgaAdaptativa(); } catch {}

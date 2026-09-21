@@ -574,10 +574,15 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
               doubleClickZoom={false}
               style={{ height: '100%', width: '100%', background: '#0F1217' }}
             >
-              <TileLayer url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" maxZoom={22} maxNativeZoom={21} />
+              {/* `crossOrigin` obligatorio, igual que en Mapas.jsx: la caché de teselas
+                  es compartida por url, así que una capa que las pida sin CORS guarda
+                  respuestas opacas —que Chrome contabiliza a ~8 MB cada una— y vuelve
+                  a disparar la purga que borra el mapa guardado en cada arranque. */}
+              <TileLayer url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" maxZoom={22} maxNativeZoom={21} crossOrigin="anonymous" />
               <TileLayer
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
                 subdomains="abcd" maxZoom={22} maxNativeZoom={20} opacity={0.85}
+                crossOrigin="anonymous"
               />
               <Encuadrar clave={claveEncuadre} coords={coordsEncuadre} />
 

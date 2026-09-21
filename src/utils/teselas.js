@@ -26,10 +26,15 @@ export const debeReintentar = ({ intento, enLinea = true }) =>
 // celular y a la PC, así que el tope grande se declara para todos (vite.config)
 // y en el celular la app recorta hasta el tope chico.
 //
-// Por qué no dejar que el celular crezca igual: `purgaAdaptativa` (photoDB.js)
-// borra las cachés de mapas ENTERAS cuando el almacenamiento pasa el 80%, para
-// que nunca falte espacio a una foto. Una caché más grande en el celular no
-// dura más: solo hace que esa purga total se dispare más seguido.
+// Cuánto ocupa esto de verdad: MEDIDO, una tesela pesa ~4 KB, así que 6000 son
+// unos 34 MB. Nada. El tope chico del celular es prudencia, no necesidad.
+//
+// Ojo con lo que costó averiguar: eso vale mientras las teselas se pidan CON CORS
+// (`crossOrigin` en las capas de Mapas.jsx). Pedidas sin CORS llegan como
+// respuestas opacas, y Chrome las contabiliza acolchadas a ~8 MB CADA UNA. Con
+// eso el uso reportado superaba el 80% siempre y `purgaAdaptativa` (photoDB.js)
+// borraba las cachés de mapas enteras en cada arranque. Si alguna capa vuelve a
+// pedirlas sin CORS, estos topes dejan de significar lo que dicen.
 export const CACHE_TESELAS = 'tiles-google';
 export const TOPE_PC = 6000;
 export const TOPE_MOVIL = 2000;

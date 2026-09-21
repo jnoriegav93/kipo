@@ -279,6 +279,22 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Las teselas se piden CON CORS: el caché nunca duraba (21/09).** Síntoma: el mapa
+  cargaba lento incluso alejando y acercando en el mismo sitio, como si no hubiera caché.
+  No la había. Se pedían sin CORS, así que llegaban como respuestas **opacas**, y Chrome
+  contabiliza una opaca **acolchada**: medido, una tesela de **4 KB ocupaba 5 322 KB de
+  cuota** (×918). Con solo 2000 teselas el uso reportado daba ~17 GB contra una cuota de
+  ~10 GB, así que `purgaAdaptativa` —que corre en **cada arranque**— veía el 80% superado
+  siempre y **borraba las tres cachés de mapas enteras, todas las veces**.
+  Arreglo: `crossOrigin="anonymous"` en **todas** las capas (Mapas.jsx ×5 y VistaDiseno ×2).
+  Con CORS la misma tesela cuesta 5,8 KB y 6000 caben en 34 MB. Los tres servidores mandan
+  `Access-Control-Allow-Origin: *` (verificado con curl); **si alguno dejara de mandarlo,
+  sus teselas no cargarían**, así que eso es lo primero que hay que mirar si un mapa queda
+  en blanco. La caché es compartida por url: **una sola capa sin `crossOrigin` vuelve a
+  guardar opacas y tira abajo el arreglo entero**.
+  Además, limpieza **única** de las opacas ya guardadas en el arranque de App.jsx
+  (bandera `kipo_teselas_cors`), porque su acolchado seguía contando.
+  Medido con Chrome real, no deducido: scripts en el scratchpad de la sesión.
 - **Teselas: reintento y caché grande solo en PC (21/09).** Una tesela que fallaba se
   quedaba en blanco **para siempre** (`tileerror` la cambiaba por un píxel transparente y
   Leaflet no vuelve a pedirla): eran los cuadros blancos. Ahora se reintenta la misma url

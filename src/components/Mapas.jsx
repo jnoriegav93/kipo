@@ -843,7 +843,7 @@ export const MapaReal = ({
         {mapStyle === 'vector' && (
           /* Sin proveedor: reintenta las teselas que fallen, pero no alimenta el
              contador de diagnóstico, que cuenta las del satélite. */
-          <TileLayer attribution='© OpenStreetMap contributors © CARTO' url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} eventHandlers={makeTileHandlers(null)} />
+          <TileLayer attribution='© OpenStreetMap contributors © CARTO' url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} crossOrigin="anonymous" eventHandlers={makeTileHandlers(null)} />
         )}
         {mapStyle === 'google' && (
           <>
@@ -851,11 +851,19 @@ export const MapaReal = ({
                 aplazar las peticiones al final del zoom dejó el mapa a parches (los
                 cuatro servidores responden bien, así que la culpa fue de pedirlas todas
                 de golpe al soltar, con los fallos quedando en blanco para siempre). */}
+            {/* `crossOrigin` NO es un detalle: sin él la tesela llega como respuesta
+                OPACA y Chrome la contabiliza acolchada — una de 4 KB ocupa ~8 MB de
+                cuota. Con 2000 teselas el uso parecía superar el 80% SIEMPRE, y la
+                purga adaptativa borraba el mapa guardado en cada arranque: por eso
+                nunca se veía una tesela salir de la caché. Los tres servidores
+                mandan `Access-Control-Allow-Origin: *`, así que pedirlas con CORS es
+                seguro; si alguno dejara de mandarlo, sus teselas no cargarían. */}
             <TileLayer
               attribution='© Google Maps'
               url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
               maxZoom={22}
               maxNativeZoom={21}
+              crossOrigin="anonymous"
               eventHandlers={makeTileHandlers('google')}
             />
             {/* Nombres de calles: SOLO si se encienden. Es un segundo juego de teselas y
@@ -870,6 +878,7 @@ export const MapaReal = ({
                 maxNativeZoom={20}
                 detectRetina
                 opacity={1}
+                crossOrigin="anonymous"
                 eventHandlers={makeTileHandlers(null)}
               />
             )}
@@ -1255,8 +1264,11 @@ export const MiniMapaRevision = ({ puntos = [], puntoActivo, obtenerColorDia, mo
       {/* Base: Google Maps satélite + capa de etiquetas de calles */}
       {/* Mismo reparto entre mt0–mt3 y sin pedir teselas durante el zoom que el mapa
           principal: si no, esta pantalla vuelve a hacer cola de a 6 por dominio. */}
-      <TileLayer url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" maxZoom={22} maxNativeZoom={21} />
-      <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} opacity={0.9} />
+      {/* Mismo `crossOrigin` que el mapa grande y por la misma razón: la caché es
+          compartida por url, así que una sola capa que las pida sin CORS volvería a
+          guardar respuestas opacas y a inflar el uso de almacenamiento. */}
+      <TileLayer url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" maxZoom={22} maxNativeZoom={21} crossOrigin="anonymous" />
+      <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} opacity={0.9} crossOrigin="anonymous" />
       <RecenterMini center={center} />
       {conCoords.map(p => {
         const activo = puntoActivo && p.id === puntoActivo.id;
