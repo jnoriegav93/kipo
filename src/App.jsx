@@ -2181,6 +2181,7 @@ function App() {
           capacidadFibra={capacidadFibra}
           nombreSugeridoFibra={nombreSugeridoFibra}
           modoAjuste={modoAjuste}
+          fibraAjusteId={fibraAjuste}
           setModoAjuste={setModoAjuste}
           onAjustarFibra={(con) => setFibraAjuste(con?.id ?? null)}
           onOlvidarAjuste={olvidarAjuste}

@@ -248,6 +248,7 @@ export const MapaReal = ({
   prefijoOrden = [],
   previewAjuste = [],
   modoAjuste = false,
+  fibraAjusteId = null,   // qué ramal se está ajustando: el verde solo mira ese
   apoyadosAjuste = [],
   simbologiaActiva = false,
   coloresArmado = {},
@@ -500,17 +501,18 @@ export const MapaReal = ({
     });
   }, [iconSize]);
 
-  // Postes clavados en algún ramal: se eligieron al dibujar la fibra, así que ya
-  // están apoyados y no hay nada que ajustar en ellos. Durante el ajuste se pintan
-  // verdes para que a simple vista solo queden sin marcar los que están fuera del
-  // umbral y habría que revisar.
+  // Postes clavados en el ramal QUE SE ESTÁ AJUSTANDO: se eligieron al dibujarlo, así
+  // que ya están apoyados y no hay nada que ajustar en ellos. Se pintan verdes para que
+  // solo queden sin marcar los que están fuera del umbral y habría que revisar.
+  // Antes juntaba los vértices de TODAS las fibras visibles, así que con el imán por
+  // ramal se veía medio proyecto en verde aunque no tuviera nada que ver con esa fibra.
   const postesEnFibra = useMemo(() => {
     const s = new Set();
-    conexionesVisiblesMapa.forEach(c => {
-      (Array.isArray(c.vertices) ? c.vertices : []).forEach(v => { if (v?.puntoId) s.add(String(v.puntoId)); });
-    });
+    if (fibraAjusteId == null) return s;
+    const fib = conexionesVisiblesMapa.find(c => String(c.id) === String(fibraAjusteId));
+    (Array.isArray(fib?.vertices) ? fib.vertices : []).forEach(v => { if (v?.puntoId) s.add(String(v.puntoId)); });
     return s;
-  }, [conexionesVisiblesMapa]);
+  }, [conexionesVisiblesMapa, fibraAjusteId]);
 
   // Puntero con forma de poste mientras se dibuja. El '#' del color va escapado
   // porque va dentro de una URL de datos SVG.
