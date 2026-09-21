@@ -927,7 +927,7 @@ const VistaProyectos = ({
                         className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center active:scale-95 transition-all ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
                         title="Archivar proyecto"
                       >
-                        <Archive size={20} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
+                        <Archive size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                       </button>
                     )}
                     <button
@@ -952,10 +952,10 @@ const VistaProyectos = ({
                       {/* Papelera — pegada a la izquierda (debajo de la cámara) */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`PAPELERA_${proy.id}`); }}
-                        className={`shrink-0 p-2 rounded-lg hover:border-red-400 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
+                        className={`shrink-0 rounded-lg hover:border-red-400 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
                         title="Papelera del proyecto"
                       >
-                        <Recycle size={20} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
+                        <Recycle size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                       </button>
 
                       <div className="h-8 w-[1px] bg-slate-400 mx-1 shrink-0"></div>
@@ -965,10 +965,10 @@ const VistaProyectos = ({
                         {/* Equipo (colaboradores + bitácora) — badge: solicitudes + mensajes */}
                         <button
                           onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`EQUIPO_${proy.id}`); }}
-                          className={`relative p-2 rounded-lg hover:border-green-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
+                          className={`relative rounded-lg hover:border-green-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
                           title="Equipo del proyecto"
                         >
-                          <Users size={20} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
+                          <Users size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                           {(notifCount) > 0 && (
                             <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white border border-white">
                               {(notifCount) > 9 ? '9+' : (notifCount)}
@@ -978,18 +978,18 @@ const VistaProyectos = ({
                         {/* Control de ferretería — comparativo del proyecto */}
                         <button
                           onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`COMPARATIVO_${proy.id}`); }}
-                          className={`p-2 rounded-lg hover:border-amber-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
+                          className={`rounded-lg hover:border-amber-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
                           title="Control de ferretería"
                         >
-                          <Package size={20} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
+                          <Package size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                         </button>
                         {/* Revisión — fotos del poste + datos de levantamiento */}
                         <button
                           onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`REVISION_${proy.id}`); }}
-                          className={`p-2 rounded-lg hover:border-emerald-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
+                          className={`rounded-lg hover:border-emerald-500 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
                           title="Revisión de puntos"
                         >
-                          <ClipboardCheck size={20} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
+                          <ClipboardCheck size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                         </button>
                         {/* Exportar — desactivado para invitados */}
                         <div className="relative">
@@ -1001,10 +1001,10 @@ const VistaProyectos = ({
                               setLogoTemporal(logoApp);
                               setModalOpen('EXPORTAR_HUB');
                             }}
-                            className={`p-2 rounded-lg transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo} active:scale-95` : `border-2 ${theme.border} bg-transparent hover:border-blue-600 hover:text-blue-600 active:scale-95`}`}
+                            className={`rounded-lg transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo} active:scale-95` : `border-2 ${theme.border} bg-transparent hover:border-blue-600 hover:text-blue-600 active:scale-95`}`}
                             title="Compartir / Exportar"
                           >
-                            <Share2 size={20} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} className={esActivo ? iconActivo : theme.text} />
+                            <Share2 size={18} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} className={esActivo ? iconActivo : theme.text} />
                           </button>
                           {exportandoTipo && (
                             <div className="absolute -bottom-2.5 left-0 right-0 h-1.5 bg-slate-200 rounded overflow-hidden border border-slate-300 z-10">
@@ -1020,7 +1020,7 @@ const VistaProyectos = ({
                       {esCompartido ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); salirDeProyecto(proy); }}
-                          className={`shrink-0 p-2 rounded-lg transition-all w-10 h-10 flex items-center justify-center active:scale-90 ${esActivo ? 'border-2 border-red-600 bg-transparent' : 'border-2 border-red-600 bg-transparent hover:bg-red-50'}`}
+                          className={`shrink-0 rounded-lg transition-all w-10 h-10 flex items-center justify-center active:scale-90 ${esActivo ? 'border-2 border-red-600 bg-transparent' : 'border-2 border-red-600 bg-transparent hover:bg-red-50'}`}
                           title="Salir del proyecto (no borra nada)"
                         >
                           <LogOut size={20} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} className="text-red-600" />
@@ -1029,7 +1029,7 @@ const VistaProyectos = ({
                         <button
                           onClick={(e) => { e.stopPropagation(); solicitarBorrarProyecto(proy.id); }}
                           disabled={resultadosExportacion.length > 0 && exportandoTipo}
-                          className={`shrink-0 p-2 rounded-lg transition-all w-10 h-10 flex items-center justify-center active:scale-90 ${esActivo ? 'border-2 border-red-600 bg-transparent' : 'border-2 border-red-600 bg-transparent hover:bg-red-50'}`}
+                          className={`shrink-0 rounded-lg transition-all w-10 h-10 flex items-center justify-center active:scale-90 ${esActivo ? 'border-2 border-red-600 bg-transparent' : 'border-2 border-red-600 bg-transparent hover:bg-red-50'}`}
                         >
                           <Trash2 size={20} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} className="text-red-600" />
                         </button>
@@ -1208,7 +1208,7 @@ const VistaProyectos = ({
               <div className={`${theme.header} px-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
                 <div className="flex items-center gap-3">
                   <div className="bg-purple-100 p-2 rounded-lg">
-                    <Users size={20} className="text-purple-600" />
+                    <Users size={18} className="text-purple-600" />
                   </div>
                   <div className="min-w-0">
                     <h3 className={`font-black text-lg ${theme.text} uppercase`}>Equipo</h3>
@@ -2312,7 +2312,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
       <div className={`${theme.card} rounded-2xl w-full h-full ${isDesktop ? 'max-w-6xl' : ''} shadow-2xl border-2 ${theme.border} overflow-hidden flex flex-col`} onClick={e => e.stopPropagation()}>
         <div className={`${theme.header} px-6 pb-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0`} style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
           <div className="flex items-center gap-3 min-w-0">
-            <div className="bg-amber-500 p-2 rounded-lg shrink-0"><Package size={20} className="text-white" /></div>
+            <div className="bg-amber-500 p-2 rounded-lg shrink-0"><Package size={18} className="text-white" /></div>
             <div className="min-w-0">
               <h3 className={`font-black text-lg ${theme.text} uppercase truncate`}>Ferretería</h3>
               {/* LIST: clickeable para vincular (solo en comparativo) */}
@@ -3096,7 +3096,7 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
         {/* Header */}
         <div className={`${theme.header} px-6 pb-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0`} style={{ paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
           <div className="flex items-center gap-3 min-w-0">
-            <div className="bg-emerald-500 p-2 rounded-lg shrink-0"><ClipboardCheck size={20} className="text-white" /></div>
+            <div className="bg-emerald-500 p-2 rounded-lg shrink-0"><ClipboardCheck size={18} className="text-white" /></div>
             <h3 className={`font-black text-lg ${theme.text} uppercase truncate`}>Revisión</h3>
           </div>
           <button onClick={onClose} className={`${theme.bg} ${theme.text} p-2 rounded-lg border-2 ${theme.border} hover:bg-red-50 hover:text-red-600 hover:border-red-600 active:scale-95 shrink-0`}><X size={24} strokeWidth={2.5} /></button>
@@ -4066,7 +4066,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
 
             {resultadosExportacion.filter(r => r.type === activeTab).map((archivo) => (
               <div key={archivo.id} className="relative bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 shadow-sm overflow-hidden">
-                <div className={`p-2 rounded-lg flex-shrink-0 ${
+                <div className={`rounded-lg flex-shrink-0 ${
                   archivo.cargando ? 'bg-slate-100 text-slate-400' :
                   activeTab === 'ZIP' ? 'bg-blue-100 text-blue-600' :
                   activeTab === 'EXCEL' ? 'bg-green-100 text-green-600' :
@@ -4076,7 +4076,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
                     ? <Loader2 size={20} className="animate-spin" />
                     : activeTab === 'ZIP' ? <FolderDown size={20} />
                     : activeTab === 'EXCEL' ? <FileDown size={20} />
-                    : <Share2 size={20} />
+                    : <Share2 size={18} />
                   }
                 </div>
                 <div className="flex-1 min-w-0">
@@ -4095,7 +4095,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
                 <button
                   disabled={archivo.cargando || !archivo.downloadUrl}
                   onClick={() => navigator.share?.({ url: archivo.downloadUrl, title: `${archivo.name} - ${proyecto?.nombre || ''}` })}
-                  className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
+                  className={`rounded-lg border-2 transition-all flex-shrink-0 ${
                     archivo.cargando || !archivo.downloadUrl
                       ? 'border-slate-100 text-slate-300 cursor-not-allowed'
                       : 'border-slate-900 text-slate-900 hover:bg-slate-50 active:scale-95'
@@ -4108,7 +4108,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
                 <button
                   onClick={() => !archivo.cargando && handleDescargar(archivo)}
                   disabled={archivo.cargando || !archivo.downloadUrl || descargandoId === archivo.id}
-                  className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
+                  className={`rounded-lg border-2 transition-all flex-shrink-0 ${
                     archivo.cargando || !archivo.downloadUrl || descargandoId === archivo.id
                       ? 'border-slate-100 text-slate-300 pointer-events-none'
                       : 'border-slate-900 text-slate-900 hover:bg-slate-50 active:scale-95'
@@ -4124,7 +4124,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
                 <button
                   onClick={() => handleCompartirArchivo(archivo)}
                   disabled={!archivo.descargado}
-                  className={`p-2 rounded-lg border-2 transition-all flex-shrink-0 ${
+                  className={`rounded-lg border-2 transition-all flex-shrink-0 ${
                     archivo.descargado
                       ? 'border-green-400 text-green-600 hover:bg-green-50 active:scale-95'
                       : 'border-slate-100 text-slate-300 cursor-not-allowed'

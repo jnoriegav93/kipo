@@ -295,8 +295,10 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Fondo */}
-      <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={() => setMenuAbierto(false)} />
+      {/* Zona para cerrar tocando fuera. Va TRANSPARENTE a propósito: atenuaba y
+          desenfocaba el mapa, y el mapa tiene que verse igual con el menú abierto o
+          cerrado. Sigue recibiendo el toque, que es para lo único que existe. */}
+      <div className="flex-1" onClick={() => setMenuAbierto(false)} />
     </div>
   );
 }

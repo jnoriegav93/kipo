@@ -2094,7 +2094,10 @@ function App() {
         menuDiasAbierto={menuDiasAbierto}
         toggleMenuDias={toggleMenuDias}
         totalNotificaciones={totalNotificaciones + totalSolicitudesColaboracion}
-        flotante={isDesktop && vista === 'mapa'}
+        // Flotante también con una sección abierta: ahí el mapa sigue detrás, y una barra
+        // sólida lo empujaría 64 px hacia abajo, dejando el aviso de GPS y el nombre del
+        // proyecto caídos a media pantalla.
+        flotante={isDesktop && (vista === 'mapa' || esSeccionMenu)}
       />
 
       <QueueModal

@@ -58,13 +58,14 @@ details > summary {
 
    Va FIJO y por encima del mapa, igual que el panel del menú: el mapa se queda detrás
    tal cual estaba, sin volver a dibujarse ni moverse.
-   Arranca a 64 px del borde porque es lo que mide la cabecera (Header.jsx fija ese
-   minHeight en `style`, así que el modo compacto no lo achica y el número vale igual en
-   laptop y en celular). Así el panel no tapa la nube, el GPS ni el calendario. */
+   Ocupa todo el alto porque con una sección abierta la cabecera es FLOTANTE (ver
+   `flotante` en App.jsx): no hay barra sólida que esquivar, y dejar un hueco arriba
+   mostraría una franja de mapa muerta entre la cabecera y el panel. Los botones de la
+   cabecera quedan por encima, que llevan z-[50] pero van en su propia capa. */
 .seccion-menu {
   position: fixed;
   left: 0;
-  top: calc(64px + env(safe-area-inset-top));
+  top: 0;
   bottom: 0;
   width: 100%;
   max-width: 350px;
