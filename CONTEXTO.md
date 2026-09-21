@@ -279,6 +279,27 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Teselas: reintento y caché grande solo en PC (21/09).** Una tesela que fallaba se
+  quedaba en blanco **para siempre** (`tileerror` la cambiaba por un píxel transparente y
+  Leaflet no vuelve a pedirla): eran los cuadros blancos. Ahora se reintenta la misma url
+  hasta 3 veces (400/1200/2500 ms) y solo entonces se rinde. **Sin conexión no reintenta**:
+  si se cayó el internet fallan todas a la vez y insistir multiplicaría la ráfaga por
+  cuatro. Se pasa por el píxel a propósito — reasignar a `src` el valor que ya tenía no
+  dispara ninguna carga — y no se insiste sobre una tesela que Leaflet ya recicló
+  (`isConnected`). La decisión vive pura en `src/utils/teselas.js`; el efecto, en
+  `makeTileHandlers` de `Mapas.jsx`, aplicado a las tres capas, no solo a la satelital.
+  El tope de caché de Google subió a **6000**, pero eso es el tope de **PC**: `vite.config.js`
+  se hornea al compilar y el mismo SW atiende a los dos, así que en celular la app recorta
+  a 2000 cada 300 teselas cargadas. **Por qué no dejar crecer el celular:** `purgaAdaptativa`
+  (`photoDB.js`) borra las cachés de mapas **enteras** al pasar el 80% de almacenamiento
+  para que nunca falte espacio a una foto; una caché más grande allá no dura más, solo hace
+  que esa purga total se dispare más seguido.
+  **No probado con teselas reales fallando**: la política se probó con Node; el enganche al
+  DOM se revisó leyendo.
+- **CALLES vive en el menú lateral (21/09).** Estaba con ITEM / PASIVO / FIBRA, que son
+  rótulos de los puntos; los nombres de calle son una **capa del mapa**, como el satélite o
+  las fotos. Ahora es el botón del letrero junto a esos dos. Solo se dibuja con el mapa en
+  satélite: el vector ya trae sus nombres.
 - **Guardar posiciones escribe solo lo que cambia (21/09).** Antes se reescribían **todos**
   los puntos del proyecto, uno por uno, aunque ya tuvieran esa misma posición: el bucle
   escribía `i + 1` sin comparar contra `datos.ordenTendido`. Al retomar y agregar tres

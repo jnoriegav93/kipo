@@ -2050,6 +2050,8 @@ function App() {
       <Sidebar
         fotoPuntosActivo={fotoPuntosActivo}
         onToggleFotoPuntos={() => setFotoPuntosActivo(v => !v)}
+        callesActivas={mostrarEtiquetas.calles}
+        onToggleCalles={() => setMostrarEtiquetas(prev => ({ ...prev, calles: !prev.calles }))}
         isOpen={menuAbierto}
         setMenuAbierto={setMenuAbierto}
         theme={theme}

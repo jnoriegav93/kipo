@@ -9,6 +9,8 @@ import { useRumbo } from '../hooks/useRumbo';
 import { exigeNorte, anguloEtiquetaFibra, gestoDosDedos } from '../utils/giroMapa';
 import { instalarGiro } from '../utils/giroLeaflet';
 import { agruparPuntos, ocultaEtiquetas, recortarAlEncuadre } from '../utils/agruparPuntos';
+import { debeReintentar, esperaReintento, tocaRevisar, topeTeselas, recortarCacheTeselas } from '../utils/teselas';
+import { esPC } from '../hooks/useIsDesktop';
 
 // --- PARTE 0: CONTROLADOR DE MARCADOR ARRASTRABLE (NATIVO LEAFLET, FUERA DE REACT) ---
 // Radio de imantado, en píxeles de pantalla. En píxeles y no en metros para que se
@@ -121,16 +123,42 @@ export const getTileCount = async (provider) => {
 };
 
 // Avisa que hubo actividad de tiles (el conteo real lo lee VistaMapa de la caché)
+// y, cada tantas, recorta la caché si el equipo es un celular: el tope del SW es
+// el de PC y allá arriba no hay quien lo baje. Ver src/utils/teselas.js.
+let tilesCargadas = 0;
 const notifyTileActivity = (provider) => {
   window.dispatchEvent(new CustomEvent('kipo_tile_loaded', { detail: { provider } }));
+  tilesCargadas++;
+  if (tocaRevisar(tilesCargadas) && !esPC()) recortarCacheTeselas(topeTeselas(false));
 };
 
 // Handlers estables (definidos fuera de componentes para no recrearse en cada render)
 const makeTileHandlers = (provider) => ({
-  tileload: () => notifyTileActivity(provider),
+  tileload: (e) => {
+    // El píxel transparente también dispara `load`: no es una tesela de verdad.
+    if (provider && e?.tile?.src !== TRANSPARENT_PIXEL) notifyTileActivity(provider);
+  },
+  // Una tesela que falla se quedaba en blanco para siempre. Ahora se reintenta la
+  // MISMA url unas pocas veces, espaciando. Se pasa por el píxel transparente a
+  // propósito: reasignar a `src` el valor que ya tenía no dispara ninguna carga.
   tileerror: (e) => {
-    const tile = e.tile;
-    if (tile && tile.src !== TRANSPARENT_PIXEL) tile.src = TRANSPARENT_PIXEL;
+    const tile = e?.tile;
+    if (!tile) return;
+    if (!tile.dataset.kipoUrl) tile.dataset.kipoUrl = tile.src;
+    const url = tile.dataset.kipoUrl;
+    const intento = Number(tile.dataset.kipoIntento) || 0;
+
+    if (!debeReintentar({ intento, enLinea: navigator.onLine !== false })) {
+      if (tile.src !== TRANSPARENT_PIXEL) tile.src = TRANSPARENT_PIXEL;
+      return;
+    }
+    tile.dataset.kipoIntento = String(intento + 1);
+    tile.src = TRANSPARENT_PIXEL;
+    setTimeout(() => {
+      // Leaflet recicla las teselas al moverse: si esta ya salió del mapa, insistir
+      // sería pedir una imagen que nadie va a mirar.
+      if (tile.isConnected) tile.src = url;
+    }, esperaReintento(intento));
   },
 });
 
@@ -813,7 +841,9 @@ export const MapaReal = ({
           precio de poder quedarse a mitad de camino. */}
       <MapContainer center={viewState.center} zoom={viewState.zoom} maxZoom={22} zoomSnap={0.5} zoomDelta={1} style={{ height: "100%", width: "100%" }} zoomControl={false}>
         {mapStyle === 'vector' && (
-          <TileLayer attribution='© OpenStreetMap contributors © CARTO' url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} />
+          /* Sin proveedor: reintenta las teselas que fallen, pero no alimenta el
+             contador de diagnóstico, que cuenta las del satélite. */
+          <TileLayer attribution='© OpenStreetMap contributors © CARTO' url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" subdomains="abcd" maxZoom={22} maxNativeZoom={20} eventHandlers={makeTileHandlers(null)} />
         )}
         {mapStyle === 'google' && (
           <>
@@ -840,6 +870,7 @@ export const MapaReal = ({
                 maxNativeZoom={20}
                 detectRetina
                 opacity={1}
+                eventHandlers={makeTileHandlers(null)}
               />
             )}
           </>

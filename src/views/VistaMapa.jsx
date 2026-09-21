@@ -769,14 +769,8 @@ const VistaMapa = ({
                 >
                   FIBRA
                 </button>
-                {/* Nombres de calle: es una CAPA del mapa, no un rótulo de los puntos.
-                    Apagada pesa menos, porque deja de pedirse un segundo juego de teselas. */}
-                <button
-                  onClick={() => setMostrarEtiquetas(prev => ({ ...prev, calles: !prev.calles }))}
-                  className={`w-full py-1.5 rounded-lg text-[11px] font-black tracking-wide border-2 shadow-md transition-all active:scale-95 ${mostrarEtiquetas.calles ? 'bg-brand-500 text-white border-brand-600' : 'bg-white text-slate-900 border-slate-900'}`}
-                >
-                  CALLES
-                </button>
+                {/* CALLES no está aquí: es una capa del mapa, no un rótulo de los
+                    puntos, y vive con el satélite y las fotos en el menú lateral. */}
               </div>
             )}
 

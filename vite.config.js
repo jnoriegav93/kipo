@@ -47,12 +47,16 @@ export default defineConfig({
             }
           },
           // Tiles Google Maps — caché 30 días
+          // 6000 es el tope de PC, no el de todos: este archivo se hornea al compilar
+          // y el mismo SW atiende celular y PC, así que el tope grande se declara aquí
+          // y en el celular la app recorta a 2000 (src/utils/teselas.js). Poner 2000
+          // aquí dejaría a la PC sin poder pasar de ahí.
           {
             urlPattern: /^https:\/\/mt[0-9]\.google\.com\/vt\/.*/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'tiles-google',
-              expiration: { maxEntries: 2000, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              expiration: { maxEntries: 6000, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [0, 200] }
             }
           },

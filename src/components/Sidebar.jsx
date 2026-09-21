@@ -1,6 +1,6 @@
 // src/components/Sidebar.jsx
 import { useState, useEffect } from 'react';
-import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2, Image, DraftingCompass } from 'lucide-react';
+import { Folder, Settings, LogOut, User, Shield, LogIn, Sun, Moon, Stethoscope, Users, Map, Satellite, ClipboardList, Trash2, Image, DraftingCompass, Signpost } from 'lucide-react';
 
 const ADMIN_UID = 'E8CaZVgP4eZnjnN3OKTVi7bmoJN2';
 
@@ -23,6 +23,8 @@ export default function Sidebar({
   mapStyle,
   fotoPuntosActivo = false,
   onToggleFotoPuntos,
+  callesActivas = false,
+  onToggleCalles,
   setMapStyle,
   adminReturnEmail = null,
   onVolverAAdmin,
@@ -247,6 +249,20 @@ export default function Sidebar({
                       : (isDark ? 'border-slate-500 bg-slate-800' : 'border-slate-900 bg-white')}`}
                   >
                     <Image size={18} strokeWidth={2.5} className={fotoPuntosActivo ? 'text-purple-500' : iconColor} />
+                  </button>
+                )}
+                {/* Nombres de calle: es una CAPA del mapa, como el satélite o las fotos,
+                    no un rótulo de los puntos. Por eso vive aquí y no en el menú de
+                    etiquetas (ITEM / PASIVO / FIBRA), donde estaba antes. */}
+                {onToggleCalles && (
+                  <button
+                    onClick={onToggleCalles}
+                    title="Nombres de calles"
+                    className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all ${callesActivas
+                      ? 'border-brand-500 bg-brand-500/20'
+                      : (isDark ? 'border-slate-500 bg-slate-800' : 'border-slate-900 bg-white')}`}
+                  >
+                    <Signpost size={18} strokeWidth={2.5} className={callesActivas ? 'text-brand-500' : iconColor} />
                   </button>
                 )}
               </div>
