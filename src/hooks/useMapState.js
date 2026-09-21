@@ -26,6 +26,16 @@ export const useMapState = () => {
   };
    const [yaSaltoAlInicio, setYaSaltoAlInicio] = useState(false);
   const [mapViewState, setMapViewState] = useState(null);
+  // DESTINO al que llevar el mapa (por ejemplo, el botón de GPS de un proyecto).
+  // No sirve `mapViewState` para esto: ese es el ESPEJO del encuadre vivo —el mapa lo
+  // reescribe en cada `moveend`—, así que fijarlo con el mapa ya montado no mueve nada.
+  // Antes funcionaba de casualidad, porque cambiar de vista desmontaba el mapa y al
+  // volver a nacer tomaba ese valor como encuadre inicial.
+  // Lleva contador `n` para poder mandar DOS VECES al mismo sitio: sin él, repetir el
+  // mismo destino no cambiaría el valor y el mapa no se movería.
+  const [destinoMapa, setDestinoMapa] = useState(null);
+  const irADestino = (lat, lng, zoom = 17) =>
+    setDestinoMapa(prev => ({ lat, lng, zoom, n: (prev?.n || 0) + 1 }));
   const [gpsTrigger, setGpsTrigger] = useState(0);
   // Giro del mapa en grados (0 = norte arriba). Vive aquí para que el mapa y el
   // encabezado vean lo mismo: el botón de GPS necesita saber cuánto se torció.
@@ -62,6 +72,8 @@ export const useMapState = () => {
   return {
     mapViewState,
     setMapViewState,
+    destinoMapa,
+    irADestino,
     iconSize,
     setIconSize,
     mapStyle,

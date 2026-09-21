@@ -15,7 +15,7 @@ export const useProjectLogic = ({
     tempData,
     setPuntos, setConexiones,
     setModalOpen, setConfirmData, setAlertData,
-    setMapViewState, setVista, setMenuAbierto,
+    irADestino, setVista, setMenuAbierto,
     config
 }) => {
 
@@ -37,7 +37,9 @@ const irUbicacionProyecto = (e, proyId) => {
     const centroLat = sumLat / ptsProy.length;
     const centroLng = sumLng / ptsProy.length;
 
-    setMapViewState({ center: [centroLat, centroLng], zoom: 17 });
+    // Se manda el DESTINO, no el encuadre: el mapa ahora sigue montado detrás de las
+    // secciones, y fijarle el encuadre no lo mueve (ver `destinoMapa` en useMapState).
+    irADestino(centroLat, centroLng, 17);
     setVista('mapa');
     setMenuAbierto(false);
 };
