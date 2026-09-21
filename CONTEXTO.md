@@ -279,6 +279,19 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Un efecto con `ptsOrd` en las dependencias pisaba lo editado (21/09).** Síntoma
+  reportado: en revisión de ferretería, el ✓ ordenaba la lista y **al instante volvía
+  atrás**. Causa: el efecto que recarga el punto dependía de `[idx, ptsOrd]`, y `ptsOrd`
+  es un `useMemo` sobre `puntos`, que llega como **prop viva**. Cada escritura a Firestore
+  trae un array nuevo → identidad nueva → el efecto corría **sin haber cambiado de punto**
+  y hacía `setSubirActivas(false)`, apagando el orden recién encendido.
+  **Lo grave no era el orden:** ese mismo efecto repone `localDatos` y `dirty`, así que una
+  actualización llegada mientras se contaba ferretería **descartaba lo que se estuviera
+  editando**. El usuario nunca lo reportó; salió al buscar la causa del orden.
+  **Estaba igual en `RevisionModal`** (mismo patrón, reponía además `heredado`).
+  Arreglo: los dos efectos dependen del **ID del punto**, no del array.
+  **Regla:** un array derivado de una prop viva nunca va en las dependencias de un efecto
+  que reinicia estado de edición; va su identificador.
 - **Editor del trazo de una fibra (21/09).** Botón del trazo en cada fila de la lista de
   ramales: abre la edición **en el mapa**. Los vértices salen como tiradores azules y se
   arrastran apretando y moviendo, **sin espera previa** — dentro de la edición el tirador

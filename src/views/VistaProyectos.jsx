@@ -2186,10 +2186,21 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     catch (e) { console.error(e); }
   };
 
+  // Al cambiar de PUNTO se recarga lo suyo y se reinicia la pantalla.
+  //
+  // Depende del ID del punto, NO de `ptsOrd`: ese array se rehace en cada snapshot de
+  // Firestore (es un useMemo sobre `puntos`, que llega como prop viva), así que con él
+  // en las dependencias el efecto corría después de CADA escritura sin haber cambiado
+  // de punto. Eso apagaba el orden que el ✓ y ACTUALIZAR acababan de encender —se
+  // ordenaba y al instante volvía atrás— y, peor, reponía `localDatos` y `dirty`, con
+  // lo que una actualización que llegara mientras se contaba ferretería descartaba lo
+  // que se estuviera editando.
+  const idPuntoActual = ptsOrd[idx]?.id;
   React.useEffect(() => {
-    const p = ptsOrd[idx];
+    const p = ptsOrd.find(x => String(x.id) === String(idPuntoActual));
     if (p) { setLocalDatos({ armadoSeleccionadoId: p.datos?.armadoSeleccionadoId || null, ferreteriaFinal: { ...(p.datos?.ferreteriaFinal || {}) } }); setDirty(false); setSubirActivas(false); setFotoIdx(0); }
-  }, [idx, ptsOrd]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idPuntoActual]);
 
   // Volver arriba solo al cambiar de punto (no al aprobar/desaprobar)
   React.useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [idx]);
@@ -2886,6 +2897,7 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
   const puedeEditar = !proyecto?.esCompartido || ['edicion', 'ambos'].includes(proyecto?.permisoActual);
 
   const punto = ptsOrd[idx];
+  const idPuntoRevision = punto?.id;
   const estadoDe = (p) => estadosOverride[p?.id] ?? p?.datos?.revEstado ?? null;
   // Mismo criterio que en ferretería: si hay cambios pendientes, no hay visto bueno.
   const estadoActual = dirty ? null : estadoDe(punto);
@@ -2968,7 +2980,13 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
     setDirty(false);
     setHeredado(seHeredo);
     setFotoIdx(0);
-  }, [idx, ptsOrd]);
+    // Mismo motivo que en el modal de ferretería: depende del ID del punto y no de
+    // `ptsOrd`, que se rehace en cada snapshot de Firestore. Con el array en las
+    // dependencias, este efecto corría después de CADA escritura sin haber cambiado de
+    // punto y reponía `localDatos`, `dirty` y `heredado`, descartando lo que se
+    // estuviera editando.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idPuntoRevision]);
 
   // Volver arriba solo al cambiar de punto (no al aprobar/desaprobar)
   React.useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [idx]);
