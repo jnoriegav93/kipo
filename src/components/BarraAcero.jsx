@@ -274,29 +274,31 @@ export default function BarraAcero({
                 <button
                   onClick={() => setSueltos(sueltos === 'cables' ? null : 'cables')}
                   disabled={incompletos.length === 0}
-                  className={`flex-1 min-w-0 px-2 py-1.5 rounded-xl border-2 text-left transition-all ${incompletos.length === 0
+                  className={`flex-1 min-w-0 px-2 py-1.5 rounded-xl border-2 flex items-center gap-1.5 transition-all ${incompletos.length === 0
                     ? `${btnDisabled} opacity-40`
                     : sueltos === 'cables' ? 'border-red-500 bg-red-500/15' : `${btnChico} active:scale-95`}`}
                 >
-                  <span className={`block text-[13px] font-black leading-none ${incompletos.length ? 'text-red-500' : theme.text}`}>
+                  <span className={`text-[13px] font-black leading-none shrink-0 ${incompletos.length ? 'text-red-500' : theme.text}`}>
                     {incompletos.length}
                   </span>
-                  <span className={`block text-[8px] font-black uppercase tracking-wider mt-0.5 ${theme.text} opacity-70`}>
+                  <span className={`text-[8px] font-black uppercase tracking-wider truncate ${theme.text} opacity-70`}>
                     Cables sin asociar
                   </span>
                 </button>
                 <button
                   onClick={() => setSueltos(sueltos === 'medios' ? null : 'medios')}
                   disabled={mediosTramosSueltos.length === 0}
-                  className={`flex-1 min-w-0 px-2 py-1.5 rounded-xl border-2 text-left transition-all ${mediosTramosSueltos.length === 0
+                  className={`flex-1 min-w-0 px-2 py-1.5 rounded-xl border-2 flex items-center gap-1.5 transition-all ${mediosTramosSueltos.length === 0
                     ? `${btnDisabled} opacity-40`
                     : sueltos === 'medios' ? 'border-red-500 bg-red-500/15' : `${btnChico} active:scale-95`}`}
                 >
-                  <span className={`block text-[13px] font-black leading-none ${mediosTramosSueltos.length ? 'text-red-500' : theme.text}`}>
+                  <span className={`text-[13px] font-black leading-none shrink-0 ${mediosTramosSueltos.length ? 'text-red-500' : theme.text}`}>
                     {mediosTramosSueltos.length}
                   </span>
-                  <span className={`block text-[8px] font-black uppercase tracking-wider mt-0.5 ${theme.text} opacity-70`}>
-                    Medios tramos sin asociar
+                  {/* "MT" y no "Medios tramos": en una sola línea, a dos columnas, el
+                      nombre completo se cortaría justo donde importa. */}
+                  <span className={`text-[8px] font-black uppercase tracking-wider truncate ${theme.text} opacity-70`}>
+                    MT sin asociar
                   </span>
                 </button>
               </div>
