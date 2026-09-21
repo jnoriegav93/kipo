@@ -10,7 +10,7 @@ import { TABS_CONFIG, esFotoMiniatura } from '../components/PhotoManager';
 import { MiniMapaRevision } from '../components/Mapas';
 import useIsDesktop from '../hooks/useIsDesktop';
 import { compartirODescargar, perteneceAProyecto } from '../utils/helpers';
-import { metrosPorItem, esMedioTramo, fibrasApoyadasEn, quitarCableAcero, sugeridasPorAcero } from '../utils/cablesAcero';
+import { metrosPorItem, esMedioTramo, fibrasApoyadasEn, quitarCableAcero, sugeridasPorAcero, resumenAceroEnPoste } from '../utils/cablesAcero';
 import { claseCasilla, faltaTipoPoste } from '../utils/grillaPosiciones';
 import { useCablesAceroProyecto } from '../hooks/useCablesAceroProyecto';
 import BloqueoHerramienta from '../components/BloqueoHerramienta';
@@ -1961,6 +1961,45 @@ const TableroElementos = ({ tablero, theme, isDark }) => (
   </div>
 );
 
+// Qué líneas llegan al poste que se está revisando: las fibras (por cercanía) y los
+// cables de acero (por lo guardado, que es a qué postes van). Se dibuja SOBRE la foto
+// y también sobre el mini-mapa, y por eso vive aquí en vez de repetirse dos veces.
+//
+// Sobre el mapa va superpuesto POR FUERA del contenedor de Leaflet: si fuera un
+// marcador se movería y escalaría con el zoom, y lo que se quiere es un rótulo quieto.
+const RotuloLineas = ({ fibras = [], aceros = [] }) => {
+  if (!fibras.length && !aceros.length) return null;
+  const cuenta = (n, singular) => ` — ${n} ${singular}${n === 1 ? '' : 's'}`;
+  return (
+    <div className="absolute top-2 left-2 z-[500] flex flex-col gap-1 pointer-events-none">
+      {fibras.map(f => (
+        <div key={`fo-${f.capacidad}`} className="flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1 backdrop-blur-sm">
+          <span className="w-2.5 h-2.5 rounded-full border border-white/40 shrink-0" style={{ backgroundColor: getColorFibra(f.capacidad) }} />
+          <span className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">
+            {f.capacidad} FO
+            {f.apoyos > 0 && cuenta(f.apoyos, 'apoyo')}
+            {f.extremos > 0 && cuenta(f.extremos, 'extremo')}
+          </span>
+        </div>
+      ))}
+      {aceros.map(a => (
+        <div key={`ac-${a.ferrId}`} className="flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1 backdrop-blur-sm">
+          {/* Blanco con borde y punto negros: el acero no tiene capacidad, así que no
+              puede llevar color de fibra ni confundirse con una. */}
+          <span className="w-2.5 h-2.5 rounded-full bg-white border border-black shrink-0 flex items-center justify-center">
+            <span className="w-1 h-1 rounded-full bg-black" />
+          </span>
+          <span className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">
+            {a.nombre}
+            {a.apoyos > 0 && cuenta(a.apoyos, 'apoyo')}
+            {a.extremos > 0 && cuenta(a.extremos, 'extremo')}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // ─── MODAL COMPARATIVO (Control de Ferretería desde el proyecto) ──────────────
 const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], config, user, theme, isDark, setConfirmData, setAlertData, onClose }) => {
   const isDesktop = useIsDesktop();
@@ -2653,6 +2692,10 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
             const resumenFibras = punto?.coords?.lat != null
               ? resumenFibrasEnPoste({ lat: punto.coords.lat, lng: punto.coords.lng }, conexiones, 3, apoyosElegidos)
               : [];
+            // El acero NO se mide por cercanía: el cable guarda a qué postes va. Es
+            // extremo en sus dos puntas y apoyo en su medio tramo. No necesita
+            // coordenadas, así que sale aunque el punto no tenga ubicación.
+            const resumenAceros = resumenAceroEnPoste(punto?.id, cablesAceroProyecto);
             const slideIdx = Math.min(fotoIdx, slides.length - 1);
             const slideActual = slides[slideIdx];
             const fotoActual = slideActual?.foto;
@@ -2706,26 +2749,15 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                     </div>
                     {/* Vista: mapa embebido, o foto con zoom — llena el alto disponible en PC */}
                     {slideActual?.tipo === 'mapa' ? (
-                      <div className={`${isDesktop ? 'flex-1 min-h-0' : 'h-96'} rounded-xl overflow-hidden border-2 ${theme.border}`}>
+                      <div className={`relative ${isDesktop ? 'flex-1 min-h-0' : 'h-96'} rounded-xl overflow-hidden border-2 ${theme.border}`}>
                         <MiniMapaRevision puntos={ptsOrd} puntoActivo={punto} />
+                        {/* Fuera del mapa, encima: así el zoom y el arrastre no lo tocan */}
+                        <RotuloLineas fibras={resumenFibras} aceros={resumenAceros} />
                       </div>
                     ) : imgSrc ? (
                       <div className={`relative ${isDesktop ? 'flex-1 min-h-0' : ''}`}>
                         <ZoomImage key={`${punto?.id}-${slideIdx}`} src={imgSrc} fallback={typeof fotoActual === 'object' ? fotoActual.thumb : null} heightClass={isDesktop ? 'h-full' : 'h-96'} />
-                        {resumenFibras.length > 0 && (
-                          <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 pointer-events-none">
-                            {resumenFibras.map(f => (
-                              <div key={f.capacidad} className="flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1 backdrop-blur-sm">
-                                <span className="w-2.5 h-2.5 rounded-full border border-white/40 shrink-0" style={{ backgroundColor: getColorFibra(f.capacidad) }} />
-                                <span className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">
-                                  {f.capacidad} FO
-                                  {f.apoyos > 0 && ` — ${f.apoyos} apoyo${f.apoyos === 1 ? '' : 's'}`}
-                                  {f.extremos > 0 && ` — ${f.extremos} extremo${f.extremos === 1 ? '' : 's'}`}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <RotuloLineas fibras={resumenFibras} aceros={resumenAceros} />
                         {esFotoMiniatura(fotoActual) && (
                           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-red-600/90 text-white text-[11px] font-black uppercase tracking-wide px-3 py-1 rounded-full shadow-lg pointer-events-none">⚠ Solo miniatura — falta la foto real</div>
                         )}

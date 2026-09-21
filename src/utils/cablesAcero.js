@@ -166,6 +166,43 @@ export const mediosTramosSinCable = (puntos = [], cables = []) => {
   return puntos.filter(p => esMedioTramo(p) && !conCable.has(String(p.id)));
 };
 
+// ── LO QUE LLEGA A UN POSTE ──────────────────────────────────────────────────
+// Igual que `resumenFibrasEnPoste`, pero para el acero y SIN cercanía: el cable
+// guarda a qué postes va, así que no hay que adivinarlo midiendo distancias. Es
+// EXTREMO donde el cable termina (cualquiera de sus dos puntas) y APOYO en su
+// medio tramo, donde pasa de largo.
+//
+// Dos cables que terminan en el mismo poste cuentan DOS extremos: es lo que hay
+// en el poste, no un conflicto.
+//
+// Devuelve [{ ferrId, medida, nombre, apoyos, extremos }], ordenado por medida.
+export const resumenAceroEnPoste = (puntoId, cables = []) => {
+  if (puntoId == null) return [];
+  const id = String(puntoId);
+  const mapa = new Map();
+  const sumar = (ferrId, campo) => {
+    if (!mapa.has(ferrId)) {
+      const tipo = TIPOS_CABLE_ACERO.find(t => t.id === ferrId);
+      mapa.set(ferrId, {
+        ferrId,
+        medida: tipo?.medida || '',
+        nombre: tipo ? `ACERO ${tipo.medida}` : 'ACERO',
+        apoyos: 0,
+        extremos: 0,
+      });
+    }
+    mapa.get(ferrId)[campo]++;
+  };
+  cables.forEach(c => {
+    if (!c?.ferrId) return;
+    // Las dos puntas pueden ser el mismo poste solo por error de captura; aun así
+    // se cuenta una vez por cable, que es lo que de verdad llega ahí.
+    if ((c.puntos || []).map(String).includes(id)) sumar(c.ferrId, 'extremos');
+    else if (c.medioTramo != null && String(c.medioTramo) === id) sumar(c.ferrId, 'apoyos');
+  });
+  return [...mapa.values()].sort((a, b) => String(a.medida).localeCompare(String(b.medida)));
+};
+
 // Los dos postes de un cable, o null si alguno no está (borrado u oculto)
 export const postesDeCable = (cable, porId) => {
   const [a, b] = (cable?.puntos || []).map(id => porId.get(String(id)));

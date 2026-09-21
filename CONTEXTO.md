@@ -279,6 +279,20 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **El rótulo de la revisión de ferretería también cuenta el acero (21/09).** Sobre la foto
+  ya salía "48 FO — 2 apoyos — 1 extremo"; ahora suma una línea por cable de acero
+  ("ACERO 3/16 — 1 extremo") y el rótulo completo aparece **también sobre el mini-mapa**,
+  que es el cuarto slide (el tercero si al poste le falta alguna foto).
+  **Diferencia de fondo con la fibra:** la fibra se detecta por **cercanía** (3 m) porque
+  hay que adivinar por dónde pasa; el acero **no se mide**, el cable guarda a qué postes
+  va. Es **extremo** en sus dos puntas y **apoyo** en su medio tramo. Dos cables que
+  terminan en el mismo poste cuentan **dos** extremos: es lo que hay ahí, no un conflicto.
+  Al no necesitar coordenadas, sale aunque el punto no tenga ubicación.
+  Alcance: `cablesAceroProyecto` (por proyecto, sin filtro de días), igual que la fibra.
+  El rótulo se extrajo al componente `RotuloLineas` para no repetirlo, y **sobre el mapa va
+  por FUERA del contenedor de Leaflet**: como marcador se movería y escalaría con el zoom,
+  y lo que se quiere es que quede quieto.
+  Lógica pura en `resumenAceroEnPoste` (`cablesAcero.js`), probada con Node.
 - **Leaflet aplica `className` SOLO al crear el trazo (21/09).** Su `_initPath` hace
   `addClass(path, options.className)` y su `_updateStyle` **nunca** lo toca. Así que
   cambiar `pathOptions.className` en react-leaflet no hace nada: el color sí cambia
