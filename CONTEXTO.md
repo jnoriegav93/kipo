@@ -279,6 +279,30 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Lo que falta asociar en el acero palpita (21/09).** Un cable palpita en rojo si no tiene
+  fibras **o** no tiene medio tramo (antes solo por fibras), y un **medio tramo** palpita si
+  no está en ningún cable. Los dos motivos del cable avisan **igual** a propósito: el mapa
+  solo dice "a este le falta algo" y cuál falta lo dice la lista.
+  **Regla acordada, no obvia:** un medio tramo enganchado a un cable que a su vez no tiene
+  fibras **cuenta como asociado** — el que falla ahí es el cable, y es el cable el que
+  palpita. Está cubierto por prueba en `scratchpad/prueba-asociados.mjs`.
+  Se cuenta sobre lo **visible** (mismo filtro por días que los cables) para que el número
+  de la barra cuadre con lo que palpita. En la barra, dos botones en una fila bajo la
+  cabecera de la lista; cada uno despliega los suyos y centra el mapa.
+  Lógica pura en `cablesAcero.js` (`cableIncompleto`, `mediosTramosSinCable`); `Mapas.jsx`
+  calcula solo el conjunto con cable desde `lineasAcero`, sin prop nueva.
+  **El marcador necesita animación propia:** es HTML, no un `<path>`, así que la de los
+  cables (que anima `stroke-opacity`) ahí no haría nada.
+- **El bloque `<style>` de Mapas.jsx no admite acentos graves (21/09).** Es una plantilla
+  literal: un acento grave dentro de un COMENTARIO la cierra a la mitad y el build muere
+  con un `Expected "}"` que apunta a la línea del keyframe y no al comentario culpable.
+  Ya costó un build.
+- **Teselas: sin desvanecido y con más margen (21/09).** Se veía "cargar" el mapa al alejar
+  y acercar en el mismo sitio aun con todo cacheado. **No era la descarga:** medido, una
+  tesela guardada tarda **0,1 ms** (una nueva, 60-176 ms). Era Leaflet, que poda las teselas
+  al cambiar de zoom y muestra cada una subiendo de transparente a opaca durante 200 ms
+  (su `fade = (now - tile.loaded) / 200`). Se apagó `fadeAnimation` y se subió `keepBuffer`
+  de 2 a 4. El fondo oscuro se ofreció y el usuario lo descartó.
 - **Las teselas se piden CON CORS: el caché nunca duraba (21/09).** Síntoma: el mapa
   cargaba lento incluso alejando y acercando en el mismo sitio, como si no hubiera caché.
   No la había. Se pedían sin CORS, así que llegaban como respuestas **opacas**, y Chrome

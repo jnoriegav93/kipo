@@ -140,6 +140,32 @@ export const fibrasApoyadasEn = (puntoId, cables = []) => {
   return ids;
 };
 
+// ── LO QUE FALTA ASOCIAR ─────────────────────────────────────────────────────
+// Un cable está incompleto si no tiene ninguna fibra apoyada O no tiene medio
+// tramo. Los dos casos avisan IGUAL (rojo palpitante): el mapa solo tiene que
+// decir "a este le falta algo"; cuál de las dos cosas ya lo dice la lista.
+export const cableIncompleto = (cable) =>
+  !(cable?.fibras || []).length || cable?.medioTramo == null;
+
+export const cablesIncompletos = (cables = []) => cables.filter(cableIncompleto);
+
+// Medios tramos que no están asociados a NINGÚN cable de acero. Un medio tramo
+// enganchado a un cable que a su vez no tiene fibras SÍ cuenta como asociado: el
+// que falla ahí es el cable, y es el cable el que palpita. Ids como texto.
+export const idsMediosTramosConCable = (cables = []) => {
+  const ids = new Set();
+  cables.forEach(c => { if (c?.medioTramo != null) ids.add(String(c.medioTramo)); });
+  return ids;
+};
+
+// `puntos` son los VISIBLES del mapa: así el contador y lo que palpita hablan de
+// lo mismo. Si se contaran todos, el número no cuadraría con lo que se ve al
+// filtrar por día.
+export const mediosTramosSinCable = (puntos = [], cables = []) => {
+  const conCable = idsMediosTramosConCable(cables);
+  return puntos.filter(p => esMedioTramo(p) && !conCable.has(String(p.id)));
+};
+
 // Los dos postes de un cable, o null si alguno no está (borrado u oculto)
 export const postesDeCable = (cable, porId) => {
   const [a, b] = (cable?.puntos || []).map(id => porId.get(String(id)));

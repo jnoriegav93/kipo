@@ -485,6 +485,8 @@ const VistaMapa = ({
                 onEditar={acero.onEditar}
                 onEliminar={acero.onEliminar}
                 onCentrar={(c) => irACoord((c.a.coords.lat + c.b.coords.lat) / 2, (c.a.coords.lng + c.b.coords.lng) / 2)}
+                mediosTramosSueltos={acero.mediosTramosSueltos || []}
+                onCentrarPunto={(p) => { if (p?.coords?.lat != null) irACoord(p.coords.lat, p.coords.lng); }}
                 visibles={acero.visibles}
                 setVisibles={acero.setVisibles}
                 total={acero.total}

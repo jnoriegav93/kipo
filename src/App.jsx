@@ -38,7 +38,7 @@ import { ConfirmModal, AlertModal, ExportModal } from './components/UI';
 import VerDetalle from './components/VerDetalle';
 import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bitacoraAuto';
 import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } from './utils/fibraUtils';
-import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, puedeGuardarAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero } from './utils/cablesAcero';
+import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, puedeGuardarAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero, mediosTramosSinCable } from './utils/cablesAcero';
 import { perteneceAProyecto } from './utils/helpers';
 import { posicionesAGuardar } from './utils/ordenTendido';
 import { contarPorClase, prefijosDeProyecto } from './utils/itemsAuto';
@@ -1826,6 +1826,17 @@ function App() {
     [lineasAcero, proyectoActual]
   );
 
+  // Medios tramos VISIBLES del proyecto activo que no están en ningún cable de acero.
+  // Se miden sobre lo visible (mismo filtro por días que los cables) para que el número
+  // de la barra cuadre con lo que palpita en el mapa.
+  const mediosTramosSueltosProyecto = React.useMemo(
+    () => mediosTramosSinCable(
+      puntosVisiblesMapa.filter(p => perteneceAProyecto(p, proyectoActual)),
+      lineasAcero
+    ),
+    [puntosVisiblesMapa, lineasAcero, proyectoActual]
+  );
+
   // Ferretería que sugieren los cables de acero del punto abierto en el formulario. Se
   // leen los del proyecto del punto, los haya trazado quien sea.
   const idPuntoAbierto = puntoSeleccionado || tempPuntoId;
@@ -2342,6 +2353,10 @@ function App() {
             onEliminar: pedirBorrarCableAcero,
             visibles: acerosVisibles,
             setVisibles: setAcerosVisibles,
+            // Medios tramos del proyecto activo que no están en ningún cable. Del
+            // proyecto, como `lineasAceroProyecto`: la barra lista lo del proyecto
+            // aunque el mapa dibuje lo de todos los proyectos visibles.
+            mediosTramosSueltos: mediosTramosSueltosProyecto,
             total: lineasAceroProyecto.length,
             onCerrar: () => { setTrazoAcero(TRAZO_ACERO_VACIO); setCableAceroSeleccionado(null); setModoLinea('fibra'); },
           }}

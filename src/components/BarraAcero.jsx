@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Save, Trash2, Eye, EyeOff, X, List, Undo2, Crosshair, Pencil } from 'lucide-react';
-import { TIPOS_CABLE_ACERO, faltaEnTrazoAcero, puedeGuardarAcero, faltanOpcionalesAcero, deshacerTrazoAcero, hayTrazoAcero } from '../utils/cablesAcero';
+import { TIPOS_CABLE_ACERO, faltaEnTrazoAcero, puedeGuardarAcero, faltanOpcionalesAcero, deshacerTrazoAcero, hayTrazoAcero, cablesIncompletos } from '../utils/cablesAcero';
 import { getColorFibra } from '../utils/fibraUtils';
 
 // Barra del CABLE DE ACERO. Se abre desde la barra de fibra (selector FIBRA | ACERO),
@@ -36,12 +36,16 @@ export default function BarraAcero({
   onEditar,
   onEliminar,
   onCentrar,
+  mediosTramosSueltos = [],  // puntos medio tramo que no están en ningún cable
+  onCentrarPunto,
   visibles,
   setVisibles,
   total = 0,
   onCerrar,
 }) {
   const [panel, setPanel] = useState(null); // null | 'guardar' | 'lista'
+  // Cuál de los dos avisos está desplegado: null | 'cables' | 'medios'
+  const [sueltos, setSueltos] = useState(null);
   const [tipoElegido, setTipoElegido] = useState(null);
   const refBarra = useRef(null);
 
@@ -89,6 +93,8 @@ export default function BarraAcero({
   // Los más nuevos arriba
   const ordenados = [...cables].sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
   const metrosTotal = cables.reduce((t, c) => t + (c.metros || 0), 0);
+  // Los que faltan asociar, los mismos que palpitan en rojo en el mapa
+  const incompletos = cablesIncompletos(cables);
 
   return (
     <div className="relative shrink-0 flex flex-col items-center justify-center w-full pointer-events-none" ref={refBarra}>
@@ -257,6 +263,83 @@ export default function BarraAcero({
               {metrosTotal > 0 ? `${metrosTotal.toLocaleString('es-PE')} m` : ''}
             </span>
           </div>
+
+          {/* Lo que falta asociar, en UNA fila: a la izquierda los cables sin fibra o sin
+              medio tramo, a la derecha los medios tramos que no están en ningún cable.
+              Son los mismos que palpitan en rojo en el mapa. Cada botón despliega su
+              lista, y cada fila de la lista centra el mapa en ese elemento. */}
+          {(incompletos.length > 0 || mediosTramosSueltos.length > 0) && (
+            <div className="px-1 pb-1.5">
+              <div className="flex items-stretch gap-1.5">
+                <button
+                  onClick={() => setSueltos(sueltos === 'cables' ? null : 'cables')}
+                  disabled={incompletos.length === 0}
+                  className={`flex-1 min-w-0 px-2 py-1.5 rounded-xl border-2 text-left transition-all ${incompletos.length === 0
+                    ? `${btnDisabled} opacity-40`
+                    : sueltos === 'cables' ? 'border-red-500 bg-red-500/15' : `${btnChico} active:scale-95`}`}
+                >
+                  <span className={`block text-[13px] font-black leading-none ${incompletos.length ? 'text-red-500' : theme.text}`}>
+                    {incompletos.length}
+                  </span>
+                  <span className={`block text-[8px] font-black uppercase tracking-wider mt-0.5 ${theme.text} opacity-70`}>
+                    Cables sin asociar
+                  </span>
+                </button>
+                <button
+                  onClick={() => setSueltos(sueltos === 'medios' ? null : 'medios')}
+                  disabled={mediosTramosSueltos.length === 0}
+                  className={`flex-1 min-w-0 px-2 py-1.5 rounded-xl border-2 text-left transition-all ${mediosTramosSueltos.length === 0
+                    ? `${btnDisabled} opacity-40`
+                    : sueltos === 'medios' ? 'border-red-500 bg-red-500/15' : `${btnChico} active:scale-95`}`}
+                >
+                  <span className={`block text-[13px] font-black leading-none ${mediosTramosSueltos.length ? 'text-red-500' : theme.text}`}>
+                    {mediosTramosSueltos.length}
+                  </span>
+                  <span className={`block text-[8px] font-black uppercase tracking-wider mt-0.5 ${theme.text} opacity-70`}>
+                    Medios tramos sin asociar
+                  </span>
+                </button>
+              </div>
+
+              {sueltos === 'cables' && (
+                <div className="mt-1.5 space-y-1">
+                  {incompletos.map(c => (
+                    <button
+                      key={`inc-${c.id}`}
+                      onClick={() => onCentrar?.(c)}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border-2 text-left ${btnChico} active:scale-95`}
+                    >
+                      <Crosshair size={13} strokeWidth={2.5} className="shrink-0 opacity-60" />
+                      <span className={`flex-1 text-[10px] font-black truncate ${theme.text}`}>{c.etiqueta}</span>
+                      <span className="text-[8px] font-black uppercase px-1 py-0.5 rounded bg-amber-400 text-black shrink-0">
+                        {c.medioTramo == null ? 'SIN MEDIO TRAMO' : 'SIN FIBRAS'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {sueltos === 'medios' && (
+                <div className="mt-1.5 space-y-1">
+                  {mediosTramosSueltos.map(p => (
+                    <button
+                      key={`mt-${p.id}`}
+                      onClick={() => onCentrarPunto?.(p)}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border-2 text-left ${btnChico} active:scale-95`}
+                    >
+                      <Crosshair size={13} strokeWidth={2.5} className="shrink-0 opacity-60" />
+                      <span className={`flex-1 text-[10px] font-black truncate ${theme.text}`}>
+                        {p.datos?.numero || 'SIN ÍTEM'}
+                      </span>
+                      <span className="text-[8px] font-black uppercase px-1 py-0.5 rounded bg-amber-400 text-black shrink-0">
+                        SIN CABLE
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {ordenados.length === 0 ? (
             <p className={`text-[11px] font-bold text-center py-4 ${theme.text} opacity-50`}>Todavía no hay cables de acero.</p>

@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Compass } from 'lucide-react';
 import { getColorFibra, distanciaMetros } from '../utils/fibraUtils';
-import { TRAZO_ACERO_VACIO, hayTrazoAcero } from '../utils/cablesAcero';
+import { TRAZO_ACERO_VACIO, hayTrazoAcero, cableIncompleto, idsMediosTramosConCable } from '../utils/cablesAcero';
 import { useRumbo } from '../hooks/useRumbo';
 import { exigeNorte, anguloEtiquetaFibra, gestoDosDedos } from '../utils/giroMapa';
 import { instalarGiro } from '../utils/giroLeaflet';
@@ -710,15 +710,20 @@ export const MapaReal = ({
   // Lo que manda es el TRAZO, no `dibujandoFibra`: en acero ese queda encendido todo el
   // rato (es lo que deja tocar los postes), así que mirarlo apagaba la selección siempre.
   const puedeElegirAcero = modoAcero && !hayTrazoAcero(trazoAcero);
+  // Medios tramos que YA están en algún cable. Se saca de lo visible en el mapa, que
+  // es lo mismo con lo que se dibujan los cables: así lo que palpita y lo que cuenta
+  // la barra hablan de los mismos elementos.
+  const mediosTramosConCable = useMemo(() => idsMediosTramosConCable(lineasAcero), [lineasAcero]);
   const capaAcero = (
     <>
       {lineasAcero.map(c => {
         const sel = cableAceroSeleccionado && String(cableAceroSeleccionado.id) === String(c.id);
         const pos = [[c.a.coords.lat, c.a.coords.lng], [c.b.coords.lat, c.b.coords.lng]];
-        // Sin ninguna fibra apoyada: rojo y palpitando, pero SOLO mientras se trabaja con
-        // el acero. Fuera de ese modo el mapa se ve como siempre. Si además está elegido,
-        // conserva su grosor, así el aviso no tapa cuál tenés seleccionado.
-        const avisaSinFibra = modoAcero && !(c.fibras || []).length;
+        // Sin fibras apoyadas O sin medio tramo: rojo y palpitando, pero SOLO mientras se
+        // trabaja con el acero. Fuera de ese modo el mapa se ve como siempre. Si además
+        // está elegido, conserva su grosor, así el aviso no tapa cuál tenés seleccionado.
+        // Los dos motivos avisan igual a propósito: cuál falta lo dice la lista.
+        const avisaSinFibra = modoAcero && cableIncompleto(c);
         return (
           <React.Fragment key={`ac-${c.id}`}>
             <Polyline
@@ -784,6 +789,22 @@ export const MapaReal = ({
         @keyframes latido-acero { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.25; } }
         .acero-sin-fibra { animation: latido-acero 1.2s ease-in-out infinite; }
 
+        /* Medio tramo que no está en NINGÚN cable de acero: palpita en rojo, también
+           solo dentro del modo acero. Necesita su propia animación porque un marcador
+           es HTML, no un <path>: animarle stroke-opacity ahí no haría nada. Se anima un
+           aro rojo por fuera para no pisar el amarillo que lo identifica, y se aplica al
+           div interno porque Leaflet usa el transform del contenedor para posicionarlo.
+           OJO: este bloque entero es una plantilla literal, así que aquí dentro no puede
+           ir ningún acento grave: cierra la plantilla y rompe la compilación. */
+        @keyframes latido-medio-tramo {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.9); }
+          50%      { box-shadow: 0 0 0 9px rgba(239, 68, 68, 0); }
+        }
+        .medio-tramo-suelto > div {
+          animation: latido-medio-tramo 1.2s ease-in-out infinite;
+          border-color: #ef4444 !important;
+        }
+
         /* Dibujando fibra: el puntero es un círculo del color de la capacidad, del
            tamaño de un poste, para ver dónde va a caer el vértice libre.
            Sobre un poste vuelve a ser la flecha y el poste se resalta, porque ahí el
@@ -839,7 +860,11 @@ export const MapaReal = ({
           al soltar el pellizco. zoomDelta 1 deja el doble toque saltando un nivel
           entero, que es predecible. Entre niveles la imagen se estira un poco: es el
           precio de poder quedarse a mitad de camino. */}
-      <MapContainer center={viewState.center} zoom={viewState.zoom} maxZoom={22} zoomSnap={0.5} zoomDelta={1} style={{ height: "100%", width: "100%" }} zoomControl={false}>
+      {/* `fadeAnimation` apagado a propósito: Leaflet muestra CADA tesela subiendo de
+          transparente a opaca durante 200 ms (su `fade = (now - tile.loaded) / 200`).
+          Como una tesela ya guardada se resuelve en 0,1 ms —medido—, ese desvanecido
+          era todo lo que se veía "cargar" al alejar y volver a acercar. */}
+      <MapContainer center={viewState.center} zoom={viewState.zoom} maxZoom={22} zoomSnap={0.5} zoomDelta={1} fadeAnimation={false} style={{ height: "100%", width: "100%" }} zoomControl={false}>
         {mapStyle === 'vector' && (
           /* Sin proveedor: reintenta las teselas que fallen, pero no alimenta el
              contador de diagnóstico, que cuenta las del satélite. */
@@ -864,6 +889,7 @@ export const MapaReal = ({
               maxZoom={22}
               maxNativeZoom={21}
               crossOrigin="anonymous"
+              keepBuffer={4}
               eventHandlers={makeTileHandlers('google')}
             />
             {/* Nombres de calles: SOLO si se encienden. Es un segundo juego de teselas y
@@ -1080,8 +1106,11 @@ export const MapaReal = ({
               : '#facc15';
             const bordeMT = isEnOrden ? '3px solid #15803d' : isEnSeleccion ? '3px solid #7c3aed'
               : (isInRecorrido || isSelected) ? '3px solid #ea580c' : '2px solid #000';
+            // Sin ningún cable de acero apoyado en él: palpita, igual que el cable al
+            // que le falta algo, y solo mientras se trabaja con el acero.
+            const sueltoMT = modoAcero && !mediosTramosConCable.has(String(p.id));
             customIcon = L.divIcon({
-              className: isBorrador ? 'custom-icon punto-borrador' : 'custom-icon',
+              className: `custom-icon${isBorrador ? ' punto-borrador' : ''}${sueltoMT ? ' medio-tramo-suelto' : ''}`,
               html: `<div style="width:${baseSize}px; height:${baseSize}px; box-sizing:border-box; background:${rellenoMT}; border:${bordeMT}; border-radius:50%; display:flex; align-items:center; justify-content:center;">
                           ${labelHtml}
                           ${isEnOrden
