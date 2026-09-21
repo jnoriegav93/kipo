@@ -293,6 +293,17 @@ en el cable y en qué medio tramo.
 - **El deshacer del ajuste se olvida al cerrar la barra (20/09).** Antes solo se limpiaba
   al usarlo, así que salir de fibra y volver a entrar seguía ofreciendo deshacer un
   movimiento de la sesión anterior (**SELLO: 20/09/26, 01:02** y siguiente).
+- **Los colores del ajuste, y el verde que sobraba (20/09).** Mientras se ajusta:
+  **naranja** = poste que el imán **va a mover** (dentro del umbral y fuera de la línea);
+  **verde** = no hay nada que ajustar, o porque es vértice del ramal o porque ya está
+  encima de la línea (a menos de 30 cm, `YA_APOYADO`). Ojo: el verde también se usa en el
+  modo **ordenar**, para los puntos con número de posición.
+  Al pasar el imán a trabajar por ramal se acotó el cálculo pero **no el coloreado**:
+  `postesEnFibra` seguía juntando los vértices de **todas** las fibras visibles y, como en
+  un tendido casi todo poste es vértice de algún ramal, se veía medio proyecto en verde.
+  Ahora ese conjunto se arma solo con los vértices de la fibra en ajuste, y para eso el
+  mapa recibe `fibraAjusteId` además del `modoAjuste` de siempre. El naranja ya estaba
+  bien: sale del cálculo del imán.
 - **El imán es por ramal, no general (20/09).** Antes el imán de la barra de fibra
   ajustaba los postes de **todas** las fibras visibles de una sola vez. Ahora cada ramal
   tiene el suyo en su fila de la lista y solo mueve los postes cercanos a **esa** fibra;
