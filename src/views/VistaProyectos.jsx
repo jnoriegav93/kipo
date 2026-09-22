@@ -1135,11 +1135,22 @@ const VistaProyectos = ({
         </button>
       </Modal>
 
-      {/* PANTALLA COMPLETA DE EXPORTACIÓN */}
+      {/* EXPORTACIÓN — modal centrado y angosto (420 px). Antes ocupaba la pantalla
+          entera: con el mapa detrás y las secciones convertidas en panel, una pantalla
+          completa para configurar un sello quedaba desproporcionada. 420 y no 350
+          porque la fila Vidrio/Blanco/Negro y la vista previa del sello necesitan ese
+          aire para poder juzgar cómo va a salir la foto. */}
       {modalOpen === 'EXPORTAR_HUB' && activeProjectData && (
-        <div className={`fixed inset-0 z-[300] flex flex-col ${theme.bg}`}>
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => { setModalOpen(null); setExportandoTipo(null); }}
+        >
+        <div
+          className={`w-full max-w-[420px] max-h-[92vh] rounded-2xl shadow-2xl border-2 ${theme.border} overflow-hidden flex flex-col ${theme.bg}`}
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
-          <div className={`${theme.header} px-4 flex items-center justify-between border-b-2 ${theme.border} shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
+          <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
             <h3 className={`font-black ${theme.text} text-xl uppercase`}>Exportación</h3>
             <button onClick={() => { setModalOpen(null); setExportandoTipo(null); }}>
               <X size={28} className={theme.text} />
@@ -1167,6 +1178,7 @@ const VistaProyectos = ({
               perfilActivo={perfilActivo}
             />
           </div>
+        </div>
         </div>
       )}
 
