@@ -1766,8 +1766,19 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       // Un renglón por ramal. Abscisas y longitud real quedan vacías para llenarlas
       // a mano; longitud calculada apunta a la celda B4 de la hoja del ramal, así que
       // se actualiza sola cuando allá se anote el dato.
+      //
+      // SOLO los ramales que TIENEN HOJA. Antes se listaban todas las fibras del
+      // proyecto, y las que no juntaron ningún poste salían en esta tabla sin hoja
+      // detrás: la lista no cuadraba con las pestañas de abajo. Un ramal se queda sin
+      // postes cuando otro se los llevó (el reparto es por cercanía, y gana la de
+      // mayor capacidad) o cuando está dibujado lejos de todos.
+      //
+      // OJO con lo que esto esconde: un ramal mal dibujado ya no aparece en el
+      // resumen, así que deja de delatarse solo. Si falta uno en la tabla, el motivo
+      // es que no tiene postes asignados.
+      const fibrasConHoja = fibrasProy.filter(f => hojaDeRamal[f.id]);
       const filaIniFibras = fr;
-      fibrasProy.forEach((f, n) => {
+      fibrasConHoja.forEach((f, n) => {
         const fondo = n % 2 === 1 ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } } : null;
         const hoja = hojaDeRamal[f.id];
         for (let k = 0; k < 7; k++) {
@@ -1786,7 +1797,7 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
 
       // Fila de totales. Va con fórmulas para que las columnas que se llenan a
       // mano (longitud real) sumen solas conforme se vayan completando.
-      if (fibrasProy.length) {
+      if (fibrasConHoja.length) {
         wsRes.mergeCells(fr, 2, fr, 3);
         for (let k = 0; k < 7; k++) {
           const c = wsRes.getCell(fr, k + 2);

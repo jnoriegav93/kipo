@@ -279,6 +279,22 @@ en el cable y en qué medio tramo.
   Los totales que sí valen —POSTES y METROS POR CAPACIDAD— se quedan como estaban.
   Se **descartó** calcular LONGITUD CALCULADA con las reservas × 30: el armado que las
   representa cambia en cada proyecto, así que sigue anotándose a mano.
+- **Por qué una hoja del Excel sale "r55" y otra "R67" (21/09).** Pregunta recurrente. La
+  app **muestra** los nombres de ramal en mayúscula por CSS (clase `uppercase` en el campo
+  y en la fila de la lista de `BarraFibra`), pero **guarda lo que se tecleó**. El servidor
+  solo quita caracteres prohibidos por Excel (`nombreHojaSeguro`), no cambia mayúsculas.
+  Así que la minúscula viene del dato, no del reporte. **Si alguna vez se quiere forzar**,
+  hay que decidir si se normaliza al guardar (cambia el dato) o solo al nombrar la hoja.
+- **Qué ramales tienen hoja, y la tabla del RESUMEN (21/09).** Una hoja por ramal **que
+  tenga postes asignados** (`if (grupo.puntos.length === 0) continue;`). El reparto de
+  postes es **por cercanía**: cada poste va a UNA fibra, la de mayor capacidad y, a
+  igualdad, la más larga. Un ramal puede quedarse sin postes porque otro se los llevó o
+  porque está dibujado lejos.
+  La tabla del resumen listaba **todas** las fibras, así que no cuadraba con las pestañas.
+  Ahora lista solo las que tienen hoja (`fibrasConHoja`, filtrando por `hojaDeRamal`).
+  **Efecto secundario aceptado:** un ramal mal dibujado ya no aparece en el resumen y deja
+  de delatarse solo. Si falta uno en la tabla, el motivo es que no tiene postes.
+  La fila SIN RAMAL tiene hoja pero no es una fibra: nunca estuvo en esta tabla.
 - **La letra de los sellos y croquis: faltaba la FUENTE, no el nombre (21/09).** Salían con
   letra serif tipo Times. El código **ya pedía `…px Arial`** en los ~30 sitios de dibujo:
   el problema era que el contenedor de las funciones **no tiene Arial** y el canvas caía a
