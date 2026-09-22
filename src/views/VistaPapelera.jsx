@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Trash2, RotateCcw, MapPin, Cable, Link2, Image as ImageIcon, Folder, ClipboardList, Loader2, Download, X } from 'lucide-react';
 import { suscribirsePapelera, suscribirsePapeleraProyecto, diasRestantes, restaurarPunto, restaurarFibra, restaurarCableAcero, restaurarFoto, restaurarLista, restaurarProyecto, contarFotos } from '../utils/papelera';
+import { claseBotonCabecera } from '../utils/cabeceras';
 
 const ICONO = { punto: MapPin, fibra: Cable, acero: Link2, foto: ImageIcon, proyecto: Folder, lista: ClipboardList };
 const NOMBRE_TIPO = { punto: 'Puntos', fibra: 'Fibras', acero: 'Cables de acero', foto: 'Fotos', proyecto: 'Proyectos', lista: 'Listas' };
@@ -128,7 +129,7 @@ export default function VistaPapelera({ theme, isDark, onVolver, user, puntos, p
     <div className={`fixed inset-0 z-[200] flex flex-col ${theme.bg} ${soloProyectos ? 'seccion-menu' : ''}`}>
       {/* Header */}
       <div className={`${theme.header} px-4 flex items-center gap-3 border-b-2 ${theme.border} shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
-        <button onClick={onVolver} className={`p-2 rounded-xl border-2 ${theme.border} ${theme.text} active:scale-95`}><ArrowLeft size={22} /></button>
+        <button onClick={onVolver} className={claseBotonCabecera(theme)} title="Volver"><ArrowLeft size={20} strokeWidth={2.5} /></button>
         <div className="flex items-center gap-2">
           <Trash2 size={22} className={theme.text} />
           <h3 className={`font-black ${theme.text} text-xl uppercase`}>{proyectoId ? 'Papelera del proyecto' : 'Papelera'}</h3>

@@ -3,6 +3,7 @@ import {
   Package, ArrowLeft, Plus, Minus, X, Trash2, Link2,
   Loader2, ChevronRight, ClipboardList, Check, Search, ArrowDownUp
 } from 'lucide-react';
+import { claseBotonCabecera } from '../utils/cabeceras';
 import {
   collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, query, where
 } from 'firebase/firestore';
@@ -444,8 +445,8 @@ export default function VistaControlFerreteria({
   return (
     <div className={`seccion-menu flex-1 flex flex-col overflow-hidden ${theme.bg} ${theme.text}`}>
       <div className={`shrink-0 px-4 py-3 border-b-2 ${theme.border} ${theme.header} flex items-center gap-3`}>
-        <button onClick={onVolver} className={`p-2 rounded-xl border-2 ${theme.border} ${theme.bg} active:scale-95`}>
-          <ArrowLeft size={20} className={theme.text} />
+        <button onClick={onVolver} className={claseBotonCabecera(theme)} title="Volver">
+          <ArrowLeft size={20} strokeWidth={2.5} />
         </button>
         <div className="flex items-center gap-2 flex-1">
           <ClipboardList size={20} className="text-brand-500" strokeWidth={2.5} />

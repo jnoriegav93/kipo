@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PERFILES, normalizarPerfil } from '../utils/perfiles';
 import { Shield, ArrowLeft, ChevronDown, ChevronUp, User, Folder, MapPin, RefreshCw, Smartphone, Plus, Trash2, X, Lock, Camera, CheckCircle2, LogIn, AlertTriangle } from 'lucide-react';
+import { claseBotonCabecera } from '../utils/cabeceras';
 import { collection, getDocs, query, where, doc, getDoc, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -1033,9 +1034,10 @@ const VistaAdmin = ({ theme, isDark, onVolver, onLoginComo, esAdmin = false, per
       <div className={`shrink-0 px-4 py-3 border-b-2 ${theme.border} ${theme.header} flex items-center gap-3`}>
         <button
           onClick={onVolver}
-          className={`p-2 rounded-xl border-2 ${theme.border} ${theme.bg} active:scale-95 transition-all`}
+          className={claseBotonCabecera(theme)}
+          title="Volver"
         >
-          <ArrowLeft size={20} className={theme.text} />
+          <ArrowLeft size={20} strokeWidth={2.5} />
         </button>
         <div className="flex items-center gap-2 flex-1">
           <Shield size={20} className="text-brand-500" strokeWidth={2.5} />

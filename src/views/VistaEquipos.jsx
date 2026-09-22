@@ -4,6 +4,7 @@ import {
   UserPlus, UserMinus, Loader2, MessageCircle, MapPin, LogOut, Info, Image as ImageIcon,
   Folder, AlertTriangle, Settings, Trash2
 } from 'lucide-react';
+import { claseBotonCabecera } from '../utils/cabeceras';
 import {
   collection, addDoc, setDoc, getDocs, getDoc, doc, query, where,
   updateDoc, arrayUnion, arrayRemove, onSnapshot, deleteField, deleteDoc, writeBatch
@@ -1220,8 +1221,8 @@ export default function VistaEquipos({
 
       {/* Header */}
       <div className={`shrink-0 px-4 py-3 border-b-2 ${theme.border} ${theme.header} flex items-center gap-3`}>
-        <button onClick={onVolver} className={`p-2 rounded-xl border-2 ${theme.border} ${theme.bg} active:scale-95 transition-all`}>
-          <ArrowLeft size={20} className={theme.text} />
+        <button onClick={onVolver} className={claseBotonCabecera(theme)} title="Volver">
+          <ArrowLeft size={20} strokeWidth={2.5} />
         </button>
         <div className="flex items-center gap-2 flex-1">
           <Users size={20} className="text-brand-500" strokeWidth={2.5} />

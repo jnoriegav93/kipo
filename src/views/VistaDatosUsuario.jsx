@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, User, Building2, Edit3, Check } from 'lucide-react';
+import { ArrowLeft, User, Building2, Edit3, Check } from 'lucide-react';
+import { claseBotonCabecera } from '../utils/cabeceras';
 
 const VistaDatosUsuario = ({
   theme,
@@ -35,8 +36,8 @@ const VistaDatosUsuario = ({
 
       {/* HEADER */}
       <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0 z-20`}>
-        <button onClick={onVolver}>
-          <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
+        <button onClick={onVolver} className={claseBotonCabecera(theme)} title="Volver">
+          <ArrowLeft size={20} strokeWidth={2.5} />
         </button>
         <span className={`font-black ${theme.text} text-lg uppercase`}>DATOS USUARIO</span>
         <div className="w-6"></div>

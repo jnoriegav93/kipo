@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Plus, ChevronDown, Eye, EyeOff, Trash2, MapPin,
+  Plus, ChevronDown, ArrowLeft, Eye, EyeOff, Trash2, MapPin,
   FolderDown, FileDown, Share2, Folder, X, Key, Users, Check, XCircle, Copy, MessageCircle, Image as ImageIcon, Info, Download, Loader2, Minus, AlertTriangle, Lock, UploadCloud, Edit, Link2, Camera, FolderInput, Package, Settings, ArrowUpDown, ListOrdered, ClipboardCheck, ShieldCheck, Wrench, Cloud, Smartphone, RefreshCw, Search, Recycle, LogOut, Archive, Hash
 } from 'lucide-react';
 import { Modal, ThemedInput } from '../components/UI';
+import { claseBotonCabecera } from '../utils/cabeceras';
 import { BloqueLiquidacion, BloqueLevantamiento, GrupoPropietario, GrupoElemento, InputsDatos } from '../components/Formulario';
 import { TABS_CONFIG, esFotoMiniatura } from '../components/PhotoManager';
 import { MiniMapaRevision } from '../components/Mapas';
@@ -695,8 +696,8 @@ const VistaProyectos = ({
     return (
       <div className={`flex-1 ${theme.bg} flex flex-col overflow-hidden`}>
         <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
-          <button onClick={() => setVerArchivados(false)}>
-            <ChevronDown className={`rotate-90 ${theme.text}`} size={28} />
+          <button onClick={() => setVerArchivados(false)} className={claseBotonCabecera(theme)} title="Volver">
+            <ArrowLeft size={20} strokeWidth={2.5} />
           </button>
           <span className={`font-black ${theme.text} text-lg uppercase`}>ARCHIVADOR</span>
           <div className="w-7" />
@@ -763,8 +764,8 @@ const VistaProyectos = ({
       ) : (
         <>
           <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0 z-20`}>
-            <button onClick={onVolver}>
-              <ChevronDown className={`rotate-90 ${theme.text}`} size={28} />
+            <button onClick={onVolver} className={claseBotonCabecera(theme)} title="Volver">
+              <ArrowLeft size={20} strokeWidth={2.5} />
             </button>
             <span className={`font-black ${theme.text} text-lg uppercase`}>PROYECTOS</span>
             <button
@@ -1162,8 +1163,8 @@ const VistaProyectos = ({
               gestor de fotos. En PC la tarjeta va centrada y no hay nada que esquivar. */}
           <div className={`${theme.header} px-4 flex items-center justify-between border-b-2 ${theme.border} shrink-0 ${isDesktop ? 'py-3' : 'pt-safe-header pb-3'}`}>
             <h3 className={`font-black ${theme.text} text-xl uppercase`}>Exportación</h3>
-            <button onClick={() => { setModalOpen(null); setExportandoTipo(null); }}>
-              <X size={28} className={theme.text} />
+            <button onClick={() => { setModalOpen(null); setExportandoTipo(null); }} className={claseBotonCabecera(theme)} title="Cerrar">
+              <X size={24} strokeWidth={2.5} />
             </button>
           </div>
           {/* Contenido scrollable. En el celular esto llega al borde de abajo, donde en
@@ -1243,8 +1244,8 @@ const VistaProyectos = ({
                     <p className={`text-xs ${theme.textSec} font-medium truncate`}>{proyModal.nombre}</p>
                   </div>
                 </div>
-                <button onClick={() => setModalLocalOpen(null)} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
-                  <X size={24} />
+                <button onClick={() => setModalLocalOpen(null)} className={claseBotonCabecera(theme)} title="Cerrar">
+                  <X size={24} strokeWidth={2.5} />
                 </button>
               </div>
 
@@ -1823,8 +1824,8 @@ const VistaProyectos = ({
                   </div>
                   <h3 className={`font-black text-lg ${theme.text} uppercase`}>Logo de Empresa</h3>
                 </div>
-                <button onClick={() => setModalLocalOpen(null)} className={`${theme.text} hover:bg-slate-100 p-2 rounded-lg transition-colors`}>
-                  <X size={24} />
+                <button onClick={() => setModalLocalOpen(null)} className={claseBotonCabecera(theme)} title="Cerrar">
+                  <X size={24} strokeWidth={2.5} />
                 </button>
               </div>
 

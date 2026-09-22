@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Eye, EyeOff, Plus, Save, Edit3, Trash2, X, RotateCcw, Check } from 'lucide-react';
+import { ChevronDown, ArrowLeft, Eye, EyeOff, Plus, Save, Edit3, Trash2, X, RotateCcw, Check } from 'lucide-react';
 import { Modal, ThemedInput } from './UI';
+import { claseBotonCabecera } from '../utils/cabeceras';
 import { DATA_INICIAL, FERRETERIA_BASE_DEFAULT, VINCULOS_FERRETERIA, itemDesdeBase } from '../data/constantes';
 import { esCableAcero } from '../utils/cablesAcero';
 import { useFerreteriaBase } from '../hooks/useFerreteriaBase';
@@ -343,8 +344,8 @@ export default function Configurador({ config, saveConfig, volver, modalState = 
     <div className={`seccion-menu flex-1 flex flex-col ${theme.bg} overflow-hidden relative`}>
 
       <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
-          <button onClick={() => { if (editId) setEditId(null); volver(); }}>
-            <ChevronDown className={`rotate-90 ${theme.text}`} size={28}/>
+          <button onClick={() => { if (editId) setEditId(null); volver(); }} className={claseBotonCabecera(theme)} title="Volver">
+            <ArrowLeft size={20} strokeWidth={2.5} />
           </button>
           <span className={`font-black ${theme.text} text-lg uppercase`}>Configuración</span>
           <button
