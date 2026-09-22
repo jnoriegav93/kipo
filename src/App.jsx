@@ -2059,6 +2059,10 @@ function App() {
   // y las tarjetas son las dos `bg-white` y el borde no separa nada.
   const esSeccionMenu = ['proyectos', 'config', 'controlFerreteria', 'equipos',
     'diagnostico', 'papelera', 'datosUsuario', 'admin'].includes(vista);
+  // Lo del panel sobre el mapa es SOLO de PC. En el celular la pantalla ya es angosta:
+  // las secciones siguen ocupándola entera, como siempre, y entonces el mapa detrás no
+  // se vería —sería trabajo desperdiciado— así que ni se monta.
+  const seccionSobreMapa = isDesktop && esSeccionMenu;
 
   return (
     <div className={`${pantallaCompacta ? 'compacto ' : ''}h-screen w-full flex flex-col ${theme.bg} ${theme.text} font-sans overflow-hidden select-none relative transition-colors duration-300`}>
@@ -2150,8 +2154,8 @@ function App() {
           (300). Antes no chocaba porque el mapa ni se montaba en estas pantallas; ahora
           sí. Encerrado en su capa, ningún z-index de adentro puede subir por encima de
           lo de afuera, y la barra de FIBRA y AGREGAR deja de taparle el modal. */}
-      {(vista === 'mapa' || esSeccionMenu) && (
-        <div className={`flex-1 min-h-0 flex flex-col ${esSeccionMenu ? 'relative z-0' : ''}`}>
+      {(vista === 'mapa' || seccionSobreMapa) && (
+        <div className={`flex-1 min-h-0 flex flex-col ${seccionSobreMapa ? 'relative z-0' : ''}`}>
         <VistaMapa
           theme={theme}
           isDesktop={isDesktop}
@@ -2159,7 +2163,7 @@ function App() {
           mapViewState={mapViewState}
           setMapViewState={setMapViewState}
           destinoMapa={destinoMapa}
-          handleMapaClick={esSeccionMenu
+          handleMapaClick={seccionSobreMapa
             // Con una sección abierta el mapa se puede arrastrar y hacer zoom, pero un
             // toque NO crea un punto: la sección tapa parte de la pantalla y sería muy
             // fácil dejar un punto suelto sin darse cuenta. Antes esto se lograba

@@ -60,6 +60,11 @@ const VistaProyectos = ({
   proyectosArchivados = [], onArchivarProyecto, onDesarchivarProyecto
 }) => {
 
+  // Lo angosto y centrado es SOLO de PC: en el celular las pantallas siguen ocupándola
+  // entera, como siempre. Se mira el puntero, no el ancho: una tablet apaisada es ancha
+  // pero se toca con el dedo.
+  const isDesktop = useIsDesktop();
+
   const [codigoCopiado, setCodigoCopiado] = React.useState(false);
   const [colorMenuPos, setColorMenuPos] = React.useState(null); // Posición del menú de color (para evitar overflow)
 
@@ -1142,11 +1147,13 @@ const VistaProyectos = ({
           aire para poder juzgar cómo va a salir la foto. */}
       {modalOpen === 'EXPORTAR_HUB' && activeProjectData && (
         <div
-          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-          onClick={() => { setModalOpen(null); setExportandoTipo(null); }}
+          className={`fixed inset-0 z-[300] flex ${isDesktop ? 'items-center justify-center bg-black/70 backdrop-blur-sm p-4' : ''}`}
+          onClick={isDesktop ? () => { setModalOpen(null); setExportandoTipo(null); } : undefined}
         >
         <div
-          className={`w-full max-w-[420px] max-h-[92vh] rounded-2xl shadow-2xl border-2 ${theme.border} overflow-hidden flex flex-col ${theme.bg}`}
+          className={`flex flex-col overflow-hidden ${theme.bg} ${isDesktop
+            ? `w-full max-w-[420px] max-h-[92vh] rounded-2xl shadow-2xl border-2 ${theme.border}`
+            : 'w-full h-full'}`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}

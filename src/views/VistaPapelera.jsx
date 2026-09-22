@@ -122,7 +122,10 @@ export default function VistaPapelera({ theme, isDark, onVolver, user, puntos, p
   // mapa —de eso se encarga `seccion-menu`, que ya la posiciona—; la del modal sigue
   // ocupando toda la pantalla, como cualquier otro modal.
   return (
-    <div className={`flex flex-col ${theme.bg} ${soloProyectos ? 'seccion-menu' : 'fixed inset-0 z-[200]'}`}>
+    // Siempre `fixed inset-0`: es su posicionamiento de toda la vida y el que vale en el
+    // celular. En PC, `seccion-menu` le recorta el ancho a 350 px y la deja de panel; el
+    // `right` de `inset-0` no estorba, porque un max-width lo gana.
+    <div className={`fixed inset-0 z-[200] flex flex-col ${theme.bg} ${soloProyectos ? 'seccion-menu' : ''}`}>
       {/* Header */}
       <div className={`${theme.header} px-4 flex items-center gap-3 border-b-2 ${theme.border} shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
         <button onClick={onVolver} className={`p-2 rounded-xl border-2 ${theme.border} ${theme.text} active:scale-95`}><ArrowLeft size={22} /></button>

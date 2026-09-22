@@ -62,16 +62,23 @@ details > summary {
    `flotante` en App.jsx): no hay barra sólida que esquivar, y dejar un hueco arriba
    mostraría una franja de mapa muerta entre la cabecera y el panel. Los botones de la
    cabecera quedan por encima, que llevan z-[50] pero van en su propia capa. */
-.seccion-menu {
-  position: fixed;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 100%;
-  max-width: 350px;
-  z-index: 100;
-  border-right: 1px solid rgba(15, 23, 42, 0.14);
-  box-shadow: 6px 0 24px rgba(15, 23, 42, 0.18);
+   SOLO EN PC. En el celular la pantalla ya es angosta: un panel de 350 px sobre el mapa
+   no aporta nada y encima rompe pantallas que funcionaban bien a pantalla completa. Se
+   usa la misma consulta que `useIsDesktop` —hover y puntero fino—, no un ancho: una
+   tablet apaisada es ancha pero se toca con el dedo. Fuera de PC, la clase no hace nada
+   y cada vista se comporta como antes de todo esto. */
+@media (hover: hover) and (pointer: fine) {
+  .seccion-menu {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 350px;
+    z-index: 100;
+    border-right: 1px solid rgba(15, 23, 42, 0.14);
+    box-shadow: 6px 0 24px rgba(15, 23, 42, 0.18);
+  }
 }
 
 /* Paneles que se desplazan arrastrando (el de días del mapa): la barra sobra, se come
