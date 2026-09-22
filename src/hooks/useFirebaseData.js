@@ -1,14 +1,52 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc } from "firebase/firestore";
 import { db, auth } from '../firebaseConfig';
+
+// Firestore no acepta más de 30 valores en un `in`. Con más proyectos hay que partir la
+// consulta en grupos y abrir una escucha por grupo. Antes se hacía `slice(0, 30)` y los
+// proyectos que sobraban se quedaban sin datos, en silencio y sin aviso.
+const TOPE_IN = 30;
+
+// Escucha una colección por `proyectoId`, para TODOS los proyectos que el usuario ve:
+// los suyos y los del equipo, sea editor o supervisor.
+//
+// Devuelve solo lo AJENO. Lo propio ya llega por su escucha de `ownerId`, que es la lista
+// que se actualiza sola al guardar o borrar. Manteniéndolas separadas, borrar algo propio
+// lo quita al instante y no reaparece hasta el siguiente snapshot; si las dos trajeran lo
+// mismo, el documento recién borrado volvería a aparecer por un parpadeo.
+const useDocsAjenosPorProyecto = (coleccion, ids, uid) => {
+  const [docs, setDocs] = useState([]);
+  // La lista de ids se compara como texto: un array nuevo en cada render reabriría las
+  // escuchas sin parar.
+  const clave = ids.join(',');
+  useEffect(() => {
+    if (!uid || !clave) { setDocs([]); return; }
+    const lista = clave.split(',');
+    const grupos = [];
+    for (let i = 0; i < lista.length; i += TOPE_IN) grupos.push(lista.slice(i, i + TOPE_IN));
+    // Cada grupo guarda su propio resultado: un snapshot de uno no puede borrar lo de los
+    // otros, que es lo que pasaría escribiendo el estado entero desde cada escucha.
+    const porGrupo = grupos.map(() => []);
+    const unsubs = grupos.map((grupo, i) => onSnapshot(
+      query(collection(db, coleccion), where('proyectoId', 'in', grupo)),
+      (snap) => {
+        porGrupo[i] = snap.docs
+          .map(d => ({ ...d.data(), id: d.id }))
+          .filter(d => d.ownerId !== uid);
+        setDocs(porGrupo.flat());
+      },
+      (error) => console.error(`Error escuchando ${coleccion} por proyecto:`, error)
+    ));
+    return () => unsubs.forEach(u => u());
+  }, [coleccion, clave, uid]);
+  return docs;
+};
 
 export const useFirebaseData = (user) => {
   // 1. ESTADOS (El almacén de datos)
   const [proyectos, setProyectos] = useState([]);
   const [proyectosSupervisados, setProyectosSupervisados] = useState([]);
   const [puntos, setPuntos] = useState([]);
-  const [puntosCompartidos, setPuntosCompartidos] = useState([]);
-  const [puntosDeProyectosProxios, setPuntosDeProyectosProxios] = useState([]);
   const [conexiones, setConexiones] = useState([]);
   const [cablesAcero, setCablesAcero] = useState([]);
   const [config, setConfig] = useState(null);
@@ -95,51 +133,33 @@ export const useFirebaseData = (user) => {
     };
   }, [user]);
 
-  // Efecto para cargar puntos creados por editores en proyectos propios
-  useEffect(() => {
-    if (!user || proyectos.length === 0) {
-      setPuntosDeProyectosProxios([]);
-      return;
-    }
-    const ids = proyectos.map(p => p.id).slice(0, 30);
-    const q = query(collection(db, "puntos"), where("proyectoId", "in", ids));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-      setPuntosDeProyectosProxios(docs);
-    }, (error) => console.error("Error en PuntosDeProyectosProxios:", error));
-    return () => unsub();
-  }, [user, proyectos]);
+  // TODO lo que el usuario puede ver de un proyecto de equipo, sin importar quién lo
+  // creó: puntos, fibras y cables de acero. Vale igual para el editor y para el
+  // supervisor —los dos tienen que ver la obra completa—; lo que cambia entre uno y
+  // otro es si puede TOCARLA, y eso no se decide aquí.
+  //
+  // Antes solo había escuchas para puntos, así que las fibras y los cables de acero del
+  // otro no llegaban nunca: el editor no veía lo del dueño y el dueño no veía lo del
+  // editor, aunque el reporte del servidor sí los contaba.
+  const idsVisibles = useMemo(() => {
+    const ids = new Set();
+    proyectos.forEach(p => ids.add(String(p.id)));
+    proyectosSupervisados.forEach(p => ids.add(String(p.id)));
+    return Array.from(ids);
+  }, [proyectos, proyectosSupervisados]);
 
-  // Efecto para cargar puntos de proyectos donde el usuario es editor
-  useEffect(() => {
-    if (!user || proyectosSupervisados.length === 0) {
-      setPuntosCompartidos([]);
-      return;
-    }
-    const proyectosEditor = proyectosSupervisados.filter(p => {
-      const permiso = p.permisoActual;
-      return permiso === 'edicion' || permiso === 'ambos';
-    });
-    if (proyectosEditor.length === 0) {
-      setPuntosCompartidos([]);
-      return;
-    }
-    const ids = proyectosEditor.map(p => p.id).slice(0, 30);
-    const q = query(collection(db, "puntos"), where("proyectoId", "in", ids));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-      setPuntosCompartidos(docs);
-    }, (error) => console.error("Error en PuntosCompartidos:", error));
-    return () => unsub();
-  }, [user, proyectosSupervisados]);
+  const puntosDeProyectos = useDocsAjenosPorProyecto('puntos', idsVisibles, user?.uid);
+  const conexionesDeProyectos = useDocsAjenosPorProyecto('conexiones', idsVisibles, user?.uid);
+  const acerosDeProyectos = useDocsAjenosPorProyecto('cablesAcero', idsVisibles, user?.uid);
 
   // 3. RETURN (Entregamos los datos a App.jsx)
   return {
     proyectos, setProyectos,
     proyectosSupervisados, setProyectosSupervisados,
     puntos, setPuntos,
-    puntosCompartidos,
-    puntosDeProyectosProxios,
+    puntosDeProyectos,
+    conexionesDeProyectos,
+    acerosDeProyectos,
     conexiones, setConexiones,
     cablesAcero, setCablesAcero,
     config, setConfig

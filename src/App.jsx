@@ -356,8 +356,9 @@ function App() {
     proyectos, setProyectos,
     proyectosSupervisados, setProyectosSupervisados,
     puntos, setPuntos,
-    puntosCompartidos,
-    puntosDeProyectosProxios,
+    puntosDeProyectos,
+    conexionesDeProyectos,
+    acerosDeProyectos,
     conexiones, setConexiones,
     cablesAcero, setCablesAcero,
     config: configNube, setConfig
@@ -392,12 +393,24 @@ function App() {
   }, [user?.uid, proyectos]);
 
 
-  // Todos los puntos visibles: propios + de proyectos donde soy editor + de proyectos que poseo (deduplicados)
+  // Todo lo visible de la obra: lo propio más lo que hicieron los demás en los proyectos
+  // del equipo. Las dos listas no se pisan —la escucha por proyecto descarta lo propio—,
+  // así que el `Map` es solo un seguro contra duplicados.
   const todosLosPuntos = React.useMemo(() => {
     const map = new Map();
-    [...puntos, ...puntosDeProyectosProxios, ...puntosCompartidos].forEach(p => map.set(p.id, p));
+    [...puntos, ...puntosDeProyectos].forEach(p => map.set(p.id, p));
     return Array.from(map.values());
-  }, [puntos, puntosDeProyectosProxios, puntosCompartidos]);
+  }, [puntos, puntosDeProyectos]);
+  const todasLasConexiones = React.useMemo(() => {
+    const map = new Map();
+    [...conexiones, ...conexionesDeProyectos].forEach(c => map.set(c.id, c));
+    return Array.from(map.values());
+  }, [conexiones, conexionesDeProyectos]);
+  const todosLosAceros = React.useMemo(() => {
+    const map = new Map();
+    [...cablesAcero, ...acerosDeProyectos].forEach(c => map.set(c.id, c));
+    return Array.from(map.values());
+  }, [cablesAcero, acerosDeProyectos]);
 
   // Separar proyectos compartidos: solo supervisión vs con permiso de edición
   const proyectosEditor = React.useMemo(() =>
@@ -1660,7 +1673,10 @@ function App() {
       .sort((a, b) => tsOf(a) - tsOf(b))
       .map((d, idx) => ({ ...d, numero: idx + 1, count: conteo[d.id] || 0 }));
   }, [proyectoActual, mapaSupervision, todosLosPuntos]);
-  const conexionesVisiblesBase = filtrosVisibilidad.getConexionesVisibles(conexiones, diasVisibles, proyectos.filter(p => !p.archivado));
+  // `proyectosActivos` y no `proyectos`: este filtro descarta lo que no pertenezca a un
+  // proyecto de la lista, y con solo los propios las fibras del equipo se caían aquí
+  // aunque los datos ya hubieran llegado.
+  const conexionesVisiblesBase = filtrosVisibilidad.getConexionesVisibles(todasLasConexiones, diasVisibles, proyectosActivos);
   const conexionesVisiblesMapa = fibrasVisibles ? conexionesVisiblesBase : [];
   // El MAPA dibuja lo visible de todos los proyectos; la LISTA de la barra de fibra es
   // solo del proyecto activo. Antes listaba las de todos y no cuadraba con su contador.
@@ -1812,13 +1828,13 @@ function App() {
   // Solo se usa si el usuario no escribe nombre.
   const nombreSugeridoFibra = React.useMemo(() => {
     let max = 0;
-    (conexiones || []).forEach(c => {
+    todasLasConexiones.forEach(c => {
       if (String(c.proyectoId) !== String(proyectoActual?.id)) return;
       const m = String(c.nombre || '').match(/^RAMAL\s+(\d+)$/i);
       if (m) max = Math.max(max, parseInt(m[1], 10));
     });
     return `RAMAL ${String(max + 1).padStart(2, '0')}`;
-  }, [conexiones, proyectoActual]);
+  }, [todasLasConexiones, proyectoActual]);
 
   // ── CABLE DE ACERO ────────────────────────────────────────────────────────
   // Otra capa, aunque se dibuje desde la barra de fibra. Los tipos son fijos, como las
@@ -1828,8 +1844,8 @@ function App() {
   const lineasAcero = React.useMemo(() => {
     if (!acerosVisibles) return [];
     const porId = new Map(todosLosPuntos.map(p => [String(p.id), p]));
-    const fibraPorId = new Map((conexiones || []).map(f => [String(f.id), f]));
-    return filtrosVisibilidad.getConexionesVisibles(cablesAcero, diasVisibles, proyectos.filter(p => !p.archivado))
+    const fibraPorId = new Map(todasLasConexiones.map(f => [String(f.id), f]));
+    return filtrosVisibilidad.getConexionesVisibles(todosLosAceros, diasVisibles, proyectosActivos)
       .map(c => {
         const postes = postesDeCable(c, porId);
         if (!postes) return null;
@@ -1851,7 +1867,7 @@ function App() {
         };
       })
       .filter(Boolean);
-  }, [acerosVisibles, cablesAcero, todosLosPuntos, diasVisibles, proyectos, conexiones]);
+  }, [acerosVisibles, todosLosAceros, todosLosPuntos, diasVisibles, proyectosActivos, todasLasConexiones]);
 
   // Igual que las fibras: la barra lista solo los cables del proyecto activo, aunque el
   // mapa siga dibujando los de todos los proyectos visibles.
@@ -1924,7 +1940,7 @@ function App() {
                 snapshot: JSON.parse(JSON.stringify(con)),
                 coleccionOriginal: 'conexiones', idOriginal: con.id,
                 proyectoId: con.proyectoId || null,
-                proyectoNombre: proyectos.find(p => p.id === con.proyectoId)?.nombre || '',
+                proyectoNombre: todosLosProyectos.find(p => p.id === con.proyectoId)?.nombre || '',
                 nombre: `Fibra ${con.capacidad || ''} (${nVertices} vértices)`.trim(),
                 meta: { cablesApoyo: cablesApoyo.map(c => String(c.id)) },
               });
@@ -1943,7 +1959,7 @@ function App() {
   })();
   // Las fibras y el medio tramo marcados, con lo que la barra necesita para mostrarlos
   const fibrasTrazoAcero = trazoAcero.fibras
-    .map(id => (conexiones || []).find(c => String(c.id) === id))
+    .map(id => todasLasConexiones.find(c => String(c.id) === id))
     .filter(Boolean)
     .map(c => ({ id: String(c.id), nombre: c.nombre || '', capacidad: c.capacidad || 12 }));
   const medioTramoTrazoAcero = trazoAcero.medioTramo
@@ -2533,7 +2549,7 @@ function App() {
           onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           notificacionesProyectos={{ ...notifProyectos, ...notifEditor }}
           marcarChatLeido={marcarChatLeido}
-          conexiones={conexiones}
+          conexiones={todasLasConexiones}
           onIniciarMoverPuntos={(proy) => {
             setPuntoSeleccionado(null);
             setPuntosSeleccionadosMover([]);
@@ -2805,7 +2821,7 @@ function App() {
         isOpen={!!exportData}
         onClose={() => setExportData(null)}
         fileName={exportData?.fileName}
-        onConfirm={() => handleExportKML(exportData?.proyecto, puntos, conexiones, logoApp, setExportData, undefined, undefined, undefined, config?.catalogoFerreteria || [])}
+        onConfirm={() => handleExportKML(exportData?.proyecto, todosLosPuntos, todasLasConexiones, logoApp, setExportData, undefined, undefined, undefined, config?.catalogoFerreteria || [])}
         theme={theme}
       />
 
