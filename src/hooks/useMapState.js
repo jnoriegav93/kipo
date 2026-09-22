@@ -36,6 +36,16 @@ export const useMapState = () => {
   const [destinoMapa, setDestinoMapa] = useState(null);
   const irADestino = (lat, lng, zoom = 17) =>
     setDestinoMapa(prev => ({ lat, lng, zoom, n: (prev?.n || 0) + 1 }));
+  // El destino se COBRA una sola vez, y la cuenta de lo ya cobrado tiene que vivir aquí.
+  // Antes la llevaba el mapa, y el mapa se destruye al entrar a VER o al formulario: al
+  // volver, su cuenta nacía en cero, el destino viejo parecía nuevo y el mapa se iba
+  // volando al último proyecto en vez de quedarse donde lo dejaste.
+  const destinoCobrado = useRef(0);
+  const tomarDestino = () => {
+    if (!destinoMapa || destinoMapa.n === destinoCobrado.current) return null;
+    destinoCobrado.current = destinoMapa.n;
+    return destinoMapa;
+  };
   const [gpsTrigger, setGpsTrigger] = useState(0);
   // Giro del mapa en grados (0 = norte arriba). Vive aquí para que el mapa y el
   // encabezado vean lo mismo: el botón de GPS necesita saber cuánto se torció.
@@ -72,7 +82,7 @@ export const useMapState = () => {
   return {
     mapViewState,
     setMapViewState,
-    destinoMapa,
+    tomarDestino,
     irADestino,
     iconSize,
     setIconSize,

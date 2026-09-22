@@ -144,7 +144,7 @@ function App() {
   // Estado del mapa
   const {
     mapViewState, setMapViewState,
-    destinoMapa, irADestino,
+    tomarDestino, irADestino,
     iconSize, setIconSize,
     mapStyle, setMapStyle,
     mostrarEtiquetas, setMostrarEtiquetas,
@@ -2162,7 +2162,7 @@ function App() {
           mapStyle={mapStyle}
           mapViewState={mapViewState}
           setMapViewState={setMapViewState}
-          destinoMapa={destinoMapa}
+          tomarDestino={tomarDestino}
           handleMapaClick={seccionSobreMapa
             // Con una sección abierta el mapa se puede arrastrar y hacer zoom, pero un
             // toque NO crea un punto: la sección tapa parte de la pantalla y sería muy

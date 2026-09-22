@@ -15,7 +15,7 @@ const haversine = (lat1, lng1, lat2, lng2) => {
 };
 
 const VistaMapa = ({
-  theme, isDesktop = false, mapStyle, mapViewState, setMapViewState, destinoMapa, handleMapaClick,
+  theme, isDesktop = false, mapStyle, mapViewState, setMapViewState, tomarDestino, handleMapaClick,
   puntosVisiblesMapa, iconSize, obtenerColorDia, puntoSeleccionado,
   handlePuntoClick, puntoTemporal, gpsTrigger, setGpsTrigger, yaSaltoAlInicio,
   giro = 0, setGiro,   // giro del mapa en grados; 0 es el norte arriba de siempre
@@ -204,13 +204,10 @@ const VistaMapa = ({
   const coloresSimbologia = coloresDia.length ? coloresDia : ['#f97316', '#3b82f6', '#10b981', '#a855f7', '#ef4444'];
   const irACoord = (lat, lng) => setCentrarEnCoord(prev => ({ lat, lng, n: (prev?.n || 0) + 1 }));
   // Destinos que llegan DE AFUERA (el GPS de un proyecto) se empalman con el mismo
-  // mecanismo que ya usan el acero y las fibras: el mapa vuela con `flyTo`. Se mira el
-  // contador y no las coordenadas, para que mandar dos veces al mismo sitio funcione.
-  const ultimoDestino = useRef(0);
-  if (destinoMapa && destinoMapa.n !== ultimoDestino.current) {
-    ultimoDestino.current = destinoMapa.n;
-    setCentrarEnCoord({ lat: destinoMapa.lat, lng: destinoMapa.lng, n: destinoMapa.n });
-  }
+  // mecanismo que ya usan el acero y las fibras: el mapa vuela con `flyTo`. Se cobra una
+  // sola vez y la cuenta la lleva `useMapState`, que sobrevive al desmontaje del mapa.
+  const destino = tomarDestino?.();
+  if (destino) setCentrarEnCoord({ lat: destino.lat, lng: destino.lng, n: destino.n });
   const [fotoSeleccionada, setFotoSeleccionada] = useState(null);
   const [panelAsociarVisible, setPanelAsociarVisible] = useState(false);
   const [puntosProximos, setPuntosProximos] = useState([]);
