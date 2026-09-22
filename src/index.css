@@ -61,7 +61,8 @@ details > summary {
    Ocupa todo el alto porque con una sección abierta la cabecera es FLOTANTE (ver
    `flotante` en App.jsx): no hay barra sólida que esquivar, y dejar un hueco arriba
    mostraría una franja de mapa muerta entre la cabecera y el panel. Los botones de la
-   cabecera quedan por encima, que llevan z-[50] pero van en su propia capa. */
+   cabecera quedan por encima, que llevan z-[50] pero van en su propia capa.
+
    SOLO EN PC. En el celular la pantalla ya es angosta: un panel de 350 px sobre el mapa
    no aporta nada y encima rompe pantallas que funcionaban bien a pantalla completa. Se
    usa la misma consulta que `useIsDesktop` —hover y puntero fino—, no un ancho: una
