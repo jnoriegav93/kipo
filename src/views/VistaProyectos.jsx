@@ -1156,15 +1156,24 @@ const VistaProyectos = ({
             : 'w-full h-full'}`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <div className={`${theme.header} px-4 py-3 flex items-center justify-between border-b-2 ${theme.border} shrink-0`}>
+          {/* Header. En el celular esto es PANTALLA COMPLETA, así que necesita respetar
+              la zona segura o el título se mete debajo de la barra de estado (hora,
+              batería, señal). Es el mismo `pt-safe-header` que usan el formulario y el
+              gestor de fotos. En PC la tarjeta va centrada y no hay nada que esquivar. */}
+          <div className={`${theme.header} px-4 flex items-center justify-between border-b-2 ${theme.border} shrink-0 ${isDesktop ? 'py-3' : 'pt-safe-header pb-3'}`}>
             <h3 className={`font-black ${theme.text} text-xl uppercase`}>Exportación</h3>
             <button onClick={() => { setModalOpen(null); setExportandoTipo(null); }}>
               <X size={28} className={theme.text} />
             </button>
           </div>
-          {/* Contenido scrollable */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Contenido scrollable. En el celular esto llega al borde de abajo, donde en
+              muchos teléfonos vive la barra de gestos: sin este relleno, el último botón
+              queda tapado. Mismo criterio que el chat y el editor de armados. En PC la
+              tarjeta está centrada y `env()` vale 0, así que no estorba. */}
+          <div
+            className="flex-1 overflow-y-auto p-4"
+            style={isDesktop ? undefined : { paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
+          >
             <ExportHubContent
               proyecto={activeProjectData}
               puntos={puntos}
