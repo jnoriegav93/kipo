@@ -2295,7 +2295,9 @@ function App() {
             // Nombre, capacidad y geometría se guardan juntos en una sola escritura:
             // así no puede quedar a medias si algo falla entre una y otra.
             const parche = {};
-            if (cambios.nombre !== undefined) parche.nombre = String(cambios.nombre || '').trim();
+            // En MAYÚSCULA al guardar. La app ya los mostraba así por CSS, pero guardaba
+            // lo tecleado, y en las hojas del Excel salía "r55" junto a "R67".
+            if (cambios.nombre !== undefined) parche.nombre = String(cambios.nombre || '').trim().toUpperCase();
             if (cambios.capacidad !== undefined) parche.capacidad = cambios.capacidad;
             // Solo la geometría: la fibra ya no anota por qué postes pasa.
             if (cambios.vertices !== undefined) parche.vertices = cambios.vertices;
@@ -2352,7 +2354,8 @@ function App() {
             }
             const datos = {
               vertices,
-              nombre: (nombre || '').trim(),
+              // En MAYÚSCULA: lo que se ve en la app y lo que se guarda son lo mismo.
+              nombre: (nombre || '').trim().toUpperCase(),
               proyectoId: String(proyectoFibra),
               ownerId: user.uid,
               capacidad: capFinal,

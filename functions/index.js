@@ -1462,8 +1462,11 @@ const croquisRamal = (vertices, postes, anchoPx, altoPx, otrasFibras = [], otros
 };
 
 // Nombre de hoja válido para Excel: sin caracteres prohibidos y máximo 31.
+// En MAYÚSCULA: el cliente ya los guarda así, pero los ramales dibujados ANTES de
+// ese cambio siguen en minúscula en la base, y se veían "r55" junto a "R67" en las
+// pestañas. Pasarlo aquí los empareja sin tener que reescribir los datos viejos.
 const nombreHojaSeguro = (txt, alterno) => {
-  const limpio = String(txt || "").replace(/[:\\/?*[\]]/g, "").trim();
+  const limpio = String(txt || "").replace(/[:\\/?*[\]]/g, "").trim().toUpperCase();
   return (limpio || alterno).slice(0, 31);
 };
 
@@ -1767,37 +1770,57 @@ const generarExcel = async (proy, puntosProyecto, logoBuffer, limiteFotos, stamp
       // a mano; longitud calculada apunta a la celda B4 de la hoja del ramal, así que
       // se actualiza sola cuando allá se anote el dato.
       //
-      // SOLO los ramales que TIENEN HOJA. Antes se listaban todas las fibras del
-      // proyecto, y las que no juntaron ningún poste salían en esta tabla sin hoja
-      // detrás: la lista no cuadraba con las pestañas de abajo. Un ramal se queda sin
-      // postes cuando otro se los llevó (el reparto es por cercanía, y gana la de
-      // mayor capacidad) o cuando está dibujado lejos de todos.
+      // Se listan TODOS los ramales, pero los que NO tienen hoja van al final y
+      // resaltados en ámbar, con el motivo escrito en la última columna.
       //
-      // OJO con lo que esto esconde: un ramal mal dibujado ya no aparece en el
-      // resumen, así que deja de delatarse solo. Si falta uno en la tabla, el motivo
-      // es que no tiene postes asignados.
-      const fibrasConHoja = fibrasProy.filter(f => hojaDeRamal[f.id]);
+      // Un ramal se queda sin hoja cuando no juntó ningún poste: el reparto es por
+      // cercanía y cada poste va a UNA sola fibra —la de mayor capacidad y, a
+      // igualdad, la más larga—, así que otro pudo llevárselos, o está dibujado lejos.
+      //
+      // Se listan igual, y no se esconden, justamente para que un ramal mal dibujado
+      // se delate: si desapareciera de la tabla, nadie se enteraría de que está mal.
+      const conHoja = fibrasProy.filter(f => hojaDeRamal[f.id]);
+      const sinHoja = fibrasProy.filter(f => !hojaDeRamal[f.id]);
+      const filasRamal = [...conHoja, ...sinHoja];
+      const AMBAR = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
+
       const filaIniFibras = fr;
-      fibrasConHoja.forEach((f, n) => {
-        const fondo = n % 2 === 1 ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } } : null;
+      filasRamal.forEach((f, n) => {
         const hoja = hojaDeRamal[f.id];
+        // El rayado alterno solo en las que tienen hoja: abajo manda el ámbar.
+        const fondo = hoja
+          ? (n % 2 === 1 ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } } : null)
+          : AMBAR;
         for (let k = 0; k < 7; k++) {
           const c = wsRes.getCell(fr, k + 2);
           if (k === 0) c.value = f.nombre || "-";
           else if (k === 1) c.value = `${f.capacidad} FO`;
           else if (k === 2) c.value = Math.round(f.largo);
-          c.font = { size: 9, bold: k === 0 };
+          c.font = { size: 9, bold: k === 0, color: hoja ? undefined : { argb: "FF9A3412" } };
           c.alignment = { horizontal: k === 0 ? "left" : "center" };
           c.border = B;
           if (fondo) c.fill = fondo;
         }
-        if (hoja) wsRes.getCell(fr, 8).value = { formula: `'${hoja.replace(/'/g, "''")}'!B4` };
+        // Con hoja, la longitud calculada se trae sola de allá. Sin hoja va el motivo:
+        // la celda estaría vacía y no se entendería por qué.
+        if (hoja) {
+          wsRes.getCell(fr, 8).value = { formula: `'${hoja.replace(/'/g, "''")}'!B4` };
+        } else {
+          const c = wsRes.getCell(fr, 8);
+          c.value = "SIN POSTES ASIGNADOS";
+          c.font = { size: 8, bold: true, color: { argb: "FF9A3412" } };
+          c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+          c.border = B;
+          c.fill = AMBAR;
+        }
         fr++;
       });
 
       // Fila de totales. Va con fórmulas para que las columnas que se llenan a
       // mano (longitud real) sumen solas conforme se vayan completando.
-      if (fibrasConHoja.length) {
+      // El TOTAL suma TODAS las filas, también las de abajo sin hoja: son metros de
+      // fibra igualmente tendidos y descontarlos falsearía el total del proyecto.
+      if (filasRamal.length) {
         wsRes.mergeCells(fr, 2, fr, 3);
         for (let k = 0; k < 7; k++) {
           const c = wsRes.getCell(fr, k + 2);

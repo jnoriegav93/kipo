@@ -285,15 +285,25 @@ en el cable y en qué medio tramo.
   solo quita caracteres prohibidos por Excel (`nombreHojaSeguro`), no cambia mayúsculas.
   Así que la minúscula viene del dato, no del reporte. **Si alguna vez se quiere forzar**,
   hay que decidir si se normaliza al guardar (cambia el dato) o solo al nombrar la hoja.
+- **Los nombres de ramal van en MAYÚSCULA (21/09).** Se normalizan **al guardar** en las
+  dos escrituras del cliente (crear y editar), y además el servidor pasa a mayúscula el
+  **nombre de hoja**. Lo segundo no es redundante: los ramales dibujados antes de este
+  cambio siguen en minúscula en la base, y así salen emparejados en las pestañas **sin
+  tener que reescribir los datos viejos**. En la app se veían en mayúscula desde siempre,
+  pero era solo CSS.
 - **Qué ramales tienen hoja, y la tabla del RESUMEN (21/09).** Una hoja por ramal **que
   tenga postes asignados** (`if (grupo.puntos.length === 0) continue;`). El reparto de
   postes es **por cercanía**: cada poste va a UNA fibra, la de mayor capacidad y, a
   igualdad, la más larga. Un ramal puede quedarse sin postes porque otro se los llevó o
   porque está dibujado lejos.
-  La tabla del resumen listaba **todas** las fibras, así que no cuadraba con las pestañas.
-  Ahora lista solo las que tienen hoja (`fibrasConHoja`, filtrando por `hojaDeRamal`).
-  **Efecto secundario aceptado:** un ramal mal dibujado ya no aparece en el resumen y deja
-  de delatarse solo. Si falta uno en la tabla, el motivo es que no tiene postes.
+  La tabla del resumen lista **todos** los ramales, pero los que **no tienen hoja** van
+  **al final, en ámbar** y con `SIN POSTES ASIGNADOS` en la última columna (`conHoja` +
+  `sinHoja` → `filasRamal`, ordenando por `hojaDeRamal`).
+  Se llegó aquí en dos pasos: primero se filtraron —y eso **escondía** un ramal mal
+  dibujado, que dejaba de delatarse— y el usuario prefirió verlos todos, marcados.
+  **El TOTAL suma TODAS las filas**, incluidas las sin hoja: son metros igualmente
+  tendidos y descontarlos falsearía el total del proyecto.
+  **`METROS POR CAPACIDAD` tampoco se filtra**, por lo mismo.
   La fila SIN RAMAL tiene hoja pero no es una fibra: nunca estuvo en esta tabla.
 - **La letra de los sellos y croquis: faltaba la FUENTE, no el nombre (21/09).** Salían con
   letra serif tipo Times. El código **ya pedía `…px Arial`** en los ~30 sitios de dibujo:
