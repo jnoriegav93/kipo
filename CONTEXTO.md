@@ -1556,7 +1556,8 @@ Lo que faltaba mapear quedó resuelto así:
    Verificado: la lógica pura con Node, con un mutante por regla que tiene que
    fallar; lint igual que la línea base; build; y la app arranca sin errores en
    Chrome sin ventana. **Probado por el usuario el 23/09**, con su sesión y en un
-   proyecto de prueba: todo bien. Se sube esa noche, fuera de la jornada. Queda sin arreglar: borrar un poste sin
+   proyecto de prueba: todo bien. **Desplegado el 23/09 (SELLO: 23/09/26, 10:00)**,
+   de día: el usuario pidió a las cuadrillas no usar la app esa jornada. Queda sin arreglar: borrar un poste sin
    señal no entra a la cola hasta que sube su copia a la papelera, así que puede
    reaparecer un momento, y si la app se cierra antes de tener señal, no se borra.
 2. **Migración.** Función `migrarMiembros`, solo admin, con modo simulacro que
