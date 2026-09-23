@@ -22,7 +22,7 @@ class PhotoManagerErrorBoundary extends React.Component {
     return <React.Fragment key={this.state.intentos}>{this.props.children}</React.Fragment>;
   }
 }
-import { doc, setDoc, addDoc, updateDoc as fbUpdateDoc, deleteDoc, deleteField, getDoc, collection, query, where, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, addDoc, updateDoc as fbUpdateDoc, deleteDoc, deleteField, collection, query, where, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { db, auth } from './firebaseConfig';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -105,15 +105,12 @@ function App() {
     if (user?.uid === ADMIN_UID) localStorage.removeItem('kipoAdminSession');
   }, [user?.uid]);
 
-  const volverAAdmin = React.useCallback(async (passwordDirecto) => {
-    if (!adminReturnEmail) return;
+  // La contraseña la escribe el admin en el menú: no se guarda en ningún lado. Antes,
+  // si no llegaba, se leía de `usuarios/{email}.password`, en texto plano y legible
+  // por cualquier cuenta. El menú siempre la pide, así que ese camino no se usaba.
+  const volverAAdmin = React.useCallback(async (password) => {
+    if (!adminReturnEmail || !password) return;
     try {
-      let password = passwordDirecto;
-      if (!password) {
-        const snap = await getDoc(doc(db, 'usuarios', adminReturnEmail));
-        password = snap.exists() ? snap.data().password : null;
-      }
-      if (!password) return;
       localStorage.removeItem('kipoAdminSession');
       await signInWithEmailAndPassword(auth, adminReturnEmail, password);
     } catch (e) {

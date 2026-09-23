@@ -3358,9 +3358,9 @@ exports.crearUsuario = onCall({ region: 'us-central1' }, async (request) => {
     email,
   });
 
-  // Guardar contraseña en texto plano para acceso desde panel admin
+  // La contraseña NO se guarda aquí: vive solo en Firebase Auth. Antes se copiaba en
+  // texto plano, y las reglas dejan leer `usuarios` a cualquier cuenta.
   await db.collection('usuarios').doc(email).set({
-    password,
     dispositivosAutorizados: [],
     tipoAcceso: 'total',
     calidadFotos: 'alta',
