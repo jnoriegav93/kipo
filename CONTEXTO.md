@@ -1482,9 +1482,10 @@ miembros del modelo nuevo.
   dueño y a `compartidoCon`. Un supervisor o editor nuevo recibiría "Sin acceso
   al proyecto" al exportar.
 - **Catálogo al traspasar:** `configuraciones/{uid}` solo la escribe su dueño, así
-  que el dueño anterior **no puede** agregar ítems al catálogo del nuevo. O lo hace
-  el servidor (Cloud Function, inmediato), o el teléfono del nuevo dueño al abrir
-  la obra (hasta que la abra, todos verían la ferretería vacía). Sin decidir.
+  que el dueño anterior **no puede** agregar ítems al catálogo del nuevo.
+  **Decidido el 23/09: lo hace el servidor**, con una Cloud Function en el momento
+  del traspaso. La alternativa descartada era hacerlo en el teléfono del nuevo
+  dueño al abrir la obra: hasta que la abriera, todos verían la ferretería vacía.
 - **Convivencia de versiones:** hay principio pero no diseño. Un link nuevo abierto
   con la app vieja no significa nada para ella; un editor con la versión vieja
   arma su lista con `compartidoCon`, así que la migración no puede tocar los
