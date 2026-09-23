@@ -9,8 +9,10 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > **Ahora:** el modo Diseño sigue en pausa. El 22/09 se abrió el trabajo de
 > **equipos**; tras las tandas A y B1, el 23/09 se decidió **rediseñarlo desde
 > cero**: cada proyecto con sus miembros, y amigos en lugar de equipos. Ver
-> "Rediseño de equipos" más abajo. **Diseño acordado; se arranca por el paso 0
-> (medir datos viejos).**
+> "Rediseño de equipos" más abajo. **Diseño acordado y paso 0 hecho.** El trabajo
+> sigue en la rama `equipos-por-proyecto`; `main` queda para arreglos urgentes. Lo
+> próximo: el plan técnico del paso 1 (campos, reglas, convivencia), antes de
+> programarlo.
 
 ---
 
@@ -1505,6 +1507,13 @@ las permite. Pero van en despliegue aparte y **antes** del código que las usa.
    lo del proyecto X" comparando texto, así que lo que tenga el proyecto escrito
    como número dejaría de aparecer. Si el conteo da cero, se sigue directo; si
    no, se normaliza antes de cambiar la escucha. Solo lee: no toca producción.
+   **Hecho el 23/09** con `herramientas/medir-paso0.html` (en la rama): de 9424
+   puntos, 58 fibras y 105 cables de acero, solo **3 fibras** tienen el proyecto
+   como número, y son de un proyecto borrado (`1767688642002`, por el número
+   creado hacia el 6/01/2026): ya hoy no se ven. Nada queda sin `proyectoId`.
+   **No hace falta normalizar.** La medición es de la base entera, no del usuario
+   que entra: las reglas dejan leer esas colecciones a cualquier autenticado, y
+   por eso con dos usuarios distintos dio exactamente lo mismo.
 1. Modelo nuevo conviviendo con el viejo: miembros en el proyecto, una escucha de
    proyectos por miembro y una de contenido por proyecto. Mientras convivan, lo
    nuevo no debe romper a quien siga con la versión vieja.
