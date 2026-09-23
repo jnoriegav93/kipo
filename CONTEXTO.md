@@ -1464,40 +1464,51 @@ Decidido además el 23/09: al traspasar se le agregan al nuevo dueño **solo los
 ítems de ferretería que la obra usa**; si no, su catálogo se llenaría de
 materiales ajenos.
 
-### Lo que falta mapear antes de programar el paso 1
+### Lo que cambió al investigar el plan técnico (23/09)
 
-El diseño está cerrado. La ejecución tiene piezas de **servidor** sin diseñar:
-hoy dependen de `compartidoCon` o del sistema de equipos, y dejarían afuera a los
-miembros del modelo nuevo.
+Lo que faltaba mapear quedó resuelto así:
 
-- **Reglas de `proyectos` (update):** solo dejan escribir al dueño, a miembros de
-  un equipo (vía `grupoId`) y a editores de `compartidoCon`. Un editor nuevo no
-  podría, por ejemplo, crear un día. **Aceptar una invitación** es que el
-  invitado se agregue a sí mismo al proyecto: hace falta una cláusula que lo
-  permita solo con una invitación válida (`exists()` sobre
-  `invitaciones/{código}`). Es lo que vuelve real la protección del código.
-  También hace falta una para salir del proyecto por cuenta propia.
-- **Reglas de `fotosProyecto`:** leer exige ser dueño o estar en `compartidoCon`;
-  crear, ser editor por `permisos`. Los miembros nuevos no verían la capa de fotos.
-- **Reglas nuevas** para `invitaciones`, amistades y avisos.
-- **Función `crearExportacion`** (`functions/index.js:3145`): da acceso solo al
-  dueño y a `compartidoCon`. Un supervisor o editor nuevo recibiría "Sin acceso
-  al proyecto" al exportar.
-- **Catálogo al traspasar:** `configuraciones/{uid}` solo la escribe su dueño, así
-  que el dueño anterior **no puede** agregar ítems al catálogo del nuevo.
-  **Decidido el 23/09: lo hace el servidor**, con una Cloud Function en el momento
-  del traspaso. La alternativa descartada era hacerlo en el teléfono del nuevo
-  dueño al abrir la obra: hasta que la abriera, todos verían la ferretería vacía.
-- **Convivencia de versiones:** hay principio pero no diseño. Un link nuevo abierto
-  con la app vieja no significa nada para ella; un editor con la versión vieja
-  arma su lista con `compartidoCon`, así que la migración no puede tocar los
-  campos viejos hasta el paso 5.
-- **Barrido de escrituras** para el candado por rol: el inventario cubrió el
-  dominio de equipos, no todas las escrituras de la app (31 solo en `App.jsx`, más
-  `VistaProyectos`, `VerDetalle`, `PhotoManager`, `Configurador`…).
-
-Todas las reglas que hacen falta **suman permisos**, así que la política del repo
-las permite. Pero van en despliegue aparte y **antes** del código que las usa.
+- **Los cambios que esperan en la cola se pisan.** Crear, editar, mover y borrar
+  postes (y borrar los cables del poste) pasan por la cola de sincronización
+  (`SyncContext.jsx`). Mientras la tarea no sale, el cambio vive solo en el estado
+  local, y cada snapshot reemplaza el array entero. Hoy lo acota que la escucha
+  propia solo se dispara con cambios propios; con una escucha por proyecto,
+  **cualquier cambio de otro miembro** la dispararía, y un poste recién movido,
+  todavía en la cola, volvería a su sitio un momento. **Solución: capa de
+  pendientes.** Lo que se ve = lo que dice el servidor + las tareas de la cola
+  aplicadas encima, con una función pura (`aplicarPendientes`). Ningún snapshot
+  las pisa, y de paso arregla dos fallas de hoy: al recargar sin señal, los postes
+  pendientes desaparecen del mapa hasta sincronizar (nada reaplica la cola al
+  estado), y lo que un editor cambia en postes del dueño no se ve hasta que sube
+  (los setters solo alcanzan documentos propios).
+- **La división "lo propio / lo de todos" esconde fallas.** Siguen leyendo solo lo
+  propio el autoguardado de fotos desde VER (no corre en postes ajenos),
+  `cablesDelPunto` en `usePuntosLogic.js` (borrar un poste no limpia los cables de
+  acero de otro), y el mapa y la papelera, que reciben solo los propios. Con una
+  sola lista, desaparecen.
+- **Los reportes nombran la ferretería con el catálogo de quien exporta**
+  (`functions/index.js:3254`), no con el del dueño. Un editor o supervisor vería
+  sin nombre los materiales propios del dueño (`f_…`). Hay que usar el del dueño.
+- **`controlFerreteria` es del dueño** (la regla solo deja actualizarla a él). Al
+  traspasar, la función tiene que pasarla también.
+- **Aceptar la invitación, en el servidor.** Una función valida el código, suma al
+  miembro y marca la invitación como usada, todo junto. Así la protección del
+  código es real desde el primer día, y no hace falta una regla que deje a un
+  extraño escribirse en el proyecto.
+- **Convivencia: los miembros nuevos se reflejan en los campos viejos.** Mientras
+  convivan, cada miembro se escribe también en `compartidoCon` + `permisos`
+  (`'edicion'` para editor, `'lectura'` para supervisor). Con eso, las reglas y la
+  función de exportar de hoy ya les sirven (`'lectura'` no puede escribir el
+  proyecto, justo lo que se quiere del supervisor), y los teléfonos con la versión
+  vieja siguen viendo a los editores. Los campos viejos se dejan de escribir en el
+  paso 5.
+- **Cómo saber quién actualizó.** Hoy nadie anota qué versión tiene cada teléfono:
+  el sello solo aparece en su pantalla de Diagnóstico, y el aviso de actualización
+  insiste solo mientras la app está abierta. Propuesto, sin decidir: que cada
+  teléfono anote su versión al abrir la app, y una "versión mínima" que pida
+  actualizar y que bloquee solo si la actualización ya está descargada, para no
+  dejar a nadie trabado sin señal. Solo funciona en los teléfonos que ya la tengan,
+  así que conviene subirla cuanto antes, en `main` y antes del rediseño.
 
 ### Orden de trabajo
 
@@ -1514,19 +1525,45 @@ las permite. Pero van en despliegue aparte y **antes** del código que las usa.
    **No hace falta normalizar.** La medición es de la base entera, no del usuario
    que entra: las reglas dejan leer esas colecciones a cualquier autenticado, y
    por eso con dos usuarios distintos dio exactamente lo mismo.
-1. Modelo nuevo conviviendo con el viejo: miembros en el proyecto, una escucha de
-   proyectos por miembro y una de contenido por proyecto. Mientras convivan, lo
-   nuevo no debe romper a quien siga con la versión vieja.
-2. Migración.
-3. Pantallas: EQUIPO dentro del proyecto, AMIGOS en el menú, avisos al entrar.
-4. Candado por rol en pantalla.
-5. Retirar lo viejo: `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
-   `grupoId`, `supervisoresInfo`, y el código muerto (`VistaPermisos`,
-   `VistaSupervision`, `ModalAgregarCodigo`, `aprobarSupervisor`,
-   `rechazarSupervisor`, `codigoAcceso`).
-6. **Último:** reglas de Firestore que hagan cumplir el rol. Solo cuando todos
-   tengan la versión nueva: cerrarlas antes deja sin poder guardar a quien no
-   aceptó la actualización.
+1. **La capa de datos.** Solo cliente: sin reglas ni funciones, y nada visible
+   cambia.
+   - Una escucha por `proyectoId` para puntos, fibras y cables (todo, no solo lo
+     ajeno), en grupos de 30. Se van las tres escuchas por `ownerId`, y con ellas
+     la división "lo propio / lo de todos".
+   - La capa de pendientes reemplaza a los cambios optimistas de la cola.
+   - Proyectos: a las dos escuchas de hoy se suma `miembrosUids array-contains
+     uid`, y se juntan por id. Antes de la migración no trae nada.
+   - `rolEnProyecto(proyecto, uid)`, puro: lee `miembros` y, si no hay, deduce el
+     rol de los campos viejos. Todavía no se conecta a los botones.
+   - El rescate de fibras sin trazo sigue limitado a proyectos propios.
+   - Riesgo: la capa de pendientes. Se prueba con Node y con Chrome sin ventana:
+     crear, mover y borrar sin señal; recargar con la cola llena; un cambio de
+     otro miembro que llega con tareas pendientes.
+2. **Migración.** Función `migrarMiembros`, solo admin, con modo simulacro que
+   informa sin escribir. Escribe `miembros` y `miembrosUids` a partir de los campos
+   viejos, con lo decidido: solo los proyectos que hoy están en la lista de cada
+   uno, como editor; los supervisores se reinvitan. Ayacucho se verifica a mano,
+   contando antes y después.
+3. **Pantallas, con sus funciones y sus reglas.**
+   - Funciones: `aceptarInvitacion`; `traspasarProyecto` (dueño, roles,
+     `controlFerreteria` y el catálogo que usa la obra); y `crearExportacion`, que
+     acepte `miembrosUids` y use el catálogo del dueño.
+   - Reglas que suman: `invitaciones` (las crea y anula el dueño; las lee
+     cualquiera que tenga el código), amistades y avisos; y `proyectos` y
+     `fotosProyecto` para `miembrosUids`, para cuando se retiren los campos viejos.
+   - Pantallas: EQUIPO dentro del proyecto (invitar por link o QR con el rol,
+     miembros, cambiar rol, quitar, traspasar, invitaciones sin usar con anular),
+     AMIGOS en el menú y los avisos al entrar.
+4. **Candado por rol.** `rolEnProyecto` en cada botón que escribe: el supervisor,
+   solo lectura en todo (mapa, formulario, fotos, ferretería, revisión); el
+   editor, sin borrar el proyecto.
+5. **Retirar lo viejo**, cuando la lista de versiones diga que todos
+   actualizaron: `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
+   `grupoId`, `supervisoresInfo`, la colección `equipos` y el código muerto
+   (`VistaPermisos`, `VistaSupervision`, `ModalAgregarCodigo`,
+   `aprobarSupervisor`, `rechazarSupervisor`, `codigoAcceso`).
+6. **Último:** reglas de Firestore que hagan cumplir el rol. Misma condición que
+   el paso 5: cerrarlas antes deja sin poder guardar a quien no actualizó.
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
@@ -1534,6 +1571,14 @@ Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
 ## Pendientes fuera del diseño
 
+- **URGENTE, fuera del rediseño: contraseñas en texto plano, legibles por
+  cualquiera.** `crearUsuario` guarda la contraseña de cada usuario creado desde
+  el panel en `usuarios/{email}.password` (`functions/index.js:3361`), y el botón
+  de volver al admin está hecho para leer de ahí la contraseña del admin
+  (`App.jsx:113`). Las reglas dejan **leer y escribir** esa colección a cualquier
+  autenticado: con cualquier cuenta de Kipo se leen esas contraseñas, y cualquiera
+  puede editar los dispositivos autorizados de cualquiera. Encontrado el 23/09 al
+  investigar el plan técnico; sin decidir cómo arreglarlo.
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
   solo trozo: cualquier cambio obliga a rebajar 2,4 MB en cada actualización, y
   en campo con poca señal se siente. Candidatos: sacar ExcelJS a su propio trozo
