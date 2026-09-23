@@ -1387,6 +1387,16 @@ los supervisores).
   código que no *dice* el rol sino que *apunta* a una invitación guardada no se
   puede editar: cambiar una letra da una invitación que no existe. Para quien
   invita y para quien acepta no agrega ningún paso.
+- Cómo funciona, tal como lo planteó el usuario ("que el link completo sea como
+  un código y solo entre si coincide"): al tocar AGREGAR EDITOR se guarda en la
+  base `invitaciones/{código}` con `{ proyecto, rol, de, usada }`, y el link lleva
+  **solo ese código**. La copia vive en la base y no en el teléfono del dueño,
+  porque el invitado puede abrir el link cuando el dueño está sin señal. Al
+  abrirlo: si el código no existe (alguien lo alteró) → "invitación no válida";
+  si ya se usó → "esta invitación ya fue usada"; si está libre → "Fulano te
+  invita a ser editor de X" → ACEPTAR entra con el rol guardado y la marca como
+  usada. El código es largo y al azar, como los ids de Firestore, para que no se
+  pueda adivinar.
 - Ese mismo documento es lo que hace posible la duración decidida: el **link sirve
   una sola vez** (se marca como usado al aceptar, porque se reenvía por WhatsApp)
   y el **QR sirve mientras el dueño lo tenga abierto en pantalla** (exige estar al
@@ -1433,8 +1443,16 @@ los supervisores).
 - **Los supervisores no se migran: se los vuelve a invitar.** Nunca tuvieron
   proyectos de equipo en su lista (su fila no tiene EDITAR,
   `VistaEquipos.jsx:131`), así que la regla de arriba tampoco les daría nada.
-- En producción hay hoy **un solo cliente real: el proyecto de Ayacucho**. El
-  dueño lo tiene en su lista y los editores también. La migración es chica.
+- **La migración cubre todo**: todos los equipos y todos los proyectos. Ayacucho
+  es hoy el **único proyecto en producción activa**; el usuario lo mencionó para
+  dar tranquilidad, no para acotar la migración. Es donde un error dolería, así
+  que es el que se verifica a mano antes y después (miembros, puntos, fibras y
+  cables, contados uno por uno).
+- Todo proyecto pasa a estar en la lista de su dueño. Hoy, un proyecto de equipo
+  que el dueño no "jaló" con EDITAR no le aparece en su lista.
+- **No se migran amistades.** No hace falta: la sección AMIGOS lista a las
+  personas con las que se coincide en algún proyecto, así que después de la
+  migración aparecen solas, a un toque de mandarles la solicitud.
 
 Decidido además el 23/09: al traspasar se le agregan al nuevo dueño **solo los
 ítems de ferretería que la obra usa**; si no, su catálogo se llenaría de
