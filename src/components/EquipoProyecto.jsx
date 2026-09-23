@@ -6,6 +6,7 @@ import ChatBitacora from './ChatBitacora';
 import { claseBotonCabecera } from '../utils/cabeceras';
 import { ROL_TEXTO, rolEnProyecto, miembrosDelProyecto, permisoViejo, linkInvitacion } from '../utils/equipoProyecto';
 import { crearInvitacion, anularInvitacion, escucharInvitacionesAbiertas } from '../services/invitaciones';
+import { avisarAgregado } from '../services/amigos';
 
 const COLOR_ROL = {
   dueno: 'bg-slate-900 text-white',
@@ -26,7 +27,7 @@ const fechaCorta = (iso) => {
 // Mientras convivan los dos sistemas, cada cambio se escribe también en los campos viejos
 // (`compartidoCon`, `permisos`, `supervisoresInfo`): así lo ven las reglas de hoy, la
 // exportación y los teléfonos sin actualizar.
-const EquipoProyecto = ({ proyecto, user, config, theme, setAlertData, setConfirmData, onClose }) => {
+const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertData, setConfirmData, onClose }) => {
   const soyDueno = rolEnProyecto(proyecto, user?.uid) === 'dueno';
   const miembros = miembrosDelProyecto(proyecto);
   const [invitaciones, setInvitaciones] = useState([]);
@@ -129,6 +130,30 @@ const EquipoProyecto = ({ proyecto, user, config, theme, setAlertData, setConfir
     },
   });
 
+  // Amigos que todavía no están en el proyecto: el dueño los suma directo, sin link ni
+  // aceptación (paso 3b). Por eso la amistad pide consentimiento de los dos.
+  const amigosFuera = amigos.filter(a => !miembros.some(m => m.uid === String(a.uid)));
+
+  const agregarAmigo = async (amigo, rol) => {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      await updateDoc(refProyecto(), {
+        [`miembros.${amigo.uid}`]: { rol, desde: new Date().toISOString(), por: user.uid },
+        miembrosUids: arrayUnion(amigo.uid),
+        compartidoCon: arrayUnion(amigo.uid),
+        [`permisos.${amigo.uid}`]: permisoViejo(rol),
+        [`supervisoresInfo.${amigo.uid}`]: { nombre: amigo.nombre || '', empresa: '' },
+      });
+      // El aviso no frena nada: si falla, el amigo igual quedó adentro y ve el proyecto.
+      avisarAgregado({
+        para: amigo.uid, proyecto, rol, deUid: user.uid,
+        deNombre: config?.nombrePersonal || user.email?.split('@')[0] || '',
+      }).catch(e => console.error('Aviso de agregado:', e));
+    } catch (e) { avisarFallo('No se pudo agregar', e); }
+    setOcupado(false);
+  };
+
   const tituloSeccion = `text-xs font-black ${theme.text} uppercase tracking-wider`;
   const botonInvitar = `flex-1 h-9 rounded-lg border-2 ${theme.border} ${theme.text} text-[11px] font-black tracking-widest flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-40`;
 
@@ -205,6 +230,26 @@ const EquipoProyecto = ({ proyecto, user, config, theme, setAlertData, setConfir
             <p className={`text-[10px] ${theme.textSec}`}>
               El link sirve una sola vez. El QR sirve mientras lo tengas abierto en pantalla.
             </p>
+          </div>
+        )}
+
+        {soyDueno && amigosFuera.length > 0 && (
+          <div className="space-y-2">
+            <h4 className={tituloSeccion}>Agregar un amigo</h4>
+            {amigosFuera.map(a => (
+              <div key={a.uid} className={`border-2 ${theme.border} rounded-xl px-3 py-1.5 flex items-center gap-2`}>
+                <p className={`flex-1 min-w-0 text-sm font-black ${theme.text} truncate`}>{a.nombre || 'Amigo'}</p>
+                <button onClick={() => agregarAmigo(a, 'editor')} disabled={ocupado}
+                  className="px-2 py-1.5 rounded-lg text-[10px] font-black bg-blue-600 text-white active:scale-95 shrink-0 disabled:opacity-40">
+                  + EDITOR
+                </button>
+                <button onClick={() => agregarAmigo(a, 'supervisor')} disabled={ocupado}
+                  className="px-2 py-1.5 rounded-lg text-[10px] font-black bg-blue-100 text-blue-700 active:scale-95 shrink-0 disabled:opacity-40">
+                  + SUPERVISOR
+                </button>
+              </div>
+            ))}
+            <p className={`text-[10px] ${theme.textSec}`}>Entra al instante, sin link, y le aparece un aviso al abrir Kipo.</p>
           </div>
         )}
 

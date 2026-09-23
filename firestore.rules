@@ -164,6 +164,44 @@ service cloud.firestore {
         && request.resource.data.estado in ['anulada', 'cerrada'];
     }
 
+    // ── AMISTADES (rediseño de equipos, paso 3b) ──────────────────────────
+    // Un documento por pareja; el id son los dos uids ordenados, unidos por "_". Mutua y
+    // con consentimiento: uno la pide, y solo el otro puede aceptarla.
+    match /amistades/{par} {
+      // Solo la ven los dos (la consulta tiene que filtrar por uids array-contains).
+      allow read: if request.auth != null && request.auth.uid in resource.data.uids;
+      allow create: if request.auth != null
+        && request.resource.data.de == request.auth.uid
+        && request.resource.data.estado == 'pendiente'
+        && request.resource.data.uids.size() == 2
+        && request.auth.uid in request.resource.data.uids
+        && request.resource.data.para in request.resource.data.uids
+        && request.resource.data.para != request.auth.uid
+        && par == request.resource.data.uids[0] + '_' + request.resource.data.uids[1];
+      // Aceptar: solo quien la recibió, y solo el estado, la fecha y su propio nombre.
+      allow update: if request.auth != null
+        && resource.data.para == request.auth.uid
+        && resource.data.estado == 'pendiente'
+        && request.resource.data.estado == 'aceptada'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'aceptadaEn', 'nombres']);
+      // Rechazar, cancelar o dejar de ser amigos: cualquiera de los dos.
+      allow delete: if request.auth != null && request.auth.uid in resource.data.uids;
+    }
+
+    // ── AVISOS (rediseño de equipos, paso 3b) ─────────────────────────────
+    // "Fulano te agregó a su proyecto". Solo el dueño de ese proyecto puede crearlo, y
+    // solo quien lo recibe lo lee y lo marca como visto.
+    match /avisos/{id} {
+      allow read: if request.auth != null && resource.data.para == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.deUid == request.auth.uid
+        && request.resource.data.visto == false
+        && get(/databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)).data.ownerId == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.para == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['visto', 'vistoEn']);
+    }
+
     // ── CONTROL DE FERRETERÍA ─────────────────────────────────────────────
     match /controlFerreteria/{listaId} {
       // Leer: cualquier autenticado — los EDITORES de un proyecto de equipo necesitan

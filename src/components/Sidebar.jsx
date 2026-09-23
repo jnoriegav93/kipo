@@ -19,7 +19,7 @@ export default function Sidebar({
   totalProyectos,
   totalProyectosEditor,
   totalNotifProyectos = 0,
-  notifEquipos = 0,
+  notifAmigos = 0,
   mapStyle,
   fotoPuntosActivo = false,
   onToggleFotoPuntos,
@@ -227,7 +227,9 @@ export default function Sidebar({
           {esAdmin && <NavItem icon={DraftingCompass} label="Diseño" vistaKey="diseno" />}
           <NavItem icon={Settings} label="Configuración"  vistaKey="config" />
           <NavItem icon={ClipboardList} label="Control Ferretería" vistaKey="controlFerreteria" />
-          <NavItem icon={Users}   label="Equipos"        vistaKey="equipos"      notif={notifEquipos} />
+          {/* AMIGOS reemplaza a EQUIPOS (rediseño de equipos, paso 3b). EQUIPOS se abre
+              desde AMIGOS hasta el paso 5, y su aviso rojo se suma a este. */}
+          <NavItem icon={Users}   label="Amigos"         vistaKey="amigos"       notif={notifAmigos} />
           <NavItem icon={Stethoscope} label="Diagnóstico" vistaKey="diagnostico" />
           <NavItem icon={Trash2} label="Papelera" vistaKey="papelera" />
 

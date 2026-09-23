@@ -1612,6 +1612,18 @@ Lo que faltaba mapear quedó resuelto así:
    reglas de `proyectos` y `fotosProyecto` todavía no hicieron falta; y la escucha de
    proyectos por `miembrosUids` queda para el paso 5, porque con el reflejo todo
    miembro llega por `compartidoCon`.
+
+   **3b hecho el 23/09.** AMIGOS (`VistaAmigos`) reemplaza a EQUIPOS en el menú; los
+   equipos de antes se abren desde ahí hasta el paso 5, y el aviso rojo de AMIGOS
+   suma los dos. La amistad es mutua y con consentimiento: un documento por pareja
+   (`amistades/{uidA_uidB}`), lógica en `src/utils/amigos.js` probada con mutantes.
+   El dueño suma a un amigo directo desde EQUIPO, y el amigo ve un aviso a pantalla
+   completa al abrir Kipo (`avisos`, `ModalAvisos`). Las reglas de `amistades` y
+   `avisos` ya están desplegadas; la app, en la rama. Falta que el usuario pruebe 3a
+   y 3b. Visto de paso: la sincronización de `supervisoresInfo` que corre al entrar
+   falla para un supervisor que no es de un equipo ('lectura' no puede escribir el
+   proyecto), así que su nombre queda el que se anotó al sumarlo. Es inofensivo; se
+   arregla con las reglas del paso 6.
 4. **Candado por rol.** `rolEnProyecto` en cada botón que escribe: el supervisor,
    solo lectura en todo (mapa, formulario, fotos, ferretería, revisión); el
    editor, sin borrar el proyecto.

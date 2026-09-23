@@ -53,12 +53,14 @@ import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
 import PantallaMigracion from './components/PantallaMigracion';
 import ModalAceptarInvitacion from './components/ModalAceptarInvitacion';
+import ModalAvisos from './components/ModalAvisos';
 
 // Vistas
 import VistaMapa from './views/VistaMapa';
 import { MiniMapaRevision } from './components/Mapas';
 import VistaProyectos from './views/VistaProyectos';
 import VistaEquipos from './views/VistaEquipos';
+import VistaAmigos from './views/VistaAmigos';
 import VistaControlFerreteria from './views/VistaControlFerreteria';
 import VistaDatosUsuario from './views/VistaDatosUsuario';
 import VistaAdmin from './views/VistaAdmin';
@@ -81,6 +83,8 @@ import { useProjectLogic } from './hooks/useProjectLogic';
 import { usePuntosLogic } from './hooks/usePuntosLogic';
 import { useCablesAceroProyecto } from './hooks/useCablesAceroProyecto';
 import { useSync } from './context/SyncContext';
+import { useAmigos, useAvisos } from './hooks/useAmigos';
+import { marcarAvisosVistos } from './services/amigos';
 
 // Utilidades
 import { descargarFotosZip, handleExportKML } from './utils/exporters';
@@ -112,6 +116,9 @@ function App() {
   const { user, deviceBlocked, cerrarSesion } = useAuth();
   const { estadoSync, cola, agregarTarea, erroresTareas, procesando: syncProcesando, eliminarTarea, reintentarTarea, guardarComoNuevo, isOnline } = useSync();
   const [queueModalAbierto, setQueueModalAbierto] = React.useState(false);
+  // Amigos y avisos (rediseño de equipos, paso 3b)
+  const amistades = useAmigos(user?.uid);
+  const avisos = useAvisos(user?.uid);
   // Invitación a un proyecto esperando que se acepte (link ?inv= o QR escaneado)
   const [codigoInvitacion, setCodigoInvitacion] = React.useState(() => {
     try { return sessionStorage.getItem('kipo_inv'); } catch { return null; }
@@ -2137,7 +2144,7 @@ function App() {
   // un fondo más oscuro. El mapa, el modo Diseño y el formulario no entran: usan toda la
   // pantalla. Sin el fondo distinto el panel no se distingue, porque en tema claro la app
   // y las tarjetas son las dos `bg-white` y el borde no separa nada.
-  const esSeccionMenu = ['proyectos', 'config', 'controlFerreteria', 'equipos',
+  const esSeccionMenu = ['proyectos', 'config', 'controlFerreteria', 'equipos', 'amigos',
     'diagnostico', 'papelera', 'datosUsuario', 'admin'].includes(vista);
   // Lo del panel sobre el mapa es SOLO de PC. En el celular la pantalla ya es angosta:
   // las secciones siguen ocupándola entera, como siempre, y entonces el mapa detrás no
@@ -2214,7 +2221,7 @@ function App() {
         totalProyectos={proyectos.length}
         totalProyectosEditor={proyectosEditor.length}
         totalNotifProyectos={totalNotifVistaProyectos + totalSolicitudesColaboracion}
-        notifEquipos={notifEquipos}
+        notifAmigos={amistades.recibidas.length + notifEquipos}
         perfilLabel={etiquetaPerfil(perfilActivo)}
         isDark={isDark}
         setIsDark={setIsDark}
@@ -2617,6 +2624,7 @@ function App() {
           onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           notificacionesProyectos={{ ...notifProyectos, ...notifEditor, ...notifSupervisados }}
           onAbrirInvitacion={abrirInvitacion}
+          amigos={amistades.amigos}
           onVerSupervision={(proy) => {
             // El supervisor mira su proyecto en el modo supervisión, que no deja escribir.
             const pts = todosLosPuntos.filter(p => perteneceAProyecto(p, proy));
@@ -2692,6 +2700,21 @@ function App() {
           setAlertData={setAlertData}
         />
       ))}
+
+      {vista === 'amigos' && (
+        <VistaAmigos
+          theme={theme}
+          user={user}
+          config={config}
+          proyectos={[...proyectos, ...proyectosSupervisados]}
+          amistades={amistades}
+          notifEquipos={notifEquipos}
+          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
+          onAbrirEquipos={() => setVistaConHistorial('equipos')}
+          setAlertData={setAlertData}
+          setConfirmData={setConfirmData}
+        />
+      )}
 
       {vista === 'equipos' && (
         <VistaEquipos
@@ -2900,6 +2923,15 @@ function App() {
         {...alertData}
         theme={theme}
       />
+
+      {/* Avisos al abrir Kipo: por ejemplo, que un dueño te sumó a su proyecto (paso 3b) */}
+      {user && avisos.length > 0 && (
+        <ModalAvisos
+          avisos={avisos}
+          theme={theme}
+          onEntendido={() => marcarAvisosVistos(avisos.map(a => a.id)).catch(e => console.error('Marcar avisos:', e))}
+        />
+      )}
 
       {/* Invitación a un proyecto: por link (?inv=) o por QR escaneado en PROYECTOS */}
       {user && codigoInvitacion && (

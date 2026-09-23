@@ -59,7 +59,7 @@ const VistaProyectos = ({
   setSelectorColorAbierto, tempData, confirmarCrearProyecto, confirmarCrearDia,
   aprobarSupervisor, rechazarSupervisor, user, setAlertData, setConfirmData,
   setLogoApp, handleCargarLogo, setPuntoSeleccionado, setModoLectura, setModoEdicion, setDatosFormulario, setVistaAnterior, setMapViewState, modalPendiente, setModalPendiente, setMostrarOverlayGPS, onVolver,
-  notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos, onIniciarOrdenar, onRepararPuntos, onAbrirInvitacion, onVerSupervision,
+  notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos, onIniciarOrdenar, onRepararPuntos, onAbrirInvitacion, onVerSupervision, amigos = [],
   proyectosArchivados = [], onArchivarProyecto, onDesarchivarProyecto
 }) => {
 
@@ -1273,6 +1273,7 @@ const VistaProyectos = ({
           theme={theme}
           setAlertData={setAlertData}
           setConfirmData={setConfirmData}
+          amigos={amigos}
           onClose={() => setModalLocalOpen(null)}
         />
       )}
