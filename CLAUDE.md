@@ -46,8 +46,14 @@ Para las Cloud Functions, antes de desplegar:
 node -c functions/index.js
 cd functions && FIREBASE_CONFIG='{"projectId":"kipo-d29af","storageBucket":"kipo-d29af.appspot.com"}' \
   GCLOUD_PROJECT=kipo-d29af node -e "require('./index.js')"
-firebase deploy --only functions:procesarExportacion --project kipo-d29af
+FUNCTIONS_DISCOVERY_TIMEOUT=60 firebase deploy --only functions:procesarExportacion --project kipo-d29af
 ```
+
+`index.js` tarda unos 9 s en cargar (canvas, Excel y fuentes) y la CLI da 10 s para
+descubrir las funciones: sin `FUNCTIONS_DISCOVERY_TIMEOUT`, el despliegue falla a
+veces con "User code failed to load". Solo afecta al despliegue, no a cómo corren.
+Y ojo: `index.js` empieza con `/* eslint-disable */`, así que el lint no lo revisa;
+lo que vale ahí es `node -c` y el `require` de prueba.
 
 ---
 

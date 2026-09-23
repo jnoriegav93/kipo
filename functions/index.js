@@ -4054,3 +4054,72 @@ exports.purgarPapelera = onSchedule({
   }
   console.log(`Papelera purgada: ${docsBorrados} entradas, ${archivosBorrados} archivos.`);
 });
+
+// ============================================================
+// CLOUD FUNCTION — migrarMiembros (solo admin)
+// Paso 2 del rediseño de equipos: escribe en cada proyecto sus miembros
+// (`miembros.{uid} = { rol, desde, migrado }` y `miembrosUids`) a partir del sistema
+// viejo. Quién entra y con qué rol lo decide `calcularMiembros` (miembros.js).
+// Por defecto SOLO SIMULA: devuelve lo que haría sin escribir nada; para escribir hay
+// que pedirlo con `simulacro: false`. Solo AGREGA: nunca pisa un miembro que ya esté,
+// ni toca los campos viejos, que siguen mandando en los teléfonos sin actualizar.
+// ============================================================
+exports.migrarMiembros = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+  if (request.auth.uid !== ADMIN_UID_AUDIT) throw new HttpsError('permission-denied', 'Solo admin.');
+  const { calcularMiembros } = require('./miembros');
+  const simulacro = (request.data || {}).simulacro !== false;
+  const ahora = new Date().toISOString();
+
+  const snap = await db.collection('proyectos').get();
+  const filas = [];
+  const uids = new Set();
+  let escritos = 0;
+  for (const d of snap.docs) {
+    const p = d.data();
+    const { agregar, omitidos, avisos } = calcularMiembros(p, ahora);
+    const nuevos = Object.keys(agregar);
+    if (!simulacro && nuevos.length) {
+      // Campos punteados y arrayUnion: se agregan entradas sin tocar las que ya hay.
+      const cambios = { miembrosUids: admin.firestore.FieldValue.arrayUnion(...nuevos) };
+      for (const uid of nuevos) cambios[`miembros.${uid}`] = agregar[uid];
+      await d.ref.update(cambios);
+      escritos++;
+    }
+    if (p.ownerId) uids.add(String(p.ownerId));
+    nuevos.forEach(u => uids.add(u));
+    omitidos.forEach(o => uids.add(o.uid));
+    filas.push({
+      id: d.id,
+      nombre: p.nombre || '',
+      archivado: !!p.archivado,
+      equipo: !!p.grupoId,
+      dueno: p.ownerId ? String(p.ownerId) : null,
+      yaMiembros: Object.keys(p.miembros || {}),
+      agregar: Object.fromEntries(nuevos.map(u => [u, agregar[u].rol])),
+      omitidos,
+      avisos,
+    });
+  }
+
+  // Nombres, para que el informe se pueda leer: los de la configuración de cada uno.
+  const nombres = {};
+  const lista = [...uids];
+  for (let i = 0; i < lista.length; i += 100) {
+    const refs = lista.slice(i, i + 100).map(u => db.collection('configuraciones').doc(u));
+    const docs = await db.getAll(...refs);
+    for (const c of docs) {
+      const x = c.exists ? c.data() : {};
+      nombres[c.id] = x.nombrePersonal || x.email || c.id;
+    }
+  }
+
+  return {
+    simulacro,
+    total: snap.size,
+    conCambios: filas.filter(f => Object.keys(f.agregar).length).length,
+    escritos,
+    filas,
+    nombres,
+  };
+});

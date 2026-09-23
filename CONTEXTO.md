@@ -1564,6 +1564,22 @@ Lo que faltaba mapear quedó resuelto así:
    viejos, con lo decidido: solo los proyectos que hoy están en la lista de cada
    uno, como editor; los supervisores se reinvitan. Ayacucho se verifica a mano,
    contando antes y después.
+
+   **En curso (23/09).** La función está desplegada (`functions/index.js`; las
+   reglas, en `functions/miembros.js`, probadas con Node y mutantes) y se corre
+   desde `herramientas/migrar-miembros.html`. SIMULAR no escribe; MIGRAR solo
+   agrega (campos punteados y `arrayUnion`): nunca pisa un miembro ni toca los
+   campos viejos; VERIFICAR vuelve a simular y tiene que dar 0 cambios. Falta que
+   el usuario simule, revisar juntos el informe (Ayacucho sobre todo) y migrar.
+   La escucha de proyectos por `miembrosUids` y `rolEnProyecto` pasan al paso 3:
+   después de migrar no agregan nada, porque todo lo migrado ya llega por los
+   campos viejos, y su primer uso real son los miembros que entren por invitación.
+   Quedan anotados para el paso 3: los proyectos nuevos tienen que nacer con su
+   dueño como miembro (hoy se crean con `setDoc` sin `miembros`), y restaurar un
+   proyecto desde la papelera tiene que dejar solo al dueño, igual que hoy "los
+   colaboradores no vuelven". Todos los `setDoc` sin `merge` sobre `proyectos` son
+   de creación o de esa restauración: ninguno reescribe un proyecto existente, así
+   que nada borra los miembros migrados.
 3. **Pantallas, con sus funciones y sus reglas.**
    - Funciones: `aceptarInvitacion`; `traspasarProyecto` (dueño, roles,
      `controlFerreteria` y el catálogo que usa la obra); y `crearExportacion`, que
