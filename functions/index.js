@@ -3142,7 +3142,10 @@ exports.crearExportacion = onCall({ region: 'us-central1' }, async (request) => 
   const proyDoc = await db.collection('proyectos').doc(proyectoId).get();
   if (!proyDoc.exists) throw new HttpsError('not-found', 'Proyecto no encontrado.');
   const proy = proyDoc.data();
+  // Dueño, o miembro del modelo nuevo (`miembrosUids`) o del viejo (`compartidoCon`), sea
+  // editor o supervisor: exportar no modifica la obra.
   const tieneAcceso = proy.ownerId === userId
+    || (Array.isArray(proy.miembrosUids) && proy.miembrosUids.includes(userId))
     || (Array.isArray(proy.compartidoCon) && proy.compartidoCon.includes(userId));
   if (!tieneAcceso) throw new HttpsError('permission-denied', 'Sin acceso al proyecto.');
 
@@ -3251,7 +3254,10 @@ exports.procesarExportacion = onDocumentCreated(
       let ferreteriasVisibles = [];
       let armadosConfig = [];
       if (tipo === 'EXCEL' || tipo === 'KMZ') {
-        const configSnap = await db.collection('configuraciones').doc(userId).get();
+        // El catálogo del DUEÑO: los ids de ferretería de la obra son de su catálogo. Con
+        // el de quien exporta, un editor o supervisor veía sin nombre los materiales que
+        // el dueño agregó a mano (`f_…`).
+        const configSnap = await db.collection('configuraciones').doc(String(proy.ownerId || userId)).get();
         if (configSnap.exists) {
           ferreteriasVisibles = configSnap.data().catalogoFerreteria || [];
         }
@@ -4122,4 +4128,62 @@ exports.migrarMiembros = onCall({ region: 'us-central1', timeoutSeconds: 300, me
     filas,
     nombres,
   };
+});
+
+// ============================================================
+// CLOUD FUNCTION — aceptarInvitacion
+// Paso 3a del rediseño de equipos: el invitado acepta una invitación a un proyecto.
+// Lo hace el SERVIDOR y no el teléfono: valida el código, suma al miembro y gasta el
+// link, todo en una transacción. Así la protección del código es real (el invitado no
+// puede escribirse solo en el proyecto) y un link no sirve dos veces aunque lo acepten
+// dos personas en el mismo instante.
+// Mientras convivan los dos sistemas, el miembro se anota también en los campos viejos
+// (`compartidoCon`, `permisos`, `supervisoresInfo`): con eso lo ven las reglas de hoy,
+// la exportación y los teléfonos sin actualizar. Lógica compartida con la app en
+// invitaciones.js (copia de src/utils/equipoProyecto.js).
+// ============================================================
+exports.aceptarInvitacion = onCall({ region: 'us-central1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+  const { codigo } = request.data || {};
+  if (typeof codigo !== 'string' || !/^[A-Za-z0-9]{15,40}$/.test(codigo)) {
+    throw new HttpsError('invalid-argument', 'inexistente');
+  }
+  const { estadoInvitacion, rolEnProyecto, permisoViejo } = require('./invitaciones');
+  const uid = request.auth.uid;
+  const conf = await db.collection('configuraciones').doc(uid).get();
+  const c = conf.exists ? conf.data() : {};
+  const nombre = c.nombrePersonal || String(c.email || request.auth.token.email || '').split('@')[0] || '';
+  const FV = admin.firestore.FieldValue;
+  const invRef = db.collection('invitaciones').doc(codigo);
+
+  return db.runTransaction(async (tx) => {
+    const invSnap = await tx.get(invRef);
+    const inv = invSnap.exists ? invSnap.data() : null;
+    const estado = estadoInvitacion(inv, Date.now());
+    if (estado !== 'abierta') throw new HttpsError('failed-precondition', estado);
+    if (!['editor', 'supervisor'].includes(inv.rol)) throw new HttpsError('failed-precondition', 'inexistente');
+
+    const proyRef = db.collection('proyectos').doc(String(inv.proyectoId));
+    const proySnap = await tx.get(proyRef);
+    if (!proySnap.exists) throw new HttpsError('failed-precondition', 'inexistente');
+    const proy = proySnap.data();
+    const base = { proyectoId: proyRef.id, proyectoNombre: proy.nombre || '' };
+
+    // Quien ya es miembro no cambia de rol por aceptar otra invitación: eso lo decide el
+    // dueño desde EQUIPO. Y el link no se gasta.
+    const rolActual = rolEnProyecto(proy, uid);
+    if (rolActual) return { ...base, rol: rolActual, yaEra: true };
+
+    const ahora = new Date().toISOString();
+    tx.update(proyRef, {
+      [`miembros.${uid}`]: { rol: inv.rol, desde: ahora, por: inv.deUid || null, invitacion: codigo },
+      miembrosUids: FV.arrayUnion(uid),
+      compartidoCon: FV.arrayUnion(uid),
+      [`permisos.${uid}`]: permisoViejo(inv.rol),
+      [`supervisoresInfo.${uid}`]: { nombre, empresa: c.empresaPersonal || '' },
+    });
+    if (inv.tipo === 'qr') tx.update(invRef, { usos: FV.increment(1), ultimoUso: ahora });
+    else tx.update(invRef, { estado: 'usada', usadaPor: uid, usadaEn: ahora });
+    return { ...base, rol: inv.rol, yaEra: false };
+  });
 });

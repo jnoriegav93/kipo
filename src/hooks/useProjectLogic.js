@@ -62,6 +62,9 @@ const armarProyectoNuevo = ({ nombre, tipo = 'levantamiento', modoFotos = 'compr
         compartidoCon: [],
         permisos: {},
         solicitudesPendientes: [],
+        // Nace con su dueño como miembro (rediseño de equipos, paso 3a)
+        miembros: { [user.uid]: { rol: 'dueno', desde: new Date().toISOString() } },
+        miembrosUids: [user.uid],
         createdAt: new Date().toISOString()
     };
     return { nuevo, diaUno };

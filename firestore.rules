@@ -139,6 +139,31 @@ service cloud.firestore {
         resource.data.ownerId == request.auth.uid;
     }
 
+    // ── INVITACIONES A UN PROYECTO (rediseño de equipos, paso 3a) ─────────
+    // El link o el QR llevan solo el código (el id de este documento, largo y al azar);
+    // el proyecto y el rol viven aquí, donde nadie los puede cambiar a mano. Aceptar lo
+    // hace la función `aceptarInvitacion`, con el SDK de admin: nadie puede sumarse a
+    // un proyecto escribiendo desde el cliente.
+    match /invitaciones/{codigo} {
+      // Se lee de a una, con el código: así se muestra antes de aceptarla, sin poder
+      // listar las de otros.
+      allow get: if request.auth != null;
+      // Quien las creó las lista (la consulta tiene que filtrar por deUid).
+      allow list: if request.auth != null && resource.data.deUid == request.auth.uid;
+      // Solo el dueño del proyecto invita, a editor o a supervisor, y nacen abiertas.
+      allow create: if request.auth != null
+        && request.resource.data.deUid == request.auth.uid
+        && request.resource.data.estado == 'abierta'
+        && request.resource.data.rol in ['editor', 'supervisor']
+        && request.resource.data.tipo in ['link', 'qr']
+        && get(/databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)).data.ownerId == request.auth.uid;
+      // Quien la creó la anula (link) o la cierra (QR). No se puede cambiar nada más.
+      allow update: if request.auth != null
+        && resource.data.deUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'anuladaEn'])
+        && request.resource.data.estado in ['anulada', 'cerrada'];
+    }
+
     // ── CONTROL DE FERRETERÍA ─────────────────────────────────────────────
     match /controlFerreteria/{listaId} {
       // Leer: cualquier autenticado — los EDITORES de un proyecto de equipo necesitan

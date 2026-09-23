@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, ChevronDown, ArrowLeft, Eye, EyeOff, Trash2, MapPin,
-  FolderDown, FileDown, Share2, Folder, X, Key, Users, Check, XCircle, Copy, MessageCircle, Image as ImageIcon, Info, Download, Loader2, Minus, AlertTriangle, Lock, UploadCloud, Edit, Link2, Camera, FolderInput, Package, Settings, ArrowUpDown, ListOrdered, ClipboardCheck, ShieldCheck, Wrench, Cloud, Smartphone, RefreshCw, Search, Recycle, LogOut, Archive, Hash
+  FolderDown, FileDown, Share2, Folder, X, Key, Users, Check, XCircle, Copy, MessageCircle, Image as ImageIcon, Info, Download, Loader2, Minus, AlertTriangle, Lock, UploadCloud, Edit, Link2, Camera, FolderInput, Package, Settings, ArrowUpDown, ListOrdered, ClipboardCheck, ShieldCheck, Wrench, Cloud, Smartphone, RefreshCw, Search, Recycle, LogOut, Archive, Hash, QrCode
 } from 'lucide-react';
 import { Modal, ThemedInput } from '../components/UI';
 import { claseBotonCabecera } from '../utils/cabeceras';
@@ -26,7 +26,9 @@ import { descargarFotosZip, handleExportKML } from '../utils/exporters';
 import { crearExportacion, suscribirseAExportacion } from '../services/exportacionService';
 import { COLORES_DIA } from '../data/constantes';
 import { validarPunto } from '../utils/validarPunto';
-import ChatBitacora from '../components/ChatBitacora';
+import EquipoProyecto from '../components/EquipoProyecto';
+import ScannerQR from '../components/ScannerQR';
+import { codigoDesdeTexto } from '../utils/equipoProyecto';
 import VistaPapelera from './VistaPapelera';
 import FotosProyecto from '../components/FotosProyecto';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
@@ -55,9 +57,9 @@ const VistaProyectos = ({
   cambiarColorDia, uniformizarColorDias, toggleVisibilidadProyecto, cambiarColorProyecto,
   solicitarBorrarProyecto, irUbicacionProyecto, setExportData, selectorColorAbierto,
   setSelectorColorAbierto, tempData, confirmarCrearProyecto, confirmarCrearDia,
-  aprobarSupervisor, rechazarSupervisor, eliminarSupervisor, user, setAlertData, setConfirmData,
+  aprobarSupervisor, rechazarSupervisor, user, setAlertData, setConfirmData,
   setLogoApp, handleCargarLogo, setPuntoSeleccionado, setModoLectura, setModoEdicion, setDatosFormulario, setVistaAnterior, setMapViewState, modalPendiente, setModalPendiente, setMostrarOverlayGPS, onVolver,
-  notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos, onIniciarOrdenar, onRepararPuntos,
+  notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos, onIniciarOrdenar, onRepararPuntos, onAbrirInvitacion, onVerSupervision,
   proyectosArchivados = [], onArchivarProyecto, onDesarchivarProyecto
 }) => {
 
@@ -378,6 +380,8 @@ const VistaProyectos = ({
   // Acordeón de la lista de proyectos: SOLO un proyecto desglosado a la vez.
   // Independiente del proyecto activo (EDITANDO = proyectoActual).
   const [desglosadoId, setDesglosadoId] = React.useState(null);
+  // Escáner para unirse a un proyecto con el QR que muestra su dueño (paso 3a)
+  const [escaneando, setEscaneando] = React.useState(false);
 
   // SALIR de un proyecto compartido (editor): solo se desvincula de tu lista, no borra nada.
   const salirDeProyecto = (proy) => {
@@ -393,6 +397,10 @@ const VistaProyectos = ({
             compartidoCon: aRem(user.uid),
             [`permisos.${user.uid}`]: dfield(),
             enListaDe: aRem(user.uid),
+            // Y del modelo nuevo (rediseño de equipos): deja de ser miembro
+            [`miembros.${user.uid}`]: dfield(),
+            miembrosUids: aRem(user.uid),
+            [`supervisoresInfo.${user.uid}`]: dfield(),
           });
         } catch (e) { console.error('Salir del proyecto:', e); setAlertData?.({ title: 'Error', message: 'No se pudo salir del proyecto.' }); }
       },
@@ -783,12 +791,24 @@ const VistaProyectos = ({
           </div>
 
           <div className={`${theme.header} shrink-0 p-2 z-10 shadow-sm`}>
-            <button
-              onClick={() => { setTempData({ tipo: 'levantamiento', modoFotos: 'comprimido' }); setModalOpen('CREAR_PROYECTO'); }}
-              className={`w-full py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:border-brand-500 hover:text-brand-500 transition-colors active:scale-95`}
-            >
-              <Plus size={18} /> CREAR NUEVO PROYECTO
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setTempData({ tipo: 'levantamiento', modoFotos: 'comprimido' }); setModalOpen('CREAR_PROYECTO'); }}
+                className={`flex-1 py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:border-brand-500 hover:text-brand-500 transition-colors active:scale-95`}
+              >
+                <Plus size={18} /> CREAR NUEVO PROYECTO
+              </button>
+              {/* UNIRME: escanear el QR con el que el dueño de un proyecto invita (paso 3a) */}
+              {onAbrirInvitacion && (
+                <button
+                  onClick={() => setEscaneando(true)}
+                  className={`shrink-0 px-3 py-3 border-2 border-dashed ${theme.border} ${theme.card} rounded-xl ${theme.text} font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 hover:border-brand-500 hover:text-brand-500 transition-colors active:scale-95`}
+                  title="Unirme a un proyecto con el QR de su dueño"
+                >
+                  <QrCode size={16} /> UNIRME
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -796,6 +816,9 @@ const VistaProyectos = ({
               const esActivo = proyectoActual?.id === proy.id;   // EDITANDO (proyecto activo)
               const esCompartido = !!proy.esCompartido;          // proyecto donde soy editor/supervisor
               const esGrupo = !!proy.grupoId;                    // proyecto compartido en un equipo
+              // Supervisor: tiene el proyecto en su lista, pero solo lo abre en el modo
+              // supervisión (sin escribir) hasta que el paso 4 lleve el candado a toda la app.
+              const soloMirar = esCompartido && !['edicion', 'ambos'].includes(proy.permisoActual);
               const desglosado = desglosadoId === proy.id;       // acordeón: uno a la vez
               const notifCount = notificacionesProyectos[proy.id] || 0;
               const idsDias = proy.dias?.map(d => d.id) || [];
@@ -853,7 +876,9 @@ const VistaProyectos = ({
 
                     {/* 3 botones juntos: ojo · editar (lápiz) · desglose — negros con borde blanco */}
                     <div className="flex items-center gap-1 shrink-0">
-                      {/* Ojo — visibilidad LOCAL (solo cambia tu vista) */}
+                      {/* Ojo — visibilidad LOCAL (solo cambia tu vista). El supervisor no lo tiene:
+                          sus proyectos no están en el mapa normal, solo en el de supervisión. */}
+                      {!soloMirar && (
                       <button
                         onClick={(e) => toggleVisibilidadProyecto(e, proy)}
                         className={`w-10 h-10 rounded-lg flex items-center justify-center active:scale-90 transition-all shadow-sm ${esActivo ? `${btnActivo}` : 'border-2 border-slate-900 bg-transparent'}`}
@@ -864,8 +889,19 @@ const VistaProyectos = ({
                           : <EyeOff size={16} className={esActivo ? (activoNaranja ? 'text-slate-900/40' : 'text-white/40') : 'text-slate-400'} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                         }
                       </button>
+                      )}
 
-                      {/* Editar (lápiz) → VERDE cuando es el proyecto activo (EDITANDO) */}
+                      {/* Editar (lápiz) → VERDE cuando es el proyecto activo (EDITANDO). El
+                          supervisor tiene VER en su lugar: abre el modo supervisión. */}
+                      {soloMirar ? (
+                      <button
+                        onClick={() => onVerSupervision?.(proy)}
+                        className="w-10 h-10 rounded-lg flex items-center justify-center active:scale-95 transition-all shadow-sm border-2 border-slate-900 bg-transparent"
+                        title="Ver (solo lectura)"
+                      >
+                        <Eye size={16} className={theme.text} />
+                      </button>
+                      ) : (
                       <button
                         onClick={() => { if (!esActivo) seleccionarProyecto(proy); }}
                         className={`w-10 h-10 rounded-lg flex items-center justify-center active:scale-95 transition-all shadow-sm ${esActivo ? `${activoNaranja ? "border-2" : "border"} bg-green-600 ${bordeActivo}` : 'border-2 border-slate-900 bg-transparent'}`}
@@ -873,6 +909,7 @@ const VistaProyectos = ({
                       >
                         <Edit size={16} className={esActivo ? 'text-white' : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                       </button>
+                      )}
 
                       {/* Desglose (acordeón) */}
                       <button
@@ -936,6 +973,9 @@ const VistaProyectos = ({
                         <Archive size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                       </button>
                     )}
+                    {/* LISTA DE PUNTOS abre los postes para editar, y el GPS lleva al mapa normal,
+                        donde el proyecto del supervisor no está: el supervisor no los tiene. */}
+                    {!soloMirar && (<>
                     <button
                       onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`LISTA_PUNTOS_${proy.id}`); }}
                       className={`flex-1 h-10 rounded-lg text-[11px] font-black tracking-widest active:scale-95 transition-all ${esActivo ? `${btnActivo} ${iconActivo}` : `border-2 ${theme.border} bg-transparent ${theme.text}`}`}
@@ -949,13 +989,15 @@ const VistaProyectos = ({
                     >
                       <MapPin size={16} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} className={esActivo ? iconActivo : theme.text} />
                     </button>
+                    </>)}
                   </div>
 
                   {/* FILA UNIFICADA: FOTOS + CHAT + COLABORADORES + FERRETERÍA + REVISIÓN + EXPORTAR + BORRAR */}
                   <div className={`px-3 py-3 rounded-b-xl overflow-x-auto overflow-y-hidden`}>
                     <div className="flex items-center w-full h-10 gap-1 min-w-max">
 
-                      {/* Papelera — pegada a la izquierda (debajo de la cámara) */}
+                      {/* Papelera — pegada a la izquierda. El supervisor no la tiene: restaurar es escribir. */}
+                      {!soloMirar && (<>
                       <button
                         onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`PAPELERA_${proy.id}`); }}
                         className={`shrink-0 rounded-lg hover:border-red-400 active:scale-95 transition-all w-10 h-10 flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
@@ -965,6 +1007,7 @@ const VistaProyectos = ({
                       </button>
 
                       <div className="h-8 w-[1px] bg-slate-400 mx-1 shrink-0"></div>
+                      </>)}
 
                       {/* Botones centrales distribuidos homogéneamente */}
                       <div className="flex items-center justify-evenly flex-1 gap-1">
@@ -1221,73 +1264,33 @@ const VistaProyectos = ({
         ))
       }
 
-      {/* PANTALLA EQUIPO (unifica colaboradores + bitácora): editores arriba, bitácora desplegada abajo */}
-      {
-        modalLocalOpen?.startsWith('EQUIPO_') && proyModal && (() => {
-          const PERMISOS_INFO = {
-            lectura: { label: 'Supervisor', color: 'bg-blue-100 text-blue-700' },
-            edicion: { label: 'Editor', color: 'bg-slate-900 text-white' },
-            ambos:   { label: 'Sup + Editor', color: 'bg-purple-100 text-purple-700' },
-          };
-          const colaboradores = proyModal.compartidoCon || [];
-          return (
-            <div className={`fixed inset-0 z-[300] ${theme.card} flex flex-col`}>
+      {/* PANTALLA EQUIPO: miembros e invitaciones arriba, bitácora abajo (paso 3a) */}
+      {modalLocalOpen?.startsWith('EQUIPO_') && proyModal && (
+        <EquipoProyecto
+          proyecto={proyModal}
+          user={user}
+          config={config}
+          theme={theme}
+          setAlertData={setAlertData}
+          setConfirmData={setConfirmData}
+          onClose={() => setModalLocalOpen(null)}
+        />
+      )}
 
-              {/* Header */}
-              <div className={`${theme.header} px-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
-                <div className="flex items-center gap-3">
-                  <div className="bg-purple-100 p-2 rounded-lg">
-                    <Users size={18} className="text-purple-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className={`font-black text-lg ${theme.text} uppercase`}>Equipo</h3>
-                    <p className={`text-xs ${theme.textSec} font-medium truncate`}>{proyModal.nombre}</p>
-                  </div>
-                </div>
-                <button onClick={() => setModalLocalOpen(null)} className={claseBotonCabecera(theme)} title="Cerrar">
-                  <X size={24} strokeWidth={2.5} />
-                </button>
-              </div>
-
-              {/* Colaboradores (arriba, compacto) */}
-              <div className={`shrink-0 max-h-[38vh] overflow-y-auto px-4 py-3 space-y-2 border-b-2 ${theme.border}`}>
-                {colaboradores.length > 0 ? (
-                  <div className="space-y-2">
-                    <h4 className={`text-xs font-black ${theme.text} uppercase tracking-wider`}>Colaboradores</h4>
-                    {colaboradores.map(uid => {
-                      const info = proyModal.supervisoresInfo?.[uid];
-                      const permiso = proyModal.permisos?.[uid] || 'lectura';
-                      const { label, color } = PERMISOS_INFO[permiso] || PERMISOS_INFO.lectura;
-                      return (
-                        <div key={uid} className={`${theme.card} border-2 ${theme.border} rounded-xl px-3 py-1.5 flex items-center justify-between gap-3`}>
-                          <p className={`flex-1 min-w-0 text-sm font-black ${theme.text} truncate`}>{info?.nombre || 'Colaborador'}</p>
-                          <span className={`px-2 py-1.5 rounded-lg text-[10px] font-black shrink-0 ${color}`}>{label}</span>
-                          {!proyModal.esCompartido && (
-                            <button onClick={() => eliminarSupervisor(proyModal.id, uid)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg active:scale-95 transition-all shrink-0" title="Eliminar acceso"><Trash2 size={16} /></button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className={`text-xs ${theme.textSec} text-center py-1`}>Sin colaboradores.</p>
-                )}
-              </div>
-
-              {/* Bitácora desplegada (abajo) */}
-              <div className="flex-1 overflow-hidden flex flex-col">
-                <ChatBitacora
-                  proyectoId={proyModal.id}
-                  user={user}
-                  theme={theme}
-                  esCompartido={false}
-                  config={config}
-                />
-              </div>
-            </div>
-          );
-        })()
-      }
+      {/* UNIRME: escáner del QR de invitación a un proyecto (paso 3a) */}
+      {escaneando && (
+        <ScannerQR
+          titulo="Unirme a un proyecto"
+          ayuda="Apunta al QR que muestra el dueño del proyecto en su pantalla."
+          onClose={() => setEscaneando(false)}
+          onResult={(texto) => {
+            setEscaneando(false);
+            const codigo = codigoDesdeTexto(texto);
+            if (codigo) onAbrirInvitacion?.(codigo);
+            else setAlertData?.({ title: 'QR no válido', message: 'Ese código no es una invitación a un proyecto de Kipo.' });
+          }}
+        />
+      )}
 
       {/* PAPELERA DEL PROYECTO */}
       {

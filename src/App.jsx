@@ -52,6 +52,7 @@ const GIRO_MAPA_ACTIVO = true;
 import { normalizarPerfil, etiquetaPerfil } from './utils/perfiles';
 import BloqueoHerramienta from './components/BloqueoHerramienta';
 import PantallaMigracion from './components/PantallaMigracion';
+import ModalAceptarInvitacion from './components/ModalAceptarInvitacion';
 
 // Vistas
 import VistaMapa from './views/VistaMapa';
@@ -90,11 +91,39 @@ import { filtrosVisibilidad } from './utils/filtrosVisibilidad';
 // Constantes
 import { DATA_INICIAL, COLORES_DIA, colorParaNuevoDia } from './data/constantes';
 
+// Link de invitación a un proyecto (?inv=CÓDIGO; paso 3a del rediseño de equipos). Se
+// captura al cargar la app, antes de cualquier navegación, y se guarda en sessionStorage:
+// si primero hay que iniciar sesión, el código sobrevive al login. La URL se limpia en el
+// acto, para que recargar no vuelva a abrir la invitación.
+(() => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const codigo = params.get('inv');
+    if (!codigo) return;
+    sessionStorage.setItem('kipo_inv', codigo);
+    params.delete('inv');
+    const resto = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (resto ? '?' + resto : ''));
+  } catch { /* sin sessionStorage: el link se pierde, pero la app sigue */ }
+})();
+
 function App() {
   // Autenticación y sincronización
   const { user, deviceBlocked, cerrarSesion } = useAuth();
   const { estadoSync, cola, agregarTarea, erroresTareas, procesando: syncProcesando, eliminarTarea, reintentarTarea, guardarComoNuevo, isOnline } = useSync();
   const [queueModalAbierto, setQueueModalAbierto] = React.useState(false);
+  // Invitación a un proyecto esperando que se acepte (link ?inv= o QR escaneado)
+  const [codigoInvitacion, setCodigoInvitacion] = React.useState(() => {
+    try { return sessionStorage.getItem('kipo_inv'); } catch { return null; }
+  });
+  const abrirInvitacion = React.useCallback((codigo) => {
+    try { sessionStorage.setItem('kipo_inv', codigo); } catch { /* sin sessionStorage */ }
+    setCodigoInvitacion(codigo);
+  }, []);
+  const cerrarInvitacion = React.useCallback(() => {
+    try { sessionStorage.removeItem('kipo_inv'); } catch { /* sin sessionStorage */ }
+    setCodigoInvitacion(null);
+  }, []);
   const { logoApp, setLogoApp, handleCargarLogo } = useLogo(user);
 
   // Sesión admin — limpiar cuando el admin vuelve a su cuenta
@@ -396,6 +425,15 @@ function App() {
   // Las fibras no pasan por la cola: se escriben directo y el SDK las muestra al instante.
   const todasLasConexiones = conexiones;
   const todosLosAceros = React.useMemo(() => aplicarPendientes(cablesAcero, cola, 'cablesAcero'), [cablesAcero, cola]);
+  // Los puntos del modo supervisión. Si se entró desde la lista de proyectos (`vivo`),
+  // salen en vivo de la escucha única; desde EQUIPOS, de la lista que trajo esa pantalla,
+  // porque esos proyectos no siempre están entre los que se escuchan.
+  const puntosSupervision = React.useMemo(() => {
+    if (!mapaSupervision) return [];
+    return mapaSupervision.vivo
+      ? todosLosPuntos.filter(p => perteneceAProyecto(p, mapaSupervision.proyecto))
+      : (mapaSupervision.puntos || []);
+  }, [mapaSupervision, todosLosPuntos]);
 
   // Separar proyectos compartidos: solo supervisión vs con permiso de edición
   const proyectosEditor = React.useMemo(() =>
@@ -410,10 +448,18 @@ function App() {
 
   // Lista PERSONAL de proyectos: excluye los proyectos del grupo que el dueño aún no
   // "jaló" a su lista (viven solo en la vista del equipo hasta presionar EDITAR ahí).
-  const proyectosLista = React.useMemo(() =>
-    proyectosActivos.filter(p => p.esCompartido || !p.grupoId || (p.enListaDe || []).includes(user?.uid)),
-    [proyectosActivos, user?.uid]
+  // Los proyectos donde el usuario es SUPERVISOR (paso 3a) salen en la lista, pero no en
+  // `todosLosProyectos`, que alimenta el mapa normal y todo lo que edita. Se abren solo en
+  // el modo supervisión, que no deja escribir, hasta que el paso 4 lleve el candado por
+  // rol a toda la app.
+  const proyectosSoloMirar = React.useMemo(() =>
+    proyectosSupervisados.filter(p => !['edicion', 'ambos'].includes(p.permisoActual) && !p.archivado),
+    [proyectosSupervisados]
   );
+  const proyectosLista = React.useMemo(() => [
+    ...proyectosActivos.filter(p => p.esCompartido || !p.grupoId || (p.enListaDe || []).includes(user?.uid)),
+    ...proyectosSoloMirar,
+  ], [proyectosActivos, proyectosSoloMirar, user?.uid]);
 
 
   // Ferretería = COPIA por usuario. config.catalogoFerreteria es la lista del usuario (se
@@ -703,6 +749,9 @@ function App() {
         ownerNombre: config?.nombrePersonal || user?.displayName || '',
         ownerEmpresa: config?.empresaPersonal || '',
         compartidoCon: [], permisos: {},
+        // Nace con su dueño como miembro (rediseño de equipos, paso 3a)
+        miembros: { [user.uid]: { rol: 'dueno', desde: new Date().toISOString() } },
+        miembrosUids: [user.uid],
         createdAt: new Date().toISOString(),
       };
     }
@@ -2217,7 +2266,7 @@ function App() {
               });
             }
           }
-          puntosVisiblesMapa={mapaSupervision ? mapaSupervision.puntos : puntosVisiblesMapa}
+          puntosVisiblesMapa={mapaSupervision ? puntosSupervision : puntosVisiblesMapa}
           iconSize={iconSize}
           obtenerColorDia={mapaSupervision
             ? () => '#3b82f6'
@@ -2266,7 +2315,7 @@ function App() {
           isDark={isDark}
           verDetalle={mapaSupervision
             ? () => {
-              const punto = mapaSupervision.puntos.find(p => p.id === puntoSeleccionado);
+              const punto = puntosSupervision.find(p => p.id === puntoSeleccionado);
               if (punto) {
                 setDatosFormulario({
                   ...JSON.parse(JSON.stringify(punto.datos)),
@@ -2364,7 +2413,7 @@ function App() {
           }}
           totalFibras={mapaSupervision ? fibrasSupervisadas.length : conexionesProyecto.length}
           nombreProyecto={mapaSupervision ? mapaSupervision.proyecto?.nombre : proyectoActual?.nombre}
-          totalPuntosProyecto={mapaSupervision ? mapaSupervision.puntos.length : (modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto)}
+          totalPuntosProyecto={mapaSupervision ? puntosSupervision.length : (modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto)}
           proyectoEsCompartido={!!proyectoActual?.esCompartido}
           onGuardarFibra={async ({ nombre = '', capacidad } = {}) => {
             if (puntosRecorrido.length < 2) return;
@@ -2447,10 +2496,11 @@ function App() {
           }}
           modoSupervision={!!mapaSupervision}
           onVolverSupervision={() => {
-            // La sección Supervisión se retiró: los supervisores entran desde EQUIPOS
+            // Se vuelve a donde se entró: EQUIPOS o la lista de PROYECTOS (paso 3a)
+            const volverA = mapaSupervision?.volverA || 'equipos';
             setMapaSupervision(null);
             setPuntoSeleccionado(null);
-            setVista('equipos');
+            setVista(volverA);
           }}
           overlayGPSActivo={!!mostrarOverlayGPS}
           fotosConCoordenadas={fotosConCoordenadas}
@@ -2565,7 +2615,23 @@ function App() {
           setModalPendiente={setModalPendiente}
           setMostrarOverlayGPS={setMostrarOverlayGPS}
           onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
-          notificacionesProyectos={{ ...notifProyectos, ...notifEditor }}
+          notificacionesProyectos={{ ...notifProyectos, ...notifEditor, ...notifSupervisados }}
+          onAbrirInvitacion={abrirInvitacion}
+          onVerSupervision={(proy) => {
+            // El supervisor mira su proyecto en el modo supervisión, que no deja escribir.
+            const pts = todosLosPuntos.filter(p => perteneceAProyecto(p, proy));
+            setMapaSupervision({ proyecto: proy, puntos: pts, vivo: true, volverA: 'proyectos' });
+            setPuntoSeleccionado(null);
+            const conCoords = pts.filter(p => p.coords?.lat != null && p.coords?.lng != null);
+            if (conCoords.length) {
+              irADestino(
+                conCoords.reduce((a, p) => a + p.coords.lat, 0) / conCoords.length,
+                conCoords.reduce((a, p) => a + p.coords.lng, 0) / conCoords.length,
+                17,
+              );
+            }
+            setVista('mapa');
+          }}
           marcarChatLeido={marcarChatLeido}
           conexiones={todasLasConexiones}
           onIniciarMoverPuntos={(proy) => {
@@ -2834,6 +2900,27 @@ function App() {
         {...alertData}
         theme={theme}
       />
+
+      {/* Invitación a un proyecto: por link (?inv=) o por QR escaneado en PROYECTOS */}
+      {user && codigoInvitacion && (
+        <ModalAceptarInvitacion
+          codigo={codigoInvitacion}
+          user={user}
+          theme={theme}
+          onCerrar={cerrarInvitacion}
+          onAceptada={(r) => {
+            cerrarInvitacion();
+            const rol = r.rol === 'supervisor' ? 'supervisor' : 'editor';
+            setAlertData({
+              title: r.yaEra ? 'Ya eras parte del proyecto' : 'Listo',
+              message: r.yaEra
+                ? 'Ya estabas en "' + r.proyectoNombre + '". Tu rol lo cambia el dueño desde EQUIPO.'
+                : 'Ahora eres ' + rol + ' de "' + r.proyectoNombre + '". Ya está en tu lista de proyectos.',
+            });
+            setVista('proyectos');
+          }}
+        />
+      )}
 
       <ExportModal
         isOpen={!!exportData}

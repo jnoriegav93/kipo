@@ -1570,8 +1570,11 @@ Lo que faltaba mapear quedó resuelto así:
    reglas, en `functions/miembros.js`, probadas con Node y mutantes) y se corre
    desde `herramientas/migrar-miembros.html`. SIMULAR no escribe; MIGRAR solo
    agrega (campos punteados y `arrayUnion`): nunca pisa un miembro ni toca los
-   campos viejos; VERIFICAR vuelve a simular y tiene que dar 0 cambios. Falta que
-   el usuario simule, revisar juntos el informe (Ayacucho sobre todo) y migrar.
+   campos viejos; VERIFICAR vuelve a simular y tiene que dar 0 cambios. **Migrado
+   el 23/09**, revisado antes con el usuario: 50 proyectos, 43 que solo suman a su
+   dueño y 7 con editores. Ayacucho queda con Elizabeth (lagos) como dueña, y el
+   usuario lo confirmó: es la prioridad para no perder la información. Falta el
+   resultado de VERIFICAR.
    La escucha de proyectos por `miembrosUids` y `rolEnProyecto` pasan al paso 3:
    después de migrar no agregan nada, porque todo lo migrado ya llega por los
    campos viejos, y su primer uso real son los miembros que entren por invitación.
@@ -1591,6 +1594,24 @@ Lo que faltaba mapear quedó resuelto así:
    - Pantallas: EQUIPO dentro del proyecto (invitar por link o QR con el rol,
      miembros, cambiar rol, quitar, traspasar, invitaciones sin usar con anular),
      AMIGOS en el menú y los avisos al entrar.
+
+   Se parte en tres entregas: **3a invitar, 3b amigos y avisos, 3c traspasar**.
+
+   **3a hecho el 23/09.** Las reglas de `invitaciones` y las funciones
+   `aceptarInvitacion`, `crearExportacion` y `procesarExportacion` ya están en
+   producción; la app está en la rama, sin desplegar hasta que el usuario pruebe 3a
+   y 3b. Lógica en `src/utils/equipoProyecto.js`, con una copia para el servidor en
+   `functions/invitaciones.js` (la prueba compara las dos). Pantallas:
+   `EquipoProyecto` (reemplaza a la EQUIPO vieja), `ModalAceptarInvitacion`,
+   `ScannerQR` (compartido con EQUIPOS) y UNIRME en PROYECTOS. El supervisor tiene
+   sus proyectos en la lista, pero solo los abre en el modo supervisión (VER): no
+   tiene el ojo, LISTA DE PUNTOS, el GPS ni la papelera, que escriben o llevan al
+   mapa normal; el paso 4 lleva el candado a toda la app. Los proyectos nacen con su
+   dueño como miembro, y restaurar desde la papelera deja solo al dueño. Durante la
+   convivencia cada miembro se refleja en `compartidoCon`/`permisos`, así que las
+   reglas de `proyectos` y `fotosProyecto` todavía no hicieron falta; y la escucha de
+   proyectos por `miembrosUids` queda para el paso 5, porque con el reflejo todo
+   miembro llega por `compartidoCon`.
 4. **Candado por rol.** `rolEnProyecto` en cada botón que escribe: el supervisor,
    solo lectura en todo (mapa, formulario, fotos, ferretería, revisión); el
    editor, sin borrar el proyecto.

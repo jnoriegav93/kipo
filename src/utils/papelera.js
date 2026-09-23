@@ -168,7 +168,12 @@ export const restaurarLista = async (entrada) => {
 // se guardaron con meta.grupo = idProyecto al borrarlo). Colaboradores NO se restauran.
 export const restaurarProyecto = async (entrada, uid) => {
   const s = { ...(entrada.snapshot || {}) };
-  delete s.compartidoCon; delete s.permisos; // colaboradores no vuelven
+  delete s.compartidoCon; delete s.permisos; delete s.supervisoresInfo; // colaboradores no vuelven
+  // Tampoco en el modelo nuevo (rediseño de equipos): vuelve solo con su dueño.
+  if (s.ownerId != null) {
+    s.miembros = { [String(s.ownerId)]: { rol: 'dueno', desde: new Date().toISOString() } };
+    s.miembrosUids = [String(s.ownerId)];
+  } else { delete s.miembros; delete s.miembrosUids; }
   await setDoc(doc(db, 'proyectos', String(entrada.idOriginal)), s);
   // Hijos agrupados
   const qs = await getDocs(query(collection(db, 'papelera'), where('uid', '==', uid), where('meta.grupo', '==', String(entrada.idOriginal))));

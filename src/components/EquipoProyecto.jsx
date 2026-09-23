@@ -1,0 +1,253 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Users, X, Trash2, Share2, QrCode } from 'lucide-react';
+import { doc, updateDoc, deleteField, arrayRemove, arrayUnion } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import ChatBitacora from './ChatBitacora';
+import { claseBotonCabecera } from '../utils/cabeceras';
+import { ROL_TEXTO, rolEnProyecto, miembrosDelProyecto, permisoViejo, linkInvitacion } from '../utils/equipoProyecto';
+import { crearInvitacion, anularInvitacion, escucharInvitacionesAbiertas } from '../services/invitaciones';
+
+const COLOR_ROL = {
+  dueno: 'bg-slate-900 text-white',
+  editor: 'bg-blue-600 text-white',
+  supervisor: 'bg-blue-100 text-blue-700',
+};
+
+const fechaCorta = (iso) => {
+  try {
+    return new Date(iso).toLocaleString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+};
+
+// EQUIPO de un proyecto (paso 3a del rediseño de equipos; CONTEXTO.md): quién es miembro
+// y con qué rol. Solo el dueño invita, cambia roles, quita y anula invitaciones sin usar.
+// Debajo, la bitácora, como antes.
+//
+// Mientras convivan los dos sistemas, cada cambio se escribe también en los campos viejos
+// (`compartidoCon`, `permisos`, `supervisoresInfo`): así lo ven las reglas de hoy, la
+// exportación y los teléfonos sin actualizar.
+const EquipoProyecto = ({ proyecto, user, config, theme, setAlertData, setConfirmData, onClose }) => {
+  const soyDueno = rolEnProyecto(proyecto, user?.uid) === 'dueno';
+  const miembros = miembrosDelProyecto(proyecto);
+  const [invitaciones, setInvitaciones] = useState([]);
+  const [qr, setQr] = useState(null); // { codigo, rol, imagen }
+  const [ocupado, setOcupado] = useState(false);
+  // El QR sirve solo mientras está en pantalla: si se sale de EQUIPO con uno abierto,
+  // se cierra igual.
+  const qrAbierto = useRef(null);
+
+  useEffect(() => {
+    if (!soyDueno || !user?.uid) return undefined;
+    return escucharInvitacionesAbiertas(proyecto.id, user.uid, setInvitaciones);
+  }, [soyDueno, proyecto.id, user?.uid]);
+
+  useEffect(() => () => {
+    if (qrAbierto.current) anularInvitacion(qrAbierto.current, 'cerrada').catch(() => {});
+  }, []);
+
+  const nombreDe = (uid) => (String(uid) === String(proyecto.ownerId)
+    ? (proyecto.ownerNombre || 'Dueño')
+    : (proyecto.supervisoresInfo?.[uid]?.nombre || 'Miembro'));
+
+  const refProyecto = () => doc(db, 'proyectos', String(proyecto.id));
+
+  const avisarFallo = (titulo, e) => {
+    console.error(titulo, e);
+    setAlertData?.({ title: titulo, message: 'Revisa la conexión e inténtalo de nuevo.' });
+  };
+
+  const invitarPorLink = async (rol) => {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      const inv = await crearInvitacion({ proyecto, rol, tipo: 'link', user, config });
+      const link = linkInvitacion(inv.codigo, window.location.origin);
+      const texto = `Te invito a ser ${ROL_TEXTO[rol].toUpperCase()} del proyecto "${proyecto.nombre}" en Kipo: ${link}`;
+      if (navigator.share) {
+        // Si cancela el menú de compartir, la invitación queda en "sin usar" y se anula ahí.
+        try { await navigator.share({ text: texto }); } catch { /* canceló */ }
+      } else {
+        await navigator.clipboard?.writeText(texto);
+        setAlertData?.({ title: 'Link copiado', message: 'Pégalo en WhatsApp. Sirve una sola vez.' });
+      }
+    } catch (e) { avisarFallo('No se pudo crear la invitación', e); }
+    setOcupado(false);
+  };
+
+  const mostrarQR = async (rol) => {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      const inv = await crearInvitacion({ proyecto, rol, tipo: 'qr', user, config });
+      const QRCode = (await import('qrcode')).default;
+      const imagen = await QRCode.toDataURL(linkInvitacion(inv.codigo, window.location.origin),
+        { width: 480, margin: 2, color: { dark: '#0f172a', light: '#ffffff' } });
+      qrAbierto.current = inv.codigo;
+      setQr({ codigo: inv.codigo, rol, imagen });
+    } catch (e) { avisarFallo('No se pudo crear el QR', e); }
+    setOcupado(false);
+  };
+
+  const cerrarQR = () => {
+    if (qr) anularInvitacion(qr.codigo, 'cerrada').catch(e => console.error('Cerrar QR:', e));
+    qrAbierto.current = null;
+    setQr(null);
+  };
+
+  const anular = (inv) => {
+    if (qr?.codigo === inv.codigo) { cerrarQR(); return; }
+    anularInvitacion(inv.codigo).catch(e => avisarFallo('No se pudo anular la invitación', e));
+  };
+
+  const cambiarRol = async (uid, rol) => {
+    try {
+      await updateDoc(refProyecto(), {
+        [`miembros.${uid}.rol`]: rol,
+        miembrosUids: arrayUnion(uid),
+        [`permisos.${uid}`]: permisoViejo(rol),
+      });
+    } catch (e) { avisarFallo('No se pudo cambiar el rol', e); }
+  };
+
+  const quitar = (uid) => setConfirmData?.({
+    title: 'Quitar del proyecto',
+    message: `${nombreDe(uid)} dejará de ver "${proyecto.nombre}" hasta que lo vuelvas a invitar. No se borra nada de lo que hizo.`,
+    actionText: 'QUITAR',
+    theme,
+    onConfirm: async () => {
+      setConfirmData(null);
+      try {
+        await updateDoc(refProyecto(), {
+          [`miembros.${uid}`]: deleteField(),
+          miembrosUids: arrayRemove(uid),
+          compartidoCon: arrayRemove(uid),
+          [`permisos.${uid}`]: deleteField(),
+          [`supervisoresInfo.${uid}`]: deleteField(),
+          enListaDe: arrayRemove(uid),
+        });
+      } catch (e) { avisarFallo('No se pudo quitar', e); }
+    },
+  });
+
+  const tituloSeccion = `text-xs font-black ${theme.text} uppercase tracking-wider`;
+  const botonInvitar = `flex-1 h-9 rounded-lg border-2 ${theme.border} ${theme.text} text-[11px] font-black tracking-widest flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-40`;
+
+  return (
+    <div className={`fixed inset-0 z-[300] ${theme.card} flex flex-col`}>
+
+      {/* Encabezado */}
+      <div className={`${theme.header} px-4 border-b-2 ${theme.border} flex items-center justify-between shrink-0 pt-safe-header`} style={{ paddingBottom: '12px' }}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-purple-100 p-2 rounded-lg">
+            <Users size={18} className="text-purple-600" />
+          </div>
+          <div className="min-w-0">
+            <h3 className={`font-black text-lg ${theme.text} uppercase`}>Equipo</h3>
+            <p className={`text-xs ${theme.textSec} font-medium truncate`}>{proyecto.nombre}</p>
+          </div>
+        </div>
+        <button onClick={onClose} className={claseBotonCabecera(theme)} title="Cerrar">
+          <X size={24} strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* Miembros, invitar e invitaciones sin usar (arriba, con su propio scroll) */}
+      <div className={`shrink-0 max-h-[55vh] overflow-y-auto px-4 py-3 space-y-4 border-b-2 ${theme.border}`}>
+        <div className="space-y-2">
+          <h4 className={tituloSeccion}>Miembros</h4>
+          {miembros.map(m => {
+            const esYo = String(m.uid) === String(user?.uid);
+            const editable = soyDueno && m.rol !== 'dueno';
+            return (
+              <div key={m.uid} className={`${theme.card} border-2 ${theme.border} rounded-xl px-3 py-1.5 flex items-center gap-2`}>
+                <p className={`flex-1 min-w-0 text-sm font-black ${theme.text} truncate`}>
+                  {nombreDe(m.uid)}{esYo ? ' (tú)' : ''}
+                </p>
+                {editable ? (
+                  <select
+                    value={m.rol}
+                    onChange={(e) => cambiarRol(m.uid, e.target.value)}
+                    className={`px-2 py-1.5 rounded-lg text-[10px] font-black border-0 shrink-0 ${COLOR_ROL[m.rol]}`}
+                    title="Cambiar rol"
+                  >
+                    <option value="editor">EDITOR</option>
+                    <option value="supervisor">SUPERVISOR</option>
+                  </select>
+                ) : (
+                  <span className={`px-2 py-1.5 rounded-lg text-[10px] font-black shrink-0 ${COLOR_ROL[m.rol]}`}>
+                    {ROL_TEXTO[m.rol].toUpperCase()}
+                  </span>
+                )}
+                {editable && (
+                  <button onClick={() => quitar(m.uid)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg active:scale-95 transition-all shrink-0" title="Quitar del proyecto">
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {soyDueno && (
+          <div className="space-y-2">
+            <h4 className={tituloSeccion}>Invitar</h4>
+            {['editor', 'supervisor'].map(rol => (
+              <div key={rol} className="flex items-center gap-2">
+                <span className={`w-24 shrink-0 text-[11px] font-black ${theme.text}`}>{ROL_TEXTO[rol].toUpperCase()}</span>
+                <button onClick={() => invitarPorLink(rol)} disabled={ocupado} className={botonInvitar}>
+                  <Share2 size={14} /> LINK
+                </button>
+                <button onClick={() => mostrarQR(rol)} disabled={ocupado} className={botonInvitar}>
+                  <QrCode size={14} /> QR
+                </button>
+              </div>
+            ))}
+            <p className={`text-[10px] ${theme.textSec}`}>
+              El link sirve una sola vez. El QR sirve mientras lo tengas abierto en pantalla.
+            </p>
+          </div>
+        )}
+
+        {soyDueno && invitaciones.length > 0 && (
+          <div className="space-y-2">
+            <h4 className={tituloSeccion}>Invitaciones sin usar</h4>
+            {invitaciones.map(inv => (
+              <div key={inv.codigo} className={`border-2 border-dashed ${theme.border} rounded-xl px-3 py-1.5 flex items-center gap-2`}>
+                <p className={`flex-1 min-w-0 text-xs font-bold ${theme.text} truncate`}>
+                  {ROL_TEXTO[inv.rol] || inv.rol} · {inv.tipo === 'qr' ? 'QR' : 'link'} · {fechaCorta(inv.creada)}
+                </p>
+                <button onClick={() => anular(inv)} className="text-[10px] font-black text-red-600 px-2 py-1 rounded-lg border-2 border-red-600 active:scale-95 shrink-0">
+                  ANULAR
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Bitácora (abajo) */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <ChatBitacora proyectoId={proyecto.id} user={user} theme={theme} esCompartido={false} config={config} />
+      </div>
+
+      {/* QR a pantalla completa: se escanea desde Kipo (PROYECTOS → UNIRME) o con la cámara */}
+      {qr && (
+        <div className="fixed inset-0 z-[400] bg-black/80 flex items-center justify-center p-4" onClick={cerrarQR}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Invitación a {ROL_TEXTO[qr.rol].toUpperCase()}</p>
+            <p className="text-base font-black text-slate-900 mb-3 truncate">{proyecto.nombre}</p>
+            <img src={qr.imagen} alt="QR de invitación" className="w-full max-w-[320px] mx-auto" />
+            <p className="text-[11px] text-slate-500 mt-3">
+              Que lo escaneen desde Kipo, en PROYECTOS → UNIRME, o con la cámara del teléfono. Al cerrarlo deja de servir.
+            </p>
+            <button onClick={cerrarQR} className="mt-4 w-full py-3 rounded-xl bg-slate-900 text-white font-black text-xs uppercase tracking-widest active:scale-95">
+              CERRAR QR
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default EquipoProyecto;
