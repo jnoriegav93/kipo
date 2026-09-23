@@ -1462,6 +1462,40 @@ Decidido además el 23/09: al traspasar se le agregan al nuevo dueño **solo los
 ítems de ferretería que la obra usa**; si no, su catálogo se llenaría de
 materiales ajenos.
 
+### Lo que falta mapear antes de programar el paso 1
+
+El diseño está cerrado. La ejecución tiene piezas de **servidor** sin diseñar:
+hoy dependen de `compartidoCon` o del sistema de equipos, y dejarían afuera a los
+miembros del modelo nuevo.
+
+- **Reglas de `proyectos` (update):** solo dejan escribir al dueño, a miembros de
+  un equipo (vía `grupoId`) y a editores de `compartidoCon`. Un editor nuevo no
+  podría, por ejemplo, crear un día. **Aceptar una invitación** es que el
+  invitado se agregue a sí mismo al proyecto: hace falta una cláusula que lo
+  permita solo con una invitación válida (`exists()` sobre
+  `invitaciones/{código}`). Es lo que vuelve real la protección del código.
+  También hace falta una para salir del proyecto por cuenta propia.
+- **Reglas de `fotosProyecto`:** leer exige ser dueño o estar en `compartidoCon`;
+  crear, ser editor por `permisos`. Los miembros nuevos no verían la capa de fotos.
+- **Reglas nuevas** para `invitaciones`, amistades y avisos.
+- **Función `crearExportacion`** (`functions/index.js:3145`): da acceso solo al
+  dueño y a `compartidoCon`. Un supervisor o editor nuevo recibiría "Sin acceso
+  al proyecto" al exportar.
+- **Catálogo al traspasar:** `configuraciones/{uid}` solo la escribe su dueño, así
+  que el dueño anterior **no puede** agregar ítems al catálogo del nuevo. O lo hace
+  el servidor (Cloud Function, inmediato), o el teléfono del nuevo dueño al abrir
+  la obra (hasta que la abra, todos verían la ferretería vacía). Sin decidir.
+- **Convivencia de versiones:** hay principio pero no diseño. Un link nuevo abierto
+  con la app vieja no significa nada para ella; un editor con la versión vieja
+  arma su lista con `compartidoCon`, así que la migración no puede tocar los
+  campos viejos hasta el paso 5.
+- **Barrido de escrituras** para el candado por rol: el inventario cubrió el
+  dominio de equipos, no todas las escrituras de la app (31 solo en `App.jsx`, más
+  `VistaProyectos`, `VerDetalle`, `PhotoManager`, `Configurador`…).
+
+Todas las reglas que hacen falta **suman permisos**, así que la política del repo
+las permite. Pero van en despliegue aparte y **antes** del código que las usa.
+
 ### Orden de trabajo
 
 0. Medir los postes, fibras y cables viejos que tengan el `proyectoId` guardado
