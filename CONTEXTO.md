@@ -1401,6 +1401,10 @@ los supervisores).
   una sola vez** (se marca como usado al aceptar, porque se reenvía por WhatsApp)
   y el **QR sirve mientras el dueño lo tenga abierto en pantalla** (exige estar al
   lado, y así una cuadrilla entera escanea de una vez).
+- **El dueño puede anular invitaciones.** En el EQUIPO del proyecto ve los links
+  que mandó y que nadie usó todavía, y puede anularlos (por ejemplo, si mandó uno
+  a la persona equivocada). Decidido el 23/09; sale casi gratis porque cada
+  invitación ya queda guardada.
 - A un **amigo** el dueño lo agrega directo, sin link. Al entrar a la app, el
   agregado ve un aviso a pantalla completa, como el de actualización: "Fulano te
   agregó como editor de X".
@@ -1460,8 +1464,12 @@ materiales ajenos.
 
 ### Orden de trabajo
 
-0. Medir datos viejos (`proyectoId` numérico o ausente): lo necesita la escucha
-   única por proyecto.
+0. Medir los postes, fibras y cables viejos que tengan el `proyectoId` guardado
+   como número, o sin él. Ojo, no es el sistema viejo de equipos: son los datos
+   de obra, que el rediseño reutiliza tal cual. La escucha única pregunta "todo
+   lo del proyecto X" comparando texto, así que lo que tenga el proyecto escrito
+   como número dejaría de aparecer. Si el conteo da cero, se sigue directo; si
+   no, se normaliza antes de cambiar la escucha. Solo lee: no toca producción.
 1. Modelo nuevo conviviendo con el viejo: miembros en el proyecto, una escucha de
    proyectos por miembro y una de contenido por proyecto. Mientras convivan, lo
    nuevo no debe romper a quien siga con la versión vieja.
