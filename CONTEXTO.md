@@ -4,11 +4,13 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 22 de septiembre de 2026.
+Última actualización: 23 de septiembre de 2026.
 
 > **Ahora:** el modo Diseño sigue en pausa. El 22/09 se abrió el trabajo de
-> **equipos**: que editores y supervisores vean la obra completa. Ver "Equipos:
-> ver la obra completa (22/09)" más abajo. Falta la parte B2.
+> **equipos**; tras las tandas A y B1, el 23/09 se decidió **rediseñarlo desde
+> cero**: cada proyecto con sus miembros, y amigos en lugar de equipos. Ver
+> "Rediseño de equipos" más abajo. **Diseño acordado; se arranca por el paso 0
+> (medir datos viejos).**
 
 ---
 
@@ -1326,8 +1328,9 @@ el supervisor abrió desde EQUIPOS. Del objeto `acero` se pasan **solo las
 líneas**, sin las acciones de guardar/editar/borrar: la barra que las usa ya
 está apagada por `modoSupervision`, así que no queda camino a escribir.
 
-**Falta la tanda B2**, acordada con el usuario: el supervisor debe ver todo,
-exportar y escribir en bitácora, pero no modificar ni borrar.
+**La tanda B2 quedó absorbida por el rediseño** (sección siguiente). Lo que se
+había planteado: el supervisor debe ver todo, exportar y escribir en bitácora,
+pero no modificar ni borrar.
 
 - Que el supervisor abra el proyecto como cualquiera, en vez de por la puerta
   lateral de `mapaSupervision`, que le pasa su propia lista de puntos. Así
@@ -1341,6 +1344,121 @@ exportar y escribir en bitácora, pero no modificar ni borrar.
 
 El color del día, ojo, **no es visual-personal**: vive en el documento del
 proyecto, así que si alguien lo cambia le cambia a todos. Sin decidir.
+
+---
+
+## Rediseño de equipos: cada proyecto con sus miembros (acordado, 23/09)
+
+Decidido con el usuario el 22-23/09, **antes de programar nada**. Reemplaza al
+sistema actual, donde convivían dos modelos que se pisaban: permisos por proyecto
+(`compartidoCon`, `permisos`, solicitudes con código; muerto en pantallas, pero
+sus campos siguen decidiendo qué se ve) y roles a nivel equipo
+(`equipos.miembros[].rol` + `grupoId`). El modelo nuevo escribía en los campos
+del viejo para funcionar: por eso cada arreglo destapaba otro (tandas A, B1 y el
+bloqueo de B2, cuando salió que `permisos` dice `'edicion'` para todos, incluidos
+los supervisores).
+
+### El modelo
+
+- **Todo es por proyecto.** Cada proyecto tiene sus miembros: **un dueño**,
+  editores y supervisores. Los equipos dejan de existir como contenedor.
+- **Dueño:** todo, incluido borrar el proyecto, invitar, cambiar roles
+  (editor ↔ supervisor), quitar miembros y traspasar la obra. No puede salirse:
+  su botón es BORRAR (como ya pasa hoy). Hay uno solo por proyecto.
+- **Editor:** todo menos borrar el proyecto; su botón es SALIR.
+- **Supervisor:** ve todo, exporta y escribe en la bitácora. No agrega, no edita
+  ni borra nada: ni datos ni fotos.
+- **Ser miembro = tener el proyecto en tu lista.** `enListaDe` desaparece.
+- Quien sale o es quitado deja de ver el proyecto hasta que lo inviten de nuevo.
+  **Nada se copia al salir** (hoy se duplica la obra entera: el que sale se queda
+  el original y el dueño del equipo recibe una copia completa con ids nuevos).
+- Lo borrado va a la papelera del proyecto, se purga a los 15 días y nadie lo
+  borra a mano (como hoy).
+
+### Invitar
+
+- **Solo el dueño invita.**
+- Por **link o QR con el rol ya elegido** ("agregar editor" / "agregar
+  supervisor"). El invitado ve "Fulano te invita a ser editor del proyecto X" →
+  ACEPTAR / CANCELAR. Sin solicitud ni aprobación del dueño.
+- **El rol no viaja en el link.** El link lleva un código al azar y el rol vive en
+  un documento de invitación. Si viajara en la URL (aunque fuera abreviado, tipo
+  "1sor"/"2ed", como preguntó el usuario), cualquiera podría cambiarlo a mano. Un
+  código que no *dice* el rol sino que *apunta* a una invitación guardada no se
+  puede editar: cambiar una letra da una invitación que no existe. Para quien
+  invita y para quien acepta no agrega ningún paso.
+- Ese mismo documento es lo que hace posible la duración decidida: el **link sirve
+  una sola vez** (se marca como usado al aceptar, porque se reenvía por WhatsApp)
+  y el **QR sirve mientras el dueño lo tenga abierto en pantalla** (exige estar al
+  lado, y así una cuadrilla entera escanea de una vez).
+- A un **amigo** el dueño lo agrega directo, sin link. Al entrar a la app, el
+  agregado ve un aviso a pantalla completa, como el de actualización: "Fulano te
+  agregó como editor de X".
+
+### Amigos (reemplaza a EQUIPOS en el menú)
+
+- La sección lista a las personas con las que se coincide en algún proyecto, con
+  un botón AGREGAR A AMIGOS.
+- Eso manda una solicitud: el otro ve un aviso (badge) en el menú y, dentro,
+  "Fulano te invitó a ser su amigo" → aceptar / rechazar.
+- Es **mutuo**. Si no lo fuera, llegaría una invitación a un proyecto de alguien
+  que el invitado no conoce.
+- Borrar a un amigo también es mutuo, y **no lo saca de ningún proyecto**: eso se
+  hace desde el EQUIPO del proyecto.
+- Descartado: agregar grupos enteros de un toque. Se quiere control persona por
+  persona.
+
+### Traspasar la obra
+
+- Solo a alguien que **ya es miembro** (editor o supervisor). Por defecto, el
+  dueño anterior queda como editor.
+- **No se copia nada: se cambia `ownerId` del proyecto.** Postes, fibras y fotos
+  no viven "dentro" del dueño: son documentos sueltos con `proyectoId`, y las
+  fotos cuelgan de `proyectos/{id}/` en Storage. Hoy la salida de un equipo copia
+  todo solo porque la app pregunta por dueño y no por proyecto; con la escucha
+  única por proyecto, la copia sobra.
+- **Catálogo de ferretería:** vive en la configuración del dueño, y todos leen el
+  del dueño (`configPropietario`, App.jsx). Al traspasar, al nuevo dueño se le
+  agregan **los ítems que la obra usa y él no tiene, con el mismo id**. Funciona
+  porque los ids de la base son estables para todos (`b1`…`bN`, y `b_<ts>` los
+  que agrega el admin; `itemDesdeBase` conserva el id) y los propios llevan `f_`.
+  Cubre también al dueño nuevo que borró ítems de la base. La base la maneja el
+  admin en `sistema/ferreteriaBase`; `FERRETERIA_BASE_DEFAULT` es el respaldo.
+
+### Migración de lo que existe
+
+- A cada persona, **solo los proyectos que hoy están en su lista** pasan a ser
+  membresías, como **editor** (el usuario no quiere dar acceso a todo el equipo:
+  hay quien eligió editar uno o dos proyectos).
+- **Los supervisores no se migran: se los vuelve a invitar.** Nunca tuvieron
+  proyectos de equipo en su lista (su fila no tiene EDITAR,
+  `VistaEquipos.jsx:131`), así que la regla de arriba tampoco les daría nada.
+- En producción hay hoy **un solo cliente real: el proyecto de Ayacucho**. El
+  dueño lo tiene en su lista y los editores también. La migración es chica.
+
+Decidido además el 23/09: al traspasar se le agregan al nuevo dueño **solo los
+ítems de ferretería que la obra usa**; si no, su catálogo se llenaría de
+materiales ajenos.
+
+### Orden de trabajo
+
+0. Medir datos viejos (`proyectoId` numérico o ausente): lo necesita la escucha
+   única por proyecto.
+1. Modelo nuevo conviviendo con el viejo: miembros en el proyecto, una escucha de
+   proyectos por miembro y una de contenido por proyecto. Mientras convivan, lo
+   nuevo no debe romper a quien siga con la versión vieja.
+2. Migración.
+3. Pantallas: EQUIPO dentro del proyecto, AMIGOS en el menú, avisos al entrar.
+4. Candado por rol en pantalla.
+5. Retirar lo viejo: `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
+   `grupoId`, `supervisoresInfo`, y el código muerto (`VistaPermisos`,
+   `VistaSupervision`, `ModalAgregarCodigo`, `aprobarSupervisor`,
+   `rechazarSupervisor`, `codigoAcceso`).
+6. **Último:** reglas de Firestore que hagan cumplir el rol. Solo cuando todos
+   tengan la versión nueva: cerrarlas antes deja sin poder guardar a quien no
+   aceptó la actualización.
+
+Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
 ---
 
@@ -1371,6 +1489,13 @@ proyecto, así que si alguien lo cambia le cambia a todos. Sin decidir.
   (que todo `proyectoId` sea texto, no número) y reacomodar los cambios
   instantáneos al guardar y borrar, que hoy dependen de la lista por `ownerId`.
   Acordado con el usuario el 22/09: se hace, pero después de la tanda B2.
+- **Importar un armado que trae ferretería agregada a mano.** Con los armados
+  por proyecto, un editor va a poder importar armados desde su colección general
+  a un proyecto. Si ese armado usa una ferretería que el usuario creó (no está
+  en el catálogo duro del código), al importarla al proyecto hay que decidir qué
+  pasa: se copia el material al catálogo del proyecto, se ignora, o se avisa.
+  Planteado por el usuario el 22/09; **verlo al final del rediseño de equipos**,
+  no antes.
 - Ferretería automática (cálculo de materiales), pausado.
 - Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
 - El aviso de actualización recarga la página: conviene que no aparezca mientras
