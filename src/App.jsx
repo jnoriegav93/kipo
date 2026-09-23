@@ -39,6 +39,7 @@ import VerDetalle from './components/VerDetalle';
 import { enviarMensajeSistema, detectarCambiosFotos, formatId } from './utils/bitacoraAuto';
 import { verticesDeConexion, longitudFibra, mejorProyeccion, separarDeFibras } from './utils/fibraUtils';
 import { postesDeCable, metrosCableAcero, nombreTipoAcero, esMedioTramo, TRAZO_ACERO_VACIO, hayTrazoAcero, puedeGuardarAcero, tocarFibraAcero, trazoDesdeCable, sugeridasPorAcero, mediosTramosSinCable } from './utils/cablesAcero';
+import { aplicarPendientes } from './utils/colaSync';
 import { perteneceAProyecto } from './utils/helpers';
 import { posicionesAGuardar } from './utils/ordenTendido';
 import { contarPorClase, prefijosDeProyecto } from './utils/itemsAuto';
@@ -353,9 +354,6 @@ function App() {
     proyectos, setProyectos,
     proyectosSupervisados, setProyectosSupervisados,
     puntos, setPuntos,
-    puntosDeProyectos,
-    conexionesDeProyectos,
-    acerosDeProyectos,
     conexiones, setConexiones,
     cablesAcero, setCablesAcero,
     config: configNube, setConfig
@@ -390,24 +388,14 @@ function App() {
   }, [user?.uid, proyectos]);
 
 
-  // Todo lo visible de la obra: lo propio más lo que hicieron los demás en los proyectos
-  // del equipo. Las dos listas no se pisan —la escucha por proyecto descarta lo propio—,
-  // así que el `Map` es solo un seguro contra duplicados.
-  const todosLosPuntos = React.useMemo(() => {
-    const map = new Map();
-    [...puntos, ...puntosDeProyectos].forEach(p => map.set(p.id, p));
-    return Array.from(map.values());
-  }, [puntos, puntosDeProyectos]);
-  const todasLasConexiones = React.useMemo(() => {
-    const map = new Map();
-    [...conexiones, ...conexionesDeProyectos].forEach(c => map.set(c.id, c));
-    return Array.from(map.values());
-  }, [conexiones, conexionesDeProyectos]);
-  const todosLosAceros = React.useMemo(() => {
-    const map = new Map();
-    [...cablesAcero, ...acerosDeProyectos].forEach(c => map.set(c.id, c));
-    return Array.from(map.values());
-  }, [cablesAcero, acerosDeProyectos]);
+  // Lo que se ve de la obra: todo lo de los proyectos del usuario, lo haya creado quien
+  // lo haya creado (una sola escucha por proyecto, en useFirebaseData), con las tareas
+  // que esperan en la cola aplicadas encima. Sin esa capa, cualquier snapshot pisaba un
+  // poste recién creado, movido o borrado que todavía no había subido.
+  const todosLosPuntos = React.useMemo(() => aplicarPendientes(puntos, cola, 'puntos'), [puntos, cola]);
+  // Las fibras no pasan por la cola: se escriben directo y el SDK las muestra al instante.
+  const todasLasConexiones = conexiones;
+  const todosLosAceros = React.useMemo(() => aplicarPendientes(cablesAcero, cola, 'cablesAcero'), [cablesAcero, cola]);
 
   // Separar proyectos compartidos: solo supervisión vs con permiso de edición
   const proyectosEditor = React.useMemo(() =>
@@ -695,7 +683,7 @@ function App() {
     // Cables de acero con sus DOS postes entre los elegidos: sin uno de ellos no existen.
     // Al copiar, su medio tramo y sus fibras apoyadas pasan a las copias si también van.
     const idsTexto = new Set([...idsSet].map(String));
-    const cablesSel = cablesAcero.filter(c => (c.puntos || []).length === 2 && c.puntos.every(id => idsTexto.has(String(id))));
+    const cablesSel = todosLosAceros.filter(c => (c.puntos || []).length === 2 && c.puntos.every(id => idsTexto.has(String(id))));
 
     const origen = proyMover;
     const fechaDeDia = (diaId) => (origen?.dias || []).find(d => d.id === diaId)?.fecha || new Date().toLocaleDateString();
@@ -887,7 +875,7 @@ function App() {
     setModoMoverPuntos(false);
     setPuntosSeleccionadosMover([]);
     setMoverProyId(null);
-  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, cablesAcero, proyMover, user, config, setPuntos, setConexiones, setCablesAcero, setProyectos, setProyectoActual, setAlertData]);
+  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, todosLosAceros, proyMover, user, config, setPuntos, setConexiones, setCablesAcero, setProyectos, setProyectoActual, setAlertData]);
 
   // Resetear modoMover y pendingCoords al deseleccionar punto
   React.useEffect(() => {
@@ -1049,7 +1037,7 @@ function App() {
     diaActual, proyectoActual,
     proyectos: todosLosProyectos,
     asegurarDiaHoy,
-    puntos: todosLosPuntos, setPuntos, cablesAcero, setCablesAcero,
+    puntos: todosLosPuntos, setPuntos, cablesAcero: todosLosAceros, setCablesAcero,
     setVista,
     setConfirmData, setAlertData,
     agregarTarea, theme,
@@ -1284,6 +1272,9 @@ function App() {
   useEffect(() => {
     const idProy = proyectoActual?.id;
     if (!idProy || fibrasRescatadas.current.has(String(idProy))) return;
+    // Solo en proyectos propios: la lista trae las fibras de todos los miembros, y no
+    // hace falta que cada teléfono del equipo reescriba las mismas.
+    if (String(proyectoActual.ownerId) !== String(user?.uid)) return;
     if (!conexiones?.length || !todosLosPuntos?.length) return;
     const delProyecto = conexiones.filter(c => perteneceAProyecto(c, proyectoActual));
     if (!delProyecto.length) return;
@@ -1305,7 +1296,7 @@ function App() {
       }
       console.log(`Fibras: ${rescatadas.length} rescatadas, ${perdidas.length} sin postes vivos.`);
     })();
-  }, [proyectoActual, conexiones, todosLosPuntos, setConexiones]);
+  }, [proyectoActual, conexiones, todosLosPuntos, setConexiones, user?.uid]);
 
   // Suscripción a fotosProyecto con coordenadas (capa de fotos en mapa)
   useEffect(() => {
@@ -1357,7 +1348,7 @@ function App() {
     if (puntoSeleccionado) return;                 // punto existente: ya tiene doc
     const id = tempPuntoId || puntoTemporal?.id;
     if (!id || !proyectoActual || !user) return;
-    if ((puntos || []).some(p => p.id === id)) return; // ya materializado
+    if (todosLosPuntos.some(p => p.id === id)) return; // ya materializado
     const diaTemp = puntoTemporal?.diaId || diaActual;
     const borrador = {
       id,
@@ -1372,7 +1363,7 @@ function App() {
     // pero el cache local se actualiza al instante. NO usar await (colgaría el flujo
     // de la foto offline). El cache local ya deja el doc listo para el updateDoc de la foto.
     setDoc(doc(db, 'puntos', String(id)), borrador, { merge: true }).catch(e => console.error('Error creando borrador:', e));
-  }, [puntoSeleccionado, tempPuntoId, puntoTemporal, proyectoActual, user, diaActual, datosFormulario, puntos, setPuntos]);
+  }, [puntoSeleccionado, tempPuntoId, puntoTemporal, proyectoActual, user, diaActual, datosFormulario, todosLosPuntos, setPuntos]);
 
   // Promover fotos huérfanas (subidas pero sin punto guardado) a la capa de fotos del mapa
   const promovidasRef = React.useRef(false);
@@ -1406,7 +1397,7 @@ function App() {
 
   // Asociar foto de proyecto a un punto específico
   const asociarFoto = React.useCallback(async (fotoDoc, puntoId, forzar = false, overrideSection = null, overrideItem = null) => {
-    const punto = puntos.find(p => p.id === puntoId);
+    const punto = todosLosPuntos.find(p => p.id === puntoId);
     if (!punto) return 'error';
     const sectionId = overrideSection || fotoDoc.sectionId;
     const itemId = overrideItem || fotoDoc.itemId;
@@ -1433,7 +1424,7 @@ function App() {
       p.id === puntoId ? { ...p, datos: { ...p.datos, fotos: newFotos } } : p
     ));
     return 'ok';
-  }, [puntos, proyectoActual?.id, setPuntos]);
+  }, [todosLosPuntos, proyectoActual?.id, setPuntos]);
 
   // Tomar foto directa desde el mapa (capa de fotos) → fotosProyecto con GPS del celular, SIN sección
   const capturarFotoMapa = React.useCallback(async (file) => {
@@ -1534,7 +1525,7 @@ function App() {
       puntoSeleccionado
     ) {
       // Actualizar punto en Firebase sin cambiar de vista
-      const puntoActualizado = puntos.find(p => p.id === puntoSeleccionado);
+      const puntoActualizado = todosLosPuntos.find(p => p.id === puntoSeleccionado);
       if (puntoActualizado) {
         const direccionActualizada = datosFormulario.direccion || puntoActualizado.datos?.direccion;
 
@@ -1587,7 +1578,7 @@ function App() {
       }
     }
     prevModalOpen.current = modalOpen;
-  }, [modalOpen, modoEdicion, puntoSeleccionado, puntos, datosFormulario.fotos, datosFormulario.direccion, setPuntos, agregarTarea, proyectoActual, user]);
+  }, [modalOpen, modoEdicion, puntoSeleccionado, todosLosPuntos, datosFormulario.fotos, datosFormulario.direccion, setPuntos, agregarTarea, proyectoActual, user]);
 
   // Guardar configuración
   const guardarConfiguracion = async (nuevaConfig) => {
@@ -1943,7 +1934,7 @@ function App() {
             // ninguna fibra), solo deja de anotar una que ya no existe. Sus ids van a la
             // papelera para poder rehacer el apoyo si la fibra vuelve.
             const idFibra = String(con.id);
-            const cablesApoyo = (cablesAcero || []).filter(c => (c.fibras || []).map(String).includes(idFibra));
+            const cablesApoyo = todosLosAceros.filter(c => (c.fibras || []).map(String).includes(idFibra));
             if (cablesApoyo.length) {
               const sinLaFibra = (c) => (c.fibras || []).filter(f => String(f) !== idFibra);
               setCablesAcero(prev => prev.map(c => (
@@ -2040,14 +2031,14 @@ function App() {
 
   const borrarCableAcero = async (cable) => {
     // A la papelera va el documento tal cual, sin lo que la lista le suma para mostrarlo
-    const guardado = cablesAcero.find(c => c.id === cable.id) || cable;
+    const guardado = todosLosAceros.find(c => c.id === cable.id) || cable;
     setCablesAcero(prev => prev.filter(c => c.id !== cable.id));
     setCableAceroSeleccionado(null);
     try {
       const { enviarCableAceroAPapelera } = await import('./utils/papelera');
       await enviarCableAceroAPapelera({
         uid: user.uid, cable: guardado,
-        proyectoNombre: proyectos.find(p => String(p.id) === String(cable.proyectoId))?.nombre || '',
+        proyectoNombre: todosLosProyectos.find(p => String(p.id) === String(cable.proyectoId))?.nombre || '',
         nombre: `${cable.nombreTipo || 'Cable de acero'} (${cable.etiqueta || ''})`,
       });
     } catch (e) { console.error('Papelera cable de acero:', e); }
@@ -2474,7 +2465,7 @@ function App() {
             const proj = pt ? todosLosProyectos.find(pr => String(pr.id) === String(pt.proyectoId)) : null;
             return (proj || proyectoActual)?.tipo;
           })()}
-          puntos={puntos}
+          puntos={todosLosPuntos}
           abrirCamaraDirecta={() => {
             const punto = todosLosPuntos.find(p => p.id === puntoSeleccionado);
             if (!punto) return;
@@ -2700,7 +2691,7 @@ function App() {
           isDark={isDark}
           onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
           user={user}
-          puntos={puntos}
+          puntos={todosLosPuntos}
           proyectos={proyectos}
           setAlertData={setAlertData}
           soloProyectos

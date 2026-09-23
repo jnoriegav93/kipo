@@ -4,6 +4,7 @@ import { collection, addDoc, setDoc, updateDoc, doc, getDoc, deleteDoc } from 'f
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getAllUploadsPending, deleteUploadPending, marcarSubida } from '../utils/photoDB';
 import { uploadImage } from '../utils/storage';
+import { agregarConDedup, camposMover } from '../utils/colaSync';
 
 const SyncContext = createContext();
 
@@ -141,15 +142,10 @@ export const SyncProvider = ({ children }) => {
 
   const agregarTarea = (tipo, datos) => {
     const nuevaTarea = { id: nextTaskId(), tipo, datos, timestamp: new Date().toISOString() };
-    setCola(prev => {
-      // Dedup: un guardar_punto para el MISMO punto reemplaza al anterior pendiente
-      // (evita acumular "actualizar punto" 2,3,4 veces; la última versión gana).
-      if (tipo === 'guardar_punto' && datos?.idDoc) {
-        const filtrada = prev.filter(t => !(t.tipo === 'guardar_punto' && t.datos?.idDoc === datos.idDoc));
-        return [...filtrada, nuevaTarea];
-      }
-      return [...prev, nuevaTarea];
-    });
+    // Dedup: un guardar_punto para el MISMO punto reemplaza al anterior pendiente (la
+    // última versión gana), salvo una edición sobre una creación pendiente, que se
+    // funde en ella. El porqué está en src/utils/colaSync.js.
+    setCola(prev => agregarConDedup(prev, nuevaTarea));
   };
 
   // --- FUNCIÓN RECURSIVA PARA FOTOS (NECESARIA PARA GUARDAR) ---
@@ -212,8 +208,15 @@ export const SyncProvider = ({ children }) => {
           await setDoc(doc(db, coleccion, idDoc), { datos: datosFinales.datos }, { merge: true });
         }
       } else if (tarea.tipo === 'mover_punto') {
-        const { coleccion, idDoc, coords, datos } = tarea.datos;
-        await updateDoc(doc(db, coleccion, idDoc), { coords, datos });
+        // Solo la ubicación y la dirección: escribir `datos` entero pisaba lo que otro
+        // miembro hubiera cambiado mientras tanto (src/utils/colaSync.js).
+        const { coleccion, idDoc } = tarea.datos;
+        const m = camposMover(tarea.datos);
+        await updateDoc(doc(db, coleccion, idDoc), {
+          coords: m.coords,
+          'datos.direccion': m.direccion,
+          'datos.ubicacion': m.ubicacion,
+        });
       } else if (tarea.tipo === 'reasignar_punto') {
         const { coleccion, idDoc, proyectoId, diaId, ownerId } = tarea.datos;
         const campos = { proyectoId };

@@ -1539,6 +1539,26 @@ Lo que faltaba mapear quedó resuelto así:
    - Riesgo: la capa de pendientes. Se prueba con Node y con Chrome sin ventana:
      crear, mover y borrar sin señal; recargar con la cola llena; un cambio de
      otro miembro que llega con tareas pendientes.
+
+   **Hecho el 23/09 en la rama, sin desplegar.** La escucha única
+   (`useDocsPorProyecto`, que no publica nada hasta que llegaron todos los grupos,
+   para que el mapa no se vacíe a medias) y la capa de pendientes
+   (`src/utils/colaSync.js`). La escucha de proyectos por `miembrosUids` y
+   `rolEnProyecto` pasan al paso 2: sin datos migrados no hay con qué probarlas.
+   De paso se arreglaron dos fallas de la cola que perdían datos:
+   - **Crear y editar sin señal:** la edición reemplazaba a la creación en la cola,
+     y como editar escribe solo `datos`, el poste subía sin ubicación, proyecto ni
+     día. Ahora la edición se funde en la creación (`agregarConDedup`).
+   - **Mover** escribía `datos` entero con la copia del teléfono y pisaba lo que
+     otro miembro cambiara mientras tanto. Ahora escribe solo la ubicación y la
+     dirección (`camposMover`).
+
+   Verificado: la lógica pura con Node, con un mutante por regla que tiene que
+   fallar; lint igual que la línea base; build; y la app arranca sin errores en
+   Chrome sin ventana. **No probado con una sesión real**: falta pasarlo por un
+   proyecto de prueba antes de desplegar. Queda sin arreglar: borrar un poste sin
+   señal no entra a la cola hasta que sube su copia a la papelera, así que puede
+   reaparecer un momento, y si la app se cierra antes de tener señal, no se borra.
 2. **Migración.** Función `migrarMiembros`, solo admin, con modo simulacro que
    informa sin escribir. Escribe `miembros` y `miembrosUids` a partir de los campos
    viejos, con lo decidido: solo los proyectos que hoy están en la lista de cada
