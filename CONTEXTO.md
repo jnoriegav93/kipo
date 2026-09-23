@@ -1555,8 +1555,8 @@ Lo que faltaba mapear quedó resuelto así:
 
    Verificado: la lógica pura con Node, con un mutante por regla que tiene que
    fallar; lint igual que la línea base; build; y la app arranca sin errores en
-   Chrome sin ventana. **No probado con una sesión real**: falta pasarlo por un
-   proyecto de prueba antes de desplegar. Queda sin arreglar: borrar un poste sin
+   Chrome sin ventana. **Probado por el usuario el 23/09**, con su sesión y en un
+   proyecto de prueba: todo bien. Se sube esa noche, fuera de la jornada. Queda sin arreglar: borrar un poste sin
    señal no entra a la cola hasta que sube su copia a la papelera, así que puede
    reaparecer un momento, y si la app se cierra antes de tener señal, no se borra.
 2. **Migración.** Función `migrarMiembros`, solo admin, con modo simulacro que
