@@ -1823,6 +1823,23 @@ function App() {
     });
   }, [claveSimbologia]);
 
+  // ── SUPERVISIÓN: LA OBRA COMPLETA, SIN PODER TOCARLA ──────────────────────
+  // El supervisor ve las fibras y los cables de acero del proyecto que está mirando.
+  // Antes se le pasaba una lista vacía, pero no era una decisión de permisos: es que
+  // sus datos no llegaban (solo se escuchaba por `ownerId`), así que vaciarlas era lo
+  // único honesto. Ahora llegan, y esconderlas sería mentirle sobre la obra.
+  //
+  // Se filtra al proyecto que abrió desde EQUIPOS y no a `proyectoActual`: el supervisor
+  // no "activa" el proyecto, solo lo mira, y su proyecto activo puede ser otro.
+  const idProySupervisado = mapaSupervision ? String(mapaSupervision.proyecto?.id) : null;
+  const fibrasSupervisadas = React.useMemo(
+    () => (idProySupervisado && fibrasVisibles)
+      ? todasLasConexiones.filter(c => String(c.proyectoId) === idProySupervisado)
+      : [],
+    [idProySupervisado, fibrasVisibles, todasLasConexiones]
+  );
+  // `acerosSupervisados` vive más abajo, junto a `lineasAcero`: aquí todavía no existe.
+
   // Nombre propuesto para el próximo ramal: se toma el mayor "RAMAL NN" que ya
   // exista en el proyecto y se suma uno, así borrar uno no genera duplicados.
   // Solo se usa si el usuario no escribe nombre.
@@ -1874,6 +1891,16 @@ function App() {
   const lineasAceroProyecto = React.useMemo(
     () => lineasAcero.filter(c => perteneceAProyecto(c, proyectoActual)),
     [lineasAcero, proyectoActual]
+  );
+
+  // Los cables de acero que ve el supervisor: los del proyecto que abrió desde EQUIPOS.
+  // Va aquí y no arriba con `fibrasSupervisadas` porque necesita `lineasAcero`, que se
+  // define recién en esta parte del archivo.
+  const acerosSupervisados = React.useMemo(
+    () => idProySupervisado
+      ? lineasAcero.filter(c => String(c.proyectoId) === idProySupervisado)
+      : [],
+    [idProySupervisado, lineasAcero]
   );
 
   // Medios tramos VISIBLES del proyecto activo que no están en ningún cable de acero.
@@ -2335,8 +2362,8 @@ function App() {
           setFibrasVisibles={setFibrasVisibles}
           puntosRecorrido={mapaSupervision ? [] : puntosRecorrido}
           setPuntosRecorrido={setPuntosRecorrido}
-          conexionesVisiblesMapa={mapaSupervision ? [] : conexionesVisiblesMapa}
-          conexionesLista={mapaSupervision ? [] : conexionesProyecto}
+          conexionesVisiblesMapa={mapaSupervision ? fibrasSupervisadas : conexionesVisiblesMapa}
+          conexionesLista={mapaSupervision ? fibrasSupervisadas : conexionesProyecto}
           conexionSeleccionada={conexionSeleccionada}
           setConexionSeleccionada={setConexionSeleccionada}
           handleConexionClick={(con) => {
@@ -2347,7 +2374,7 @@ function App() {
               setCapacidadFibra(con.capacidad || 12);
             }
           }}
-          totalFibras={mapaSupervision ? 0 : conexionesProyecto.length}
+          totalFibras={mapaSupervision ? fibrasSupervisadas.length : conexionesProyecto.length}
           nombreProyecto={mapaSupervision ? mapaSupervision.proyecto?.nombre : proyectoActual?.nombre}
           totalPuntosProyecto={mapaSupervision ? mapaSupervision.puntos.length : (modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto)}
           proyectoEsCompartido={!!proyectoActual?.esCompartido}
@@ -2401,7 +2428,10 @@ function App() {
           // Props de CABLE DE ACERO (sin ellos, en supervisión, la barra es la de fibra)
           modoLinea={modoLinea}
           onCambiarModoLinea={cambiarModoLinea}
-          acero={mapaSupervision ? null : {
+          // En supervisión se pasan SOLO las líneas, para que el mapa las dibuje. Nada de
+          // las acciones de guardar, editar o borrar: la barra que las usa ya está apagada
+          // por `modoSupervision`, y sin ellas aquí no queda ningún camino a escribir.
+          acero={mapaSupervision ? { lineas: acerosSupervisados, visibles: acerosVisibles } : {
             lineas: lineasAcero,
             lineasProyecto: lineasAceroProyecto,
             trazo: trazoAcero,

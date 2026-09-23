@@ -4,10 +4,11 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 19 de septiembre de 2026.
+Última actualización: 22 de septiembre de 2026.
 
-> **Ahora:** el modo Diseño quedó en pausa el 14/09 para agregar el **cable de
-> acero** a la sección FIBRA. Ver la sección "Cable de acero" más abajo.
+> **Ahora:** el modo Diseño sigue en pausa. El 22/09 se abrió el trabajo de
+> **equipos**: que editores y supervisores vean la obra completa. Ver "Equipos:
+> ver la obra completa (22/09)" más abajo. Falta la parte B2.
 
 ---
 
@@ -1285,6 +1286,64 @@ de zoom propios (`zoomControl={false}`).
 
 ---
 
+## Equipos: ver la obra completa (22/09)
+
+El editor no veía las fibras que dibujaba el dueño. Investigando salió que el
+agujero era simétrico y más grande: **el dueño tampoco veía las del editor**, y
+lo mismo pasaba con los cables de acero. No era permisos —`conexiones` ya deja
+leer a cualquier autenticado— sino el cliente, y eran **dos candados**:
+
+1. `useFirebaseData` solo escuchaba fibras y acero por `ownerId`. Para puntos ya
+   existían dos escuchas por proyecto; para fibras y acero nunca se escribieron.
+2. `getConexionesVisibles` recibía solo los proyectos propios y descartaba las
+   fibras del equipo aunque ya hubieran llegado. Arreglar solo lo primero no
+   habría cambiado nada en pantalla.
+
+Los datos sí entraban en los reportes: el servidor consulta por `proyectoId`
+(`functions/index.js`), sin filtrar por dueño. Existían pero no se veían.
+
+**Tanda A (SELLO: 22/09/26, 10:28).** Una escucha por `proyectoId` para puntos,
+fibras y acero, que alcanza a editores **y** supervisores. Tres decisiones:
+
+- Trae **solo lo ajeno** (`ownerId !== uid`). Lo propio sigue llegando por su
+  escucha de `ownerId`, que es la lista que se actualiza sola al guardar o
+  borrar. Si las dos trajeran lo mismo, un borrado reaparecería por un parpadeo.
+- El tope de 30 del operador `in` se respeta **partiendo en grupos**, en vez del
+  `slice(0, 30)` que dejaba proyectos sin datos en silencio.
+- El **rescate automático de fibras sin trazo** sigue leyendo solo las propias:
+  filtra por proyecto activo, y con la lista fusionada habría reescrito el trazo
+  de otro dueño sin que nadie lo pida.
+
+Efectos secundarios conocidos: las fibras viejas **sin `ownerId`** ahora
+aparecen (antes eran invisibles para todos); las de `proyectoId` numérico siguen
+invisibles, porque el `in` compara texto.
+
+**Tanda B1 (SELLO: 22/09/26, 20:12).** El modo supervisión hacía dos cosas a la
+vez: apagaba los botones de editar (bien) y **vaciaba los datos** (fibras `[]`,
+acero `null`, contador en 0). Lo segundo no era una decisión de permisos: es que
+los datos no llegaban. Ahora llegan, así que se pasan filtrados al proyecto que
+el supervisor abrió desde EQUIPOS. Del objeto `acero` se pasan **solo las
+líneas**, sin las acciones de guardar/editar/borrar: la barra que las usa ya
+está apagada por `modoSupervision`, así que no queda camino a escribir.
+
+**Falta la tanda B2**, acordada con el usuario: el supervisor debe ver todo,
+exportar y escribir en bitácora, pero no modificar ni borrar.
+
+- Que el supervisor abra el proyecto como cualquiera, en vez de por la puerta
+  lateral de `mapaSupervision`, que le pasa su propia lista de puntos. Así
+  hereda días, colores, etiquetas y simbología sin código nuevo.
+- **Mover el candado de puerta a permiso**: hoy el solo-lectura depende de haber
+  entrado por EQUIPOS; debe derivarse de `permisoActual === 'solo_lectura'`.
+  Es la parte delicada: las reglas de Firestore **no frenarían** un error, porque
+  dejan escribir a cualquier autenticado. El único candado es el de pantalla.
+- Repasar los 31 puntos de escritura de `App.jsx` y confirmar que ninguno queda
+  alcanzable; habilitar exportar.
+
+El color del día, ojo, **no es visual-personal**: vive en el documento del
+proyecto, así que si alguien lo cambia le cambia a todos. Sin decidir.
+
+---
+
 ## Pendientes fuera del diseño
 
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
@@ -1305,6 +1364,13 @@ de zoom propios (`zoomControl={false}`).
   No se tomó `firebase-admin` 14: elimina `admin.firestore()`, `admin.storage()` y
   `admin.auth()`, que usa todo `functions/index.js`, y cambia el manejo de errores;
   pasar a 14 es reescribir las importaciones.
+- **Unificar las dos escuchas de datos en una sola, por `proyectoId`.** Hoy hay
+  dos: una por `ownerId` y otra por proyecto. Tus propios documentos **se bajan
+  dos veces**, así que unificar reduce la lectura casi a la mitad para el dueño,
+  y deja un solo camino que entender. Antes hay que limpiar los datos viejos
+  (que todo `proyectoId` sea texto, no número) y reacomodar los cambios
+  instantáneos al guardar y borrar, que hoy dependen de la lista por `ownerId`.
+  Acordado con el usuario el 22/09: se hace, pero después de la tanda B2.
 - Ferretería automática (cálculo de materiales), pausado.
 - Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
 - El aviso de actualización recarga la página: conviene que no aparezca mientras
