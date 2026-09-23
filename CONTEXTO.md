@@ -1571,14 +1571,19 @@ Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
 ## Pendientes fuera del diseño
 
-- **URGENTE, fuera del rediseño: contraseñas en texto plano, legibles por
-  cualquiera.** `crearUsuario` guarda la contraseña de cada usuario creado desde
-  el panel en `usuarios/{email}.password` (`functions/index.js:3361`), y el botón
-  de volver al admin está hecho para leer de ahí la contraseña del admin
-  (`App.jsx:113`). Las reglas dejan **leer y escribir** esa colección a cualquier
-  autenticado: con cualquier cuenta de Kipo se leen esas contraseñas, y cualquiera
-  puede editar los dispositivos autorizados de cualquiera. Encontrado el 23/09 al
-  investigar el plan técnico; sin decidir cómo arreglarlo.
+- **Contraseñas en texto plano: arreglado el 23/09; falta cerrar la colección.**
+  `crearUsuario` guardaba la contraseña de cada usuario creado desde el panel en
+  `usuarios/{email}.password`, y las reglas dejan leer y escribir esa colección a
+  cualquier autenticado. Ahora la contraseña vive solo en Firebase Auth:
+  `crearUsuario` ya no la guarda, "volver al admin" ya no la lee de la base (el
+  menú siempre la pedía; SELLO 23/09/26, 03:09), y
+  `herramientas/borrar-contrasenas.html` quitó las 18 que había (verificado: 0).
+  No se pidió a nadie cambiar la contraseña: son todos de confianza, decisión del
+  usuario. **Queda:** `usuarios` sigue abierta para leer y escribir, así que
+  cualquiera puede editar los dispositivos autorizados de cualquiera. Se cierra
+  con las reglas, en el paso 6 del rediseño. Aparte, el panel de admin recuerda
+  en el navegador del admin las contraseñas de los usuarios en cuyas cuentas
+  entró (`PW_KEY`, `VistaAdmin.jsx`): es local, no está en la base.
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
   solo trozo: cualquier cambio obliga a rebajar 2,4 MB en cada actualización, y
   en campo con poca señal se siente. Candidatos: sacar ExcelJS a su propio trozo
