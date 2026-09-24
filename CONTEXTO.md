@@ -1746,8 +1746,8 @@ Lo que faltaba mapear quedó resuelto así:
      sobre la Firestore falsa (`aceptarInvitacion`: 4 mutantes; traspaso: 11).
    **No se borró ningún dato:** los campos viejos siguen guardados, sin escribirse.
 6. **Último: limpiar lo viejo y reglas por rol.** El usuario pidió seguir sin esperar su
-   verificación ("prosigue con el siguiente paso", 24/09); lo que borra datos lo corre él,
-   con respaldo.
+   verificación ("prosigue con el siguiente paso", 24/09); lo que borra datos lo corre el
+   admin desde el panel, con respaldo.
    **Hecho el 24/09:**
    - Función `paso6` (solo admin; lógica en functions/paso6.js) y su panel en Admin
      (SELLO: 24/09/26, 01:55): SIMULAR no escribe; COMPLETAR solo agrega (quien esté
