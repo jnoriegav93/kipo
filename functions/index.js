@@ -4295,3 +4295,110 @@ exports.traspasarProyecto = onCall({ region: 'us-central1', timeoutSeconds: 120,
 
   return { ok: true, completo, ...resultado };
 });
+
+// ============================================================
+// CLOUD FUNCTION — paso6 (solo admin)
+// Paso 6 del rediseño de equipos: dejar cada proyecto solo con `miembros` +
+// `miembrosUids` y sacar los campos del sistema viejo (lógica en paso6.js).
+// Tres acciones, que el admin corre desde su panel en la app:
+//  - 'simular' (por defecto): informa qué haría. No escribe nada.
+//  - 'completar': SOLO AGREGA. Quien esté en `compartidoCon` y no en `miembros` pasa a
+//    ser miembro con el rol que hoy tiene; los nombres de `supervisoresInfo` pasan a
+//    `miembros`; el dueño y `miembrosUids` quedan completos. Nadie pierde el proyecto.
+//  - 'limpiar': en los proyectos que ya no tengan nada por completar, guarda los campos
+//    viejos en `respaldoPaso6/{proyectoId}` y después los borra; los documentos de
+//    `equipos` se guardan en `respaldoPaso6Equipos/{id}` y se borran. Con los respaldos
+//    se puede volver atrás. Un proyecto al que le falte completar no se toca.
+// ============================================================
+exports.paso6 = onCall({ region: 'us-central1', timeoutSeconds: 540, memory: '512MiB' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+  if (request.auth.uid !== ADMIN_UID_AUDIT) throw new HttpsError('permission-denied', 'Solo admin.');
+  const accion = (request.data || {}).accion || 'simular';
+  if (!['simular', 'completar', 'limpiar'].includes(accion)) throw new HttpsError('invalid-argument', 'Acción desconocida.');
+  const { planPaso6, cambiosDeCompletar } = require('./paso6');
+  const FV = admin.firestore.FieldValue;
+  const ahora = new Date().toISOString();
+
+  const snap = await db.collection('proyectos').get();
+  const filas = [];
+  const uids = new Set();
+  let escritos = 0;
+  for (const d of snap.docs) {
+    const p = d.data();
+    const plan = planPaso6(p, ahora);
+    const fila = {
+      id: d.id,
+      nombre: p.nombre || '',
+      archivado: !!p.archivado,
+      agregar: Object.fromEntries(Object.entries(plan.agregar).map(([u, m]) => [u, m.rol])),
+      agregarDueno: plan.agregarDueno,
+      nombres: Object.keys(plan.nombres),
+      faltanEnUids: plan.faltanEnUids,
+      viejos: plan.viejos,
+      porCompletar: plan.porCompletar,
+      hecho: null,
+    };
+    Object.keys(plan.agregar).forEach(u => uids.add(u));
+    if (p.ownerId) uids.add(String(p.ownerId));
+
+    if (accion === 'completar' && plan.porCompletar) {
+      await d.ref.update(cambiosDeCompletar(p, plan, ahora, (lista) => FV.arrayUnion(...lista)));
+      escritos++;
+      fila.hecho = 'completado';
+    }
+    if (accion === 'limpiar' && plan.viejos.length) {
+      if (!plan.listoParaLimpiar) {
+        fila.hecho = 'sin limpiar: falta completar';
+      } else {
+        const campos = Object.fromEntries(plan.viejos.map(k => [k, p[k]]));
+        const lote = db.batch();
+        lote.set(db.collection('respaldoPaso6').doc(d.id), { proyectoId: d.id, nombre: p.nombre || '', campos, fecha: ahora });
+        lote.update(d.ref, Object.fromEntries(plan.viejos.map(k => [k, FV.delete()])));
+        await lote.commit();
+        escritos++;
+        fila.hecho = 'limpiado';
+      }
+    }
+    if (plan.porCompletar || plan.viejos.length || fila.hecho) filas.push(fila);
+  }
+
+  // La colección de equipos del sistema viejo: se respalda y se borra al limpiar.
+  const eq = await db.collection('equipos').get();
+  let equiposBorrados = 0;
+  if (accion === 'limpiar') {
+    for (let i = 0; i < eq.docs.length; i += 200) {
+      const tanda = eq.docs.slice(i, i + 200);
+      const lote = db.batch();
+      tanda.forEach(e => {
+        lote.set(db.collection('respaldoPaso6Equipos').doc(e.id), { ...e.data(), respaldadoEn: ahora });
+        lote.delete(e.ref);
+      });
+      await lote.commit();
+      equiposBorrados += tanda.length;
+    }
+  }
+
+  // Nombres, para que el informe se pueda leer
+  const nombres = {};
+  const lista = [...uids];
+  for (let i = 0; i < lista.length; i += 100) {
+    const refs = lista.slice(i, i + 100).map(u => db.collection('configuraciones').doc(u));
+    const docs = await db.getAll(...refs);
+    for (const c of docs) {
+      const x = c.exists ? c.data() : {};
+      nombres[c.id] = x.nombrePersonal || x.email || c.id;
+    }
+  }
+
+  return {
+    accion,
+    total: snap.size,
+    porCompletar: filas.filter(f => f.porCompletar).length,
+    conViejos: filas.filter(f => f.viejos.length).length,
+    escritos,
+    equipos: eq.size,
+    equiposBorrados,
+    filas,
+    nombres,
+  };
+});
