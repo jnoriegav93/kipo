@@ -42,6 +42,11 @@ export default function BarraAcero({
   setVisibles,
   total = 0,
   onCerrar,
+  // Paso 4: supervisor en la obra activa. Queda para mirar: lista, ver/ocultar y cerrar.
+  // El cable tocado en el mapa puede ser de otra obra: EDITAR y ELIMINAR miran además
+  // `puedeEditarSeleccionado`.
+  soloLectura = false,
+  puedeEditarSeleccionado = true,
 }) {
   const [panel, setPanel] = useState(null); // null | 'guardar' | 'lista'
   // Cuál de los dos avisos está desplegado: null | 'cables' | 'medios'
@@ -103,6 +108,7 @@ export default function BarraAcero({
       {/* Barra principal flotante */}
       <div className={`pointer-events-auto mt-1.5 rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 px-2 py-1.5 flex items-center gap-1.5 shadow-xl backdrop-blur-sm`}>
 
+        {!soloLectura && (<>
         {/* ATRÁS — deshace lo último: medio tramo, fibra o poste */}
         <button
           onClick={() => setTrazo?.(deshacerTrazoAcero)}
@@ -122,6 +128,7 @@ export default function BarraAcero({
         >
           <Save size={18} />
         </button>
+        </>)}
 
         {/* LISTA — el contador abre el listado */}
         <button
@@ -137,13 +144,14 @@ export default function BarraAcero({
 
         <div className={`w-[1px] h-7 ${isDark ? 'bg-slate-600' : 'bg-slate-400'} shrink-0`} />
 
+        {!soloLectura && (<>
         {/* EDITAR — el cable elegido, sea de la lista o tocando su línea en el mapa,
             vuelve al trazo. Sin este botón, eligiéndolo en el mapa no habría cómo
             editarlo: el otro EDITAR vive dentro de la fila desplegada de la lista. */}
         <button
-          onClick={() => { if (cableSeleccionado) { setPanel(null); onEditar?.(cableSeleccionado); } }}
-          disabled={!cableSeleccionado}
-          className={`${btnBase} border-2 ${cableSeleccionado
+          onClick={() => { if (cableSeleccionado && puedeEditarSeleccionado) { setPanel(null); onEditar?.(cableSeleccionado); } }}
+          disabled={!cableSeleccionado || !puedeEditarSeleccionado}
+          className={`${btnBase} border-2 ${cableSeleccionado && puedeEditarSeleccionado
             ? `${btnNormal} active:scale-95`
             : `${btnDisabled} opacity-30 cursor-not-allowed`}`}
           title="Editar el cable seleccionado"
@@ -153,15 +161,16 @@ export default function BarraAcero({
 
         {/* ELIMINAR — actúa sobre el cable elegido en la lista */}
         <button
-          onClick={() => { if (cableSeleccionado) onEliminar?.(cableSeleccionado); }}
-          disabled={!cableSeleccionado}
-          className={`${btnBase} border-2 ${cableSeleccionado
+          onClick={() => { if (cableSeleccionado && puedeEditarSeleccionado) onEliminar?.(cableSeleccionado); }}
+          disabled={!cableSeleccionado || !puedeEditarSeleccionado}
+          className={`${btnBase} border-2 ${cableSeleccionado && puedeEditarSeleccionado
             ? 'border-red-500 text-red-500 bg-white active:bg-red-500/10'
             : `${btnDisabled} opacity-30 cursor-not-allowed`}`}
           title="Eliminar el cable seleccionado"
         >
           <Trash2 size={18} />
         </button>
+        </>)}
 
         {/* VER/OCULTAR */}
         <button
@@ -183,7 +192,7 @@ export default function BarraAcero({
       </div>
 
       {/* Qué falta para poder guardar, y lo que ya se marcó */}
-      {!panel && (
+      {!panel && !soloLectura && (
         <div className={`${panelBase} px-3 py-1.5 max-w-[92vw]`}>
           <p className={`text-[10px] font-black tracking-widest ${theme.text}`}>
             {editando && 'EDITANDO · '}{falta ? AVISOS[falta] : 'LISTO PARA GUARDAR'}
@@ -394,7 +403,7 @@ export default function BarraAcero({
 
                 {/* Cambiar el tipo se guarda al tocar; EDITAR devuelve el cable al trazo para
                     corregir postes, fibras o medio tramo */}
-                {sel && (
+                {sel && !soloLectura && (
                   <div className={`px-2 pb-2 pt-1 border-t-2 flex flex-wrap items-center gap-1 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                     {TIPOS_CABLE_ACERO.map(t => (
                       <button

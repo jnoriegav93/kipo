@@ -81,7 +81,12 @@ export default function BarraFibra({
   setFibrasVisibles,
   totalFibras,
   onCerrar,
-  selector = null   // FIBRA | ACERO, arriba de la barra
+  selector = null,  // FIBRA | ACERO, arriba de la barra
+  // Paso 4: supervisor en la obra activa. La barra queda para mirar: lista, ver/ocultar y
+  // cerrar. Y aunque la obra activa se pueda editar, la fibra tocada en el mapa puede ser
+  // de otra obra: por eso ELIMINAR mira también `puedeEditarSeleccionada`.
+  soloLectura = false,
+  puedeEditarSeleccionada = true,
 }) {
   // Edición del ramal elegido en la lista. Los cambios quedan PENDIENTES hasta
   // confirmarlos: así se puede ver el color nuevo en el mapa antes de decidir.
@@ -223,6 +228,7 @@ export default function BarraFibra({
       {/* Barra principal flotante */}
       <div className={`pointer-events-auto ${selector ? 'mt-1.5' : 'mt-2'} rounded-2xl ${isDark ? 'bg-slate-800/95 border-slate-600' : 'bg-white/95 border-slate-400'} border-2 px-2 py-1.5 flex items-center gap-1.5 shadow-xl backdrop-blur-sm`}>
 
+        {!soloLectura && (<>
         {/* ATRÁS — quita el último vértice puesto. Sin esto, un toque mal dado
             obligaba a guardar el ramal y borrarlo, porque ya no existe el lápiz
             que antes cancelaba el trazo. */}
@@ -257,6 +263,7 @@ export default function BarraFibra({
         >
           {dibujandoFibra ? <Save size={18} /> : <Plus size={18} strokeWidth={3} />}
         </button>
+        </>)}
 
         {/* LISTA DE FIBRAS — el contador abre el listado */}
         <button
@@ -276,10 +283,11 @@ export default function BarraFibra({
         <div className={`w-[1px] h-7 ${isDark ? 'bg-slate-600' : 'bg-slate-400'} shrink-0`} />
 
         {/* ELIMINAR — actúa sobre la fibra elegida en la lista */}
+        {!soloLectura && (
         <button
-          onClick={() => { if (conexionSeleccionada) onEliminarConexion(conexionSeleccionada); }}
-          disabled={!conexionSeleccionada}
-          className={`${btnBase} border-2 ${conexionSeleccionada
+          onClick={() => { if (conexionSeleccionada && puedeEditarSeleccionada) onEliminarConexion(conexionSeleccionada); }}
+          disabled={!conexionSeleccionada || !puedeEditarSeleccionada}
+          className={`${btnBase} border-2 ${conexionSeleccionada && puedeEditarSeleccionada
             ? 'border-red-500 text-red-500 bg-white active:bg-red-500/10'
             : `${btnDisabled} opacity-30 cursor-not-allowed`
             }`}
@@ -287,6 +295,7 @@ export default function BarraFibra({
         >
           <Trash2 size={18} />
         </button>
+        )}
 
         {/* VER/OCULTAR */}
         <button
@@ -483,6 +492,7 @@ export default function BarraFibra({
                   >
                     <Crosshair size={15} strokeWidth={2.5} />
                   </button>
+                  {!soloLectura && (<>
                   {/* EDITAR EL TRAZO: pasa a mover, agregar y quitar vértices de ESTE
                       ramal. Cierra el panel, porque la edición ocurre toda en el mapa. */}
                   <button
@@ -510,9 +520,10 @@ export default function BarraFibra({
                   >
                     <Trash2 size={15} strokeWidth={2.5} />
                   </button>
+                  </>)}
                 </div>
 
-                {sel && edit && (
+                {sel && edit && !soloLectura && (
                   <EditorRamal
                     edit={edit}
                     setEdit={setEdit}

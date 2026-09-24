@@ -27,6 +27,11 @@ export const rolEnProyecto = (proyecto, uid) => {
   return null;
 };
 
+// Quién puede CAMBIAR algo en el proyecto: el dueño y los editores. El supervisor solo
+// mira: ve todo y exporta, pero no agrega, edita, mueve ni borra nada (paso 4).
+export const puedeEditarProyecto = (proyecto, uid) =>
+  ['dueno', 'editor'].includes(rolEnProyecto(proyecto, uid));
+
 const ORDEN_ROL = { dueno: 0, editor: 1, supervisor: 2 };
 
 // Todos los miembros: los de `miembros` y los que solo figuran en el sistema viejo.

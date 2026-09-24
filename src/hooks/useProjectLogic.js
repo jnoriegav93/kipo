@@ -198,90 +198,6 @@ const toggleVisibilidadProyecto = (e, proy) => {
     try { localStorage.setItem('diasOcultos', JSON.stringify(ocultos)); } catch(e2) {}
 };
 
-const cambiarColorDia = async (proyId, diaId, color) => {
-    // Actualizar localmente
-    setProyectos(prev => prev.map(p => p.id === proyId ? { 
-        ...p, 
-        dias: p.dias.map(d => d.id === diaId ? { ...d, color } : d) 
-    } : p));
-    
-    if(proyectoActual?.id === proyId) {
-        setProyectoActual(prev => ({ 
-            ...prev, 
-            dias: prev.dias.map(d => d.id === diaId ? { ...d, color } : d) 
-        }));
-    }
-
-    // Guardar en Firebase
-    try {
-        const proyecto = proyectos.find(p => p.id === proyId);
-        if (proyecto) {
-            const diasActualizados = proyecto.dias.map(d => 
-                d.id === diaId ? { ...d, color } : d
-            );
-            const proyectoRef = doc(db, "proyectos", String(proyId));
-            await updateDoc(proyectoRef, { dias: diasActualizados });
-        }
-    } catch (error) {
-        console.error("Error al guardar color del día:", error);
-    }
-};
-
-const uniformizarColorDias = async (proyId, color) => {
-    // Actualizar todos los días del proyecto al mismo color en una sola operación
-    setProyectos(prev => prev.map(p => p.id === proyId
-        ? { ...p, dias: p.dias.map(d => ({ ...d, color })) }
-        : p
-    ));
-    if (proyectoActual?.id === proyId) {
-        setProyectoActual(prev => ({ ...prev, dias: prev.dias.map(d => ({ ...d, color })) }));
-    }
-    try {
-        const proyecto = proyectos.find(p => p.id === proyId);
-        if (proyecto) {
-            const diasActualizados = proyecto.dias.map(d => ({ ...d, color }));
-            const proyectoRef = doc(db, "proyectos", String(proyId));
-            await updateDoc(proyectoRef, { dias: diasActualizados });
-        }
-    } catch (error) {
-        console.error("Error al uniformizar colores:", error);
-    }
-};
-
-const cambiarColorProyecto = async (e, proyId, color) => {
-    e.stopPropagation();
-    
-    // Actualizar localmente
-    setProyectos(prev => prev.map(p => p.id === proyId ? { 
-        ...p, 
-        colorGlobal: color,
-        dias: p.dias.map(d => ({ ...d, color }))
-    } : p));
-    
-    if(proyectoActual?.id === proyId) {
-        setProyectoActual(prev => ({ 
-            ...prev, 
-            colorGlobal: color, 
-            dias: prev.dias.map(d => ({ ...d, color })) 
-        }));
-    }
-
-    // Guardar en Firebase
-    try {
-        const proyecto = proyectos.find(p => p.id === proyId);
-        if (proyecto) {
-            const diasActualizados = proyecto.dias.map(d => ({ ...d, color }));
-            const proyectoRef = doc(db, "proyectos", String(proyId));
-            await updateDoc(proyectoRef, { 
-                colorGlobal: color,
-                dias: diasActualizados 
-            });
-        }
-    } catch (error) {
-        console.error("Error al guardar color del proyecto:", error);
-    }
-};
-
 const solicitarBorrarProyecto = (proyId) => {
     setConfirmData({
       title: '¿Eliminar Proyecto?',
@@ -501,9 +417,6 @@ const eliminarSupervisor = async (proyectoId, supervisorUid) => {
         seleccionarProyecto,
         toggleVisibilidadDia,
         toggleVisibilidadProyecto,
-        cambiarColorDia,
-        uniformizarColorDias,
-        cambiarColorProyecto,
         solicitarBorrarProyecto,
         irUbicacionProyecto,
         aprobarSupervisor,

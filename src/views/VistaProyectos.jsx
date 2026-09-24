@@ -28,7 +28,7 @@ import { COLORES_DIA } from '../data/constantes';
 import { validarPunto } from '../utils/validarPunto';
 import EquipoProyecto from '../components/EquipoProyecto';
 import ScannerQR from '../components/ScannerQR';
-import { codigoDesdeTexto } from '../utils/equipoProyecto';
+import { codigoDesdeTexto, rolEnProyecto, puedeEditarProyecto } from '../utils/equipoProyecto';
 import VistaPapelera from './VistaPapelera';
 import FotosProyecto from '../components/FotosProyecto';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
@@ -59,7 +59,7 @@ const VistaProyectos = ({
   setSelectorColorAbierto, tempData, confirmarCrearProyecto, confirmarCrearDia,
   aprobarSupervisor, rechazarSupervisor, user, setAlertData, setConfirmData,
   setLogoApp, handleCargarLogo, setPuntoSeleccionado, setModoLectura, setModoEdicion, setDatosFormulario, setVistaAnterior, setMapViewState, modalPendiente, setModalPendiente, setMostrarOverlayGPS, onVolver,
-  notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos, onIniciarOrdenar, onRepararPuntos, onAbrirInvitacion, onVerSupervision, amigos = [],
+  notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos, onIniciarOrdenar, onRepararPuntos, onAbrirInvitacion, amigos = [],
   proyectosArchivados = [], onArchivarProyecto, onDesarchivarProyecto
 }) => {
 
@@ -738,6 +738,8 @@ const VistaProyectos = ({
                   <span className="w-10 h-10 rounded-lg border-2 border-slate-300 bg-slate-100 flex items-center justify-center opacity-40" title="No disponible: proyecto archivado">
                     <Edit size={16} className="text-slate-400" strokeWidth={2} />
                   </span>
+                  {/* Desarchivar es cambiar el proyecto: no para el supervisor (paso 4) */}
+                  {puedeEditarProyecto(proy, user?.uid) && (
                   <button
                     onClick={() => setConfirmData?.({
                       title: '¿Desarchivar proyecto?',
@@ -750,6 +752,7 @@ const VistaProyectos = ({
                   >
                     DESARCHIVAR
                   </button>
+                  )}
                 </div>
               </div>
             );
@@ -816,9 +819,10 @@ const VistaProyectos = ({
               const esActivo = proyectoActual?.id === proy.id;   // EDITANDO (proyecto activo)
               const esCompartido = !!proy.esCompartido;          // proyecto donde soy editor/supervisor
               const esGrupo = !!proy.grupoId;                    // proyecto compartido en un equipo
-              // Supervisor: tiene el proyecto en su lista, pero solo lo abre en el modo
-              // supervisión (sin escribir) hasta que el paso 4 lleve el candado a toda la app.
-              const soloMirar = esCompartido && !['edicion', 'ambos'].includes(proy.permisoActual);
+              // Supervisor: abre el proyecto como todos y lo ve completo, pero no cambia nada
+              // (paso 4). Sin papelera (no borra ni recupera) y, hasta la segunda entrega del
+              // paso 4, sin LISTA DE PUNTOS.
+              const soloMirar = rolEnProyecto(proy, user?.uid) === 'supervisor';
               const desglosado = desglosadoId === proy.id;       // acordeón: uno a la vez
               const notifCount = notificacionesProyectos[proy.id] || 0;
               const idsDias = proy.dias?.map(d => d.id) || [];
@@ -876,9 +880,8 @@ const VistaProyectos = ({
 
                     {/* 3 botones juntos: ojo · editar (lápiz) · desglose — negros con borde blanco */}
                     <div className="flex items-center gap-1 shrink-0">
-                      {/* Ojo — visibilidad LOCAL (solo cambia tu vista). El supervisor no lo tiene:
-                          sus proyectos no están en el mapa normal, solo en el de supervisión. */}
-                      {!soloMirar && (
+                      {/* Ojo — visibilidad LOCAL (solo cambia tu vista). También para el
+                          supervisor: sus proyectos están en el mapa normal (paso 4). */}
                       <button
                         onClick={(e) => toggleVisibilidadProyecto(e, proy)}
                         className={`w-10 h-10 rounded-lg flex items-center justify-center active:scale-90 transition-all shadow-sm ${esActivo ? `${btnActivo}` : 'border-2 border-slate-900 bg-transparent'}`}
@@ -889,27 +892,19 @@ const VistaProyectos = ({
                           : <EyeOff size={16} className={esActivo ? (activoNaranja ? 'text-slate-900/40' : 'text-white/40') : 'text-slate-400'} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                         }
                       </button>
-                      )}
 
                       {/* Editar (lápiz) → VERDE cuando es el proyecto activo (EDITANDO). El
-                          supervisor tiene VER en su lugar: abre el modo supervisión. */}
-                      {soloMirar ? (
-                      <button
-                        onClick={() => onVerSupervision?.(proy)}
-                        className="w-10 h-10 rounded-lg flex items-center justify-center active:scale-95 transition-all shadow-sm border-2 border-slate-900 bg-transparent"
-                        title="Ver (solo lectura)"
-                      >
-                        <Eye size={16} className={theme.text} />
-                      </button>
-                      ) : (
+                          supervisor lo abre igual, con un ojo en vez del lápiz: lo ve todo en el
+                          mapa normal, sin poder cambiar nada (paso 4). */}
                       <button
                         onClick={() => { if (!esActivo) seleccionarProyecto(proy); }}
                         className={`w-10 h-10 rounded-lg flex items-center justify-center active:scale-95 transition-all shadow-sm ${esActivo ? `${activoNaranja ? "border-2" : "border"} bg-green-600 ${bordeActivo}` : 'border-2 border-slate-900 bg-transparent'}`}
-                        title={esActivo ? 'Editando' : 'Editar'}
+                        title={soloMirar ? (esActivo ? 'Viendo (solo lectura)' : 'Ver (solo lectura)') : (esActivo ? 'Editando' : 'Editar')}
                       >
-                        <Edit size={16} className={esActivo ? 'text-white' : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
+                        {soloMirar
+                          ? <Eye size={16} className={esActivo ? 'text-white' : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
+                          : <Edit size={16} className={esActivo ? 'text-white' : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />}
                       </button>
-                      )}
 
                       {/* Desglose (acordeón) */}
                       <button
@@ -973,15 +968,17 @@ const VistaProyectos = ({
                         <Archive size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                       </button>
                     )}
-                    {/* LISTA DE PUNTOS abre los postes para editar, y el GPS lleva al mapa normal,
-                        donde el proyecto del supervisor no está: el supervisor no los tiene. */}
-                    {!soloMirar && (<>
+                    {/* LISTA DE PUNTOS abre los postes para editar: el supervisor la tendrá de
+                        solo lectura en la segunda entrega del paso 4. El GPS (ir al proyecto en
+                        el mapa) es para todos. */}
+                    {soloMirar ? <div className="flex-1" /> : (
                     <button
                       onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`LISTA_PUNTOS_${proy.id}`); }}
                       className={`flex-1 h-10 rounded-lg text-[11px] font-black tracking-widest active:scale-95 transition-all ${esActivo ? `${btnActivo} ${iconActivo}` : `border-2 ${theme.border} bg-transparent ${theme.text}`}`}
                     >
                       LISTA DE PUNTOS
                     </button>
+                    )}
                     <button
                       onClick={(e) => irUbicacionProyecto(e, proy.id)}
                       className={`shrink-0 w-10 h-10 rounded-lg active:scale-95 transition-all flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
@@ -989,7 +986,6 @@ const VistaProyectos = ({
                     >
                       <MapPin size={16} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} className={esActivo ? iconActivo : theme.text} />
                     </button>
-                    </>)}
                   </div>
 
                   {/* FILA UNIFICADA: FOTOS + CHAT + COLABORADORES + FERRETERÍA + REVISIÓN + EXPORTAR + BORRAR */}

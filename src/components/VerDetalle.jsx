@@ -66,6 +66,8 @@ export default function VerDetalle({
   onVolver,
   onEditar,
   onEditarFotos,
+  // readOnly: no deja editar el punto ni guardar el logo en el proyecto. Compartir las
+  // fotos sí: el supervisor exporta (paso 4).
   readOnly = false,
   esSupervision = false,
   proyectoId,
@@ -493,7 +495,7 @@ export default function VerDetalle({
                       <summary className="px-3 py-2 flex items-center gap-1.5 cursor-pointer select-none bg-white list-none [&::-webkit-details-marker]:hidden">
                         <span className="flex-1 min-w-0 font-black text-xs uppercase tracking-widest truncate text-slate-900">{tab.title}</span>
                         <span className={`text-xs font-black shrink-0 ${count > 0 ? 'text-green-600' : 'text-slate-400'}`}>({count})</span>
-                        {!readOnly && proyectoActual?.tipo !== 'levantamiento' && proyectoActual?.modoFotos !== 'altaCalidad' && (
+                        {proyectoActual?.tipo !== 'levantamiento' && proyectoActual?.modoFotos !== 'altaCalidad' && (
                           <button
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (count > 0) iniciarCompartir(tab.id, tab.title); }}
                             disabled={count === 0}
@@ -574,7 +576,7 @@ export default function VerDetalle({
                     <summary className="px-3 py-2 flex items-center gap-1.5 cursor-pointer select-none bg-slate-900 list-none [&::-webkit-details-marker]:hidden">
                       <span className="flex-1 min-w-0 font-black text-xs uppercase tracking-widest truncate text-white">{tab.title}</span>
                       <span className={`text-xs font-black shrink-0 ${hasPhotos ? 'text-green-400' : 'text-slate-400'}`}>({filledPrincipales}/{totalPrincipales})</span>
-                      {!readOnly && proyectoActual?.tipo !== 'levantamiento' && proyectoActual?.modoFotos !== 'altaCalidad' && (
+                      {proyectoActual?.tipo !== 'levantamiento' && proyectoActual?.modoFotos !== 'altaCalidad' && (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (hasPhotos) iniciarCompartir(tab.id, tab.title); }}
                           disabled={!hasPhotos}

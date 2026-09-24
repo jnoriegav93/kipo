@@ -27,6 +27,12 @@ const VistaMapa = ({
   // Props de supervisión
   modoSupervision = false,
   onVolverSupervision,
+  // Paso 4 (el rol va por obra): `soloLectura` = supervisor en la obra ACTIVA, así que no
+  // crea nada; los otros dicen si se puede cambiar lo que está elegido, según SU obra.
+  soloLectura = false,
+  puntoEditable = true,
+  conexionEditable = true,
+  aceroEditable = true,
   // Overlay GPS desde lista
   overlayGPSActivo = false,
   // Props de FIBRA
@@ -540,6 +546,8 @@ const VistaMapa = ({
                 onCambiarTipo={acero.onCambiarTipo}
                 onEditar={acero.onEditar}
                 onEliminar={acero.onEliminar}
+                soloLectura={soloLectura}
+                puedeEditarSeleccionado={aceroEditable}
                 onCentrar={(c) => irACoord((c.a.coords.lat + c.b.coords.lat) / 2, (c.a.coords.lng + c.b.coords.lng) / 2)}
                 mediosTramosSueltos={acero.mediosTramosSueltos || []}
                 onCentrarPunto={(p) => { if (p?.coords?.lat != null) irACoord(p.coords.lat, p.coords.lng); }}
@@ -559,6 +567,8 @@ const VistaMapa = ({
               isDark={isDark}
               dibujandoFibra={dibujandoFibra}
               setDibujandoFibra={setDibujandoFibra}
+              soloLectura={soloLectura}
+              puedeEditarSeleccionada={conexionEditable}
               capacidadFibra={capacidadFibra}
               setCapacidadFibra={setCapacidadFibra}
               puntosRecorrido={puntosRecorrido}
@@ -739,6 +749,7 @@ const VistaMapa = ({
                 >
                   Cerrar
                 </button>
+                {!soloLectura && (
                 <button
                   onClick={abrirPanel}
                   className="flex-1 flex items-center justify-center gap-1.5 bg-purple-600 text-white py-2.5 rounded-xl text-xs font-black active:scale-95 transition-all"
@@ -746,6 +757,7 @@ const VistaMapa = ({
                   <Link2 size={13} />
                   ASOCIAR
                 </button>
+                )}
               </div>
             </div>
           </div>
@@ -852,6 +864,13 @@ const VistaMapa = ({
             <div className={`rounded-lg px-2 py-1 pointer-events-none ${proyectoEsCompartido ? 'bg-brand-500' : 'bg-slate-900'}`}>
               <p className="text-[11px] font-bold text-white leading-tight max-w-[200px] truncate uppercase">{nombreProyecto} · {totalPuntosProyecto} pts</p>
             </div>
+
+            {/* Supervisor en esta obra: ve todo, pero no cambia nada (paso 4) */}
+            {soloLectura && (
+              <div className="rounded-lg px-2 py-0.5 bg-blue-600 pointer-events-none">
+                <p className="text-[10px] font-black text-white leading-tight">Solo ver: eres supervisor</p>
+              </div>
+            )}
 
             {/* Con la simbología encendida y el panel cerrado, el mapa no se lee por
                 día: conviene avisarlo o los colores se malinterpretan. */}
@@ -1028,7 +1047,7 @@ const VistaMapa = ({
       )}
 
       {/* Botones flotantes CÁMARA + MOVER (sobre la barra inferior, solo cuando hay punto seleccionado) */}
-      {puntoSeleccionado && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
+      {puntoSeleccionado && puntoEditable && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
         // Se corren a la izquierda SOLO con el panel de días abierto, que es cuando se
         // montarían encima. Cerrado el panel, vuelven a su sitio de siempre.
         // Con el panel de días abierto se corren hacia la izquierda lo justo para dejarlo
@@ -1196,19 +1215,23 @@ const VistaMapa = ({
           ) : puntoSeleccionado ? (
             <>
               <button onClick={() => { if (!overlayGPSActivo) { setVistaAnterior('mapa'); verDetalle(); } }} disabled={overlayGPSActivo} className={overlayGPSActivo ? pillOff : pill}><Eye size={20} strokeWidth={2.5} /> VER</button>
+              {puntoEditable && (<>
               <button onClick={() => { if (!overlayGPSActivo) iniciarEdicion(); }} disabled={overlayGPSActivo} className={overlayGPSActivo ? pillOff : pill}><Edit3 size={20} strokeWidth={2.5} /> EDITAR</button>
               <button onClick={() => { if (!overlayGPSActivo) solicitarBorrarPunto(); }} disabled={overlayGPSActivo} className={overlayGPSActivo ? pillOff : `${pill} text-red-600`}><Trash2 size={20} strokeWidth={2.5} /> BORRAR</button>
+              </>)}
             </>
           ) : (
             <>
               {/* Entra SIN dibujar: así se pueden tocar las fibras para elegirlas, y el
                   trazo lo arranca el disquete. Salvo que se vuelva con el ACERO activo,
                   que se traza tocando postes y necesita el trazo encendido de entrada. */}
-              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(modoLinea === 'acero'); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
-              {proyectoTipo === 'instalacionPostes' && (
+              <button onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(!soloLectura && modoLinea === 'acero'); }} className={pill}><Cable size={20} strokeWidth={2.5} /> FIBRA</button>
+              {!soloLectura && proyectoTipo === 'instalacionPostes' && (
                 <button onClick={() => fotoMapaInputRef.current?.click()} className={pill}><Camera size={20} strokeWidth={2.5} /> FOTO</button>
               )}
+              {!soloLectura && (
               <button onClick={intentarAgregarDatos} disabled={!puntoTemporal} className={puntoTemporal ? `${pill} text-green-600` : pillOff}><Plus size={20} strokeWidth={2.5} /> AGREGAR</button>
+              )}
             </>
           )}
         </div>
@@ -1250,6 +1273,7 @@ const VistaMapa = ({
                 >
                   <Eye size={24} strokeWidth={2.5}/> VER
                 </button>
+                {puntoEditable && (<>
                 <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
                 <button
                   onClick={() => { if (!overlayGPSActivo) iniciarEdicion(); }}
@@ -1271,16 +1295,18 @@ const VistaMapa = ({
                   <Trash2 size={26} strokeWidth={2.5}/>
                   <span className="text-[9px] mt-1 tracking-widest">BORRAR</span>
                 </button>
+                </>)}
               </>
             ) : (
               // --- Sin selección: FIBRA / AGREGAR ---
               <>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(modoLinea === 'acero'); }}
+                  onClick={(e) => { e.stopPropagation(); setModoFibra(true); setDibujandoFibra(!soloLectura && modoLinea === 'acero'); }}
                   className={`flex-1 flex items-center justify-center gap-2 font-black text-lg ${theme.card} ${theme.text} hover:opacity-80`}
                 >
                   <Cable size={24} strokeWidth={2.5} /> FIBRA
                 </button>
+                {!soloLectura && (<>
                 <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
                 {proyectoTipo === 'instalacionPostes' && (
                   <>
@@ -1301,6 +1327,7 @@ const VistaMapa = ({
                 >
                   <Plus size={24} strokeWidth={2.5} /> AGREGAR
                 </button>
+                </>)}
               </>
             )
           )}
