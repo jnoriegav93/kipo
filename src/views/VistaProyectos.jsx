@@ -82,7 +82,7 @@ const VistaProyectos = ({
   cambiarColorDia, uniformizarColorDias, toggleVisibilidadProyecto, cambiarColorProyecto,
   solicitarBorrarProyecto, irUbicacionProyecto, setExportData, selectorColorAbierto,
   setSelectorColorAbierto, tempData, confirmarCrearProyecto, confirmarCrearDia,
-  aprobarSupervisor, rechazarSupervisor, user, setAlertData, setConfirmData,
+  user, setAlertData, setConfirmData,
   setLogoApp, handleCargarLogo, setPuntoSeleccionado, setModoLectura, setModoEdicion, setDatosFormulario, setVistaAnterior, setMapViewState, modalPendiente, setModalPendiente, setMostrarOverlayGPS, onVolver,
   notificacionesProyectos = {}, marcarChatLeido, conexiones, onIniciarMoverPuntos, onIniciarOrdenar, onRepararPuntos, onAbrirInvitacion, amigos = [],
   proyectosArchivados = [], onArchivarProyecto, onDesarchivarProyecto

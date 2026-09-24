@@ -4,7 +4,7 @@ import { doc, updateDoc, deleteField, arrayRemove, arrayUnion } from 'firebase/f
 import { db } from '../firebaseConfig';
 import ChatBitacora from './ChatBitacora';
 import { claseBotonCabecera } from '../utils/cabeceras';
-import { ROL_TEXTO, rolEnProyecto, miembrosDelProyecto, permisoViejo, linkInvitacion } from '../utils/equipoProyecto';
+import { ROL_TEXTO, rolEnProyecto, miembrosDelProyecto, linkInvitacion } from '../utils/equipoProyecto';
 import { crearInvitacion, anularInvitacion, escucharInvitacionesAbiertas, traspasarProyecto } from '../services/invitaciones';
 import { avisarAgregado } from '../services/amigos';
 
@@ -24,9 +24,9 @@ const fechaCorta = (iso) => {
 // y con qué rol. Solo el dueño invita, cambia roles, quita y anula invitaciones sin usar.
 // Debajo, la bitácora, como antes.
 //
-// Mientras convivan los dos sistemas, cada cambio se escribe también en los campos viejos
-// (`compartidoCon`, `permisos`, `supervisoresInfo`): así lo ven las reglas de hoy, la
-// exportación y los teléfonos sin actualizar.
+// Desde el paso 5 los miembros viven solo en `miembros` / `miembrosUids`, con su nombre. Los
+// campos viejos (`compartidoCon`, `permisos`, `supervisoresInfo`) ya no se escriben: solo
+// se limpian al cambiar el rol de alguien o al quitarlo.
 const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertData, setConfirmData, onClose }) => {
   const soyDueno = rolEnProyecto(proyecto, user?.uid) === 'dueno';
   const miembros = miembrosDelProyecto(proyecto);
@@ -49,7 +49,7 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
 
   const nombreDe = (uid) => (String(uid) === String(proyecto.ownerId)
     ? (proyecto.ownerNombre || 'Dueño')
-    : (proyecto.supervisoresInfo?.[uid]?.nombre || 'Miembro'));
+    : (proyecto.miembros?.[uid]?.nombre || proyecto.supervisoresInfo?.[uid]?.nombre || 'Miembro'));
 
   const refProyecto = () => doc(db, 'proyectos', String(proyecto.id));
 
@@ -103,10 +103,13 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
 
   const cambiarRol = async (uid, rol) => {
     try {
+      // El rol vive solo en `miembros`. Si la persona venía del reflejo viejo, se la saca
+      // de ahí: con `permisos` puesto, las reglas viejas le seguirían dando el de antes.
       await updateDoc(refProyecto(), {
         [`miembros.${uid}.rol`]: rol,
         miembrosUids: arrayUnion(uid),
-        [`permisos.${uid}`]: permisoViejo(rol),
+        compartidoCon: arrayRemove(uid),
+        [`permisos.${uid}`]: deleteField(),
       });
     } catch (e) { avisarFallo('No se pudo cambiar el rol', e); }
   };
@@ -140,11 +143,8 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
     setOcupado(true);
     try {
       await updateDoc(refProyecto(), {
-        [`miembros.${amigo.uid}`]: { rol, desde: new Date().toISOString(), por: user.uid },
+        [`miembros.${amigo.uid}`]: { rol, desde: new Date().toISOString(), por: user.uid, nombre: amigo.nombre || '' },
         miembrosUids: arrayUnion(amigo.uid),
-        compartidoCon: arrayUnion(amigo.uid),
-        [`permisos.${amigo.uid}`]: permisoViejo(rol),
-        [`supervisoresInfo.${amigo.uid}`]: { nombre: amigo.nombre || '', empresa: '' },
       });
       // El aviso no frena nada: si falla, el amigo igual quedó adentro y ve el proyecto.
       avisarAgregado({

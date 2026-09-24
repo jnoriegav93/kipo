@@ -43,7 +43,7 @@ export const coincidencias = (proyectos, uid, { amigos = [], recibidas = [], env
   for (const p of proyectos || []) {
     for (const { uid: otro } of miembrosDelProyecto(p)) {
       if (otro === u) continue;
-      const nombre = otro === String(p.ownerId) ? (p.ownerNombre || '') : (p.supervisoresInfo?.[otro]?.nombre || '');
+      const nombre = otro === String(p.ownerId) ? (p.ownerNombre || '') : (p.miembros?.[otro]?.nombre || p.supervisoresInfo?.[otro]?.nombre || '');
       const persona = personas.get(otro) || { uid: otro, nombre: '', proyectos: [] };
       if (!persona.nombre && nombre) persona.nombre = nombre;
       if (p.nombre && !persona.proyectos.includes(p.nombre)) persona.proyectos.push(p.nombre);

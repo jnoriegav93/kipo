@@ -24,9 +24,6 @@ const VistaMapa = ({
   solicitarBorrarPunto, intentarAgregarDatos,
   setVistaAnterior,
   modoMover, pendingCoords, iniciarMover, cancelarMover, confirmarMover, onPuntoDragEnd,
-  // Props de supervisión
-  modoSupervision = false,
-  onVolverSupervision,
   // Paso 4 (el rol va por obra): `soloLectura` = supervisor en la obra ACTIVA, así que no
   // crea nada; los otros dicen si se puede cambiar lo que está elegido, según SU obra.
   soloLectura = false,
@@ -525,7 +522,7 @@ const VistaMapa = ({
 
         {/* Barra de líneas (flotante sobre el mapa): fibra o, con el selector de arriba,
             cable de acero. Son dos barras separadas: no comparten trazo ni datos. */}
-        {modoFibra && !modoSupervision && (
+        {modoFibra && (
           <div className="absolute top-0 left-0 right-0 z-[49]">
             {modoLinea === 'acero' && acero ? (
               <BarraAcero
@@ -623,7 +620,7 @@ const VistaMapa = ({
         )}
 
         {/* Banner GPS desde lista */}
-        {!modoSupervision && !modoFibra && overlayGPSActivo && (
+        {!modoFibra && overlayGPSActivo && (
           <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none z-40">
             <div className={`${isDark ? 'bg-slate-800 text-slate-300 border-slate-600' : 'bg-white text-slate-600 border-slate-300'} px-4 py-2 rounded-full text-[11px] font-bold shadow-lg border-2`}>
               Presiona CERRAR para quedarte en el mapa
@@ -711,15 +708,6 @@ const VistaMapa = ({
           <div className="absolute top-2 left-0 right-0 flex justify-center z-[400] px-4">
             <div className="bg-purple-700/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg">
               Toca los puntos para seleccionarlos · Segundo toque para deseleccionar
-            </div>
-          </div>
-        )}
-
-        {/* Banner de supervisión */}
-        {modoSupervision && (
-          <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none z-40">
-            <div className="bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg border-2 border-blue-800">
-              MODO SUPERVISIÓN - SOLO LECTURA
             </div>
           </div>
         )}
@@ -846,7 +834,7 @@ const VistaMapa = ({
         )}
 
         {/* Info proyecto + botones flotantes (esquina superior derecha) */}
-        {!modoSupervision && nombreProyecto && (
+        {nombreProyecto && (
           <div className={`absolute ${isDesktop ? 'top-20' : 'top-2'} right-3 z-40 flex flex-col items-end gap-1.5`}>
             {/* Sin GPS: va PRIMERO en la columna, así empuja al nombre del proyecto hacia
                 abajo en vez de taparlo. Sin aviso, el nombre sube solo. Reintenta por la
@@ -1047,7 +1035,7 @@ const VistaMapa = ({
       )}
 
       {/* Botones flotantes CÁMARA + MOVER (sobre la barra inferior, solo cuando hay punto seleccionado) */}
-      {puntoSeleccionado && puntoEditable && !modoMover && !modoSupervision && !overlayGPSActivo && !modoFibra && (
+      {puntoSeleccionado && puntoEditable && !modoMover && !overlayGPSActivo && !modoFibra && (
         // Se corren a la izquierda SOLO con el panel de días abierto, que es cuando se
         // montarían encima. Cerrado el panel, vuelven a su sitio de siempre.
         // Con el panel de días abierto se corren hacia la izquierda lo justo para dejarlo
@@ -1207,12 +1195,7 @@ const VistaMapa = ({
       {/* Barra flotante PC: acciones principales */}
       {isDesktop && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] flex items-stretch gap-3">
-          {modoSupervision ? (
-            <>
-              <button onClick={onVolverSupervision} className={pill}><ArrowLeft size={20} strokeWidth={2.5} /> VOLVER</button>
-              <button onClick={() => { if (puntoSeleccionado) { setVistaAnterior('mapa'); verDetalle(); } }} disabled={!puntoSeleccionado} className={puntoSeleccionado ? pill : pillOff}><Eye size={20} strokeWidth={2.5} /> VER</button>
-            </>
-          ) : puntoSeleccionado ? (
+          {puntoSeleccionado ? (
             <>
               <button onClick={() => { if (!overlayGPSActivo) { setVistaAnterior('mapa'); verDetalle(); } }} disabled={overlayGPSActivo} className={overlayGPSActivo ? pillOff : pill}><Eye size={20} strokeWidth={2.5} /> VER</button>
               {puntoEditable && (<>
@@ -1240,28 +1223,7 @@ const VistaMapa = ({
       {/* Barra inferior: se oculta cuando modoFibra está activo */}
       {!isDesktop && !modoFibra && !modoMoverPuntos && !modoOrdenar && (
         <div className={`h-20 ${theme.bottomBar} border-t-2 ${theme.border} shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-[400] flex overflow-hidden shrink-0`}>
-          {modoSupervision ? (
-            // === MODO SUPERVISIÓN ===
-            <>
-              <button onClick={onVolverSupervision} className={`flex-1 ${theme.card} ${theme.text} font-black text-lg flex items-center justify-center gap-2 active:opacity-80 transition-colors`}>
-                <ArrowLeft size={24} strokeWidth={2.5}/> VOLVER
-              </button>
-              <div className={`w-[2px] h-10 self-center ${isDark ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
-              <button
-                onClick={() => { if (puntoSeleccionado) { setVistaAnterior('mapa'); verDetalle(); } }}
-                disabled={!puntoSeleccionado}
-                className={`flex-1 font-black text-lg flex items-center justify-center gap-2 transition-colors ${
-                  puntoSeleccionado
-                    ? `${theme.card} ${theme.text} active:opacity-80`
-                    : `${theme.card} opacity-40 cursor-not-allowed`
-                }`}
-              >
-                <Eye size={24} strokeWidth={2.5}/> VER
-              </button>
-            </>
-          ) : (
-            // === MODO NORMAL ===
-            puntoSeleccionado ? (
+          {puntoSeleccionado ? (
               // --- Punto seleccionado: VER / EDITAR / BORRAR ---
               <>
                 <button
@@ -1329,8 +1291,7 @@ const VistaMapa = ({
                 </button>
                 </>)}
               </>
-            )
-          )}
+            )}
         </div>
       )}
 

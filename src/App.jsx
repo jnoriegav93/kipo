@@ -249,9 +249,6 @@ function App() {
   // Estado para mostrar overlay de navegación después de GPS desde lista
   const [mostrarOverlayGPS, setMostrarOverlayGPS] = React.useState(null);
 
-  // Modo mapa supervisión: { proyecto, puntos } o null
-  const [mapaSupervision, setMapaSupervision] = React.useState(null);
-
   // Links viejos de invitación a un EQUIPO (?equipo=ID). La pantalla de equipos se
   // retiró el 24/09: ahora cada proyecto invita a sus miembros (EQUIPO del proyecto) y
   // AMIGOS reemplaza a EQUIPOS. El link se limpia de la URL y se explica qué hacer.
@@ -384,12 +381,6 @@ function App() {
     config: configNube, setConfig
   } = useFirebaseData(user);
 
-  // Total de solicitudes de colaboración pendientes en mis proyectos (para badge en menú)
-  const totalSolicitudesColaboracion = React.useMemo(
-    () => proyectos.reduce((s, p) => s + (p.solicitudesPendientes?.length || 0), 0),
-    [proyectos]
-  );
-
   // (Aquí estaba el "BLOQUE 6": una limpieza que corría una vez por dispositivo y vaciaba
   // `compartidoCon`, `permisos` y `supervisoresInfo` de los proyectos propios sin equipo.
   // Se quitó el 24/09: desde el paso 3a esos campos son el reflejo de los miembros
@@ -405,16 +396,6 @@ function App() {
   // Las fibras no pasan por la cola: se escriben directo y el SDK las muestra al instante.
   const todasLasConexiones = conexiones;
   const todosLosAceros = React.useMemo(() => aplicarPendientes(cablesAcero, cola, 'cablesAcero'), [cablesAcero, cola]);
-  // Los puntos del modo supervisión. Si se entró desde la lista de proyectos (`vivo`),
-  // salen en vivo de la escucha única; desde EQUIPOS, de la lista que trajo esa pantalla,
-  // porque esos proyectos no siempre están entre los que se escuchan.
-  const puntosSupervision = React.useMemo(() => {
-    if (!mapaSupervision) return [];
-    return mapaSupervision.vivo
-      ? todosLosPuntos.filter(p => perteneceAProyecto(p, mapaSupervision.proyecto))
-      : (mapaSupervision.puntos || []);
-  }, [mapaSupervision, todosLosPuntos]);
-
   // Separar proyectos compartidos: solo supervisión vs con permiso de edición
   const proyectosEditor = React.useMemo(() =>
     proyectosSupervisados.filter(p => p.permisoActual === 'edicion' || p.permisoActual === 'ambos'),
@@ -433,12 +414,9 @@ function App() {
   const proyectosActivos = React.useMemo(() => todosLosProyectos.filter(p => !p.archivado), [todosLosProyectos]);
   const proyectosArchivados = React.useMemo(() => todosLosProyectos.filter(p => p.archivado), [todosLosProyectos]);
 
-  // Lista PERSONAL de proyectos: excluye los proyectos del grupo que el dueño aún no
-  // "jaló" a su lista. Desde el paso 4, los proyectos donde el usuario es supervisor
-  // llegan por `todosLosProyectos`, como los demás.
-  const proyectosLista = React.useMemo(() =>
-    proyectosActivos.filter(p => p.esCompartido || !p.grupoId || (p.enListaDe || []).includes(user?.uid)),
-    [proyectosActivos, user?.uid]);
+  // La lista de proyectos: todos los activos donde el usuario es dueño o miembro. Ser
+  // miembro es tenerlo en la lista (paso 5: ya no cuentan los equipos ni `enListaDe`).
+  const proyectosLista = proyectosActivos;
 
 
   // Ferretería = COPIA por usuario. config.catalogoFerreteria es la lista del usuario (se
@@ -546,9 +524,6 @@ function App() {
     toggleVisibilidadProyecto,
     solicitarBorrarProyecto,
     irUbicacionProyecto,
-    aprobarSupervisor,
-    rechazarSupervisor,
-    eliminarSupervisor,
     crearProyectoDiseno
   } = useProjectLogic({
     user,
@@ -786,7 +761,6 @@ function App() {
         ownerId: user.uid,
         ownerNombre: config?.nombrePersonal || user?.displayName || '',
         ownerEmpresa: config?.empresaPersonal || '',
-        compartidoCon: [], permisos: {},
         // Nace con su dueño como miembro (rediseño de equipos, paso 3a)
         miembros: { [user.uid]: { rol: 'dueno', desde: new Date().toISOString() } },
         miembrosUids: [user.uid],
@@ -1159,7 +1133,7 @@ function App() {
   }, [user?.uid, proyectoIds]);
 
   // Listeners centralizados de notificaciones - proyectos compartidos
-  // Editor (edicion/ambos) → VistaProyectos | Solo lectura → VistaSupervision
+  // Editor (edicion) y supervisor (lectura) llevan cada uno su cuenta de mensajes
   const supervisadoIds = React.useMemo(() => proyectosSupervisados.map(p => p.id).join(','), [proyectosSupervisados]);
   useEffect(() => {
     if (!user || proyectosSupervisados.length === 0) {
@@ -1206,21 +1180,8 @@ function App() {
     });
   }, [user?.uid, configNube?.nombrePersonal, configNube?.empresaPersonal]);
 
-  // Auto-sync: supervisoresInfo en proyectos que superviso al cargar
-  useEffect(() => {
-    if (!user || !configNube?.nombrePersonal || proyectosSupervisados.length === 0) return;
-    const nombre = configNube.nombrePersonal;
-    const empresa = configNube.empresaPersonal || '';
-    proyectosSupervisados.forEach(proy => {
-      const info = proy.supervisoresInfo?.[user.uid];
-      if (!info || info.nombre !== nombre || info.empresa !== empresa) {
-        fbUpdateDoc(doc(db, "proyectos", proy.id), {
-          [`supervisoresInfo.${user.uid}.nombre`]: nombre,
-          [`supervisoresInfo.${user.uid}.empresa`]: empresa
-        }).catch(e => console.error("Sync supervisorInfo error:", e));
-      }
-    });
-  }, [user?.uid, configNube?.nombrePersonal, configNube?.empresaPersonal]);
+  // (Aquí se sincronizaba `supervisoresInfo` con el nombre de quien supervisa. Se retiró en
+  // el paso 5: el nombre de cada miembro se anota en `miembros` al entrar al proyecto.)
 
   // Inicializar diasVisibles para TODOS los proyectos al arrancar
   // Usa diasOcultos del localStorage para saber cuáles estaban apagados
@@ -1746,7 +1707,7 @@ function App() {
 
   // Días del proyecto activo para el panel del mapa (ordenados cronológicamente + conteo de puntos)
   const diasPanelData = React.useMemo(() => {
-    const proy = mapaSupervision ? mapaSupervision.proyecto : proyectoActual;
+    const proy = proyectoActual;
     if (!proy?.dias?.length) return [];
     const conteo = {};
     todosLosPuntos.forEach(p => { conteo[p.diaId] = (conteo[p.diaId] || 0) + 1; });
@@ -1755,7 +1716,7 @@ function App() {
     return filtrosVisibilidad.conColoresPersonales(proy.dias, coloresPersonales)
       .sort((a, b) => tsOf(a) - tsOf(b))
       .map((d, idx) => ({ ...d, numero: idx + 1, count: conteo[d.id] || 0 }));
-  }, [proyectoActual, mapaSupervision, todosLosPuntos, coloresPersonales]);
+  }, [proyectoActual, todosLosPuntos, coloresPersonales]);
   // `proyectosActivos` y no `proyectos`: este filtro descarta lo que no pertenezca a un
   // proyecto de la lista, y con solo los propios las fibras del equipo se caían aquí
   // aunque los datos ya hubieran llegado.
@@ -1857,7 +1818,7 @@ function App() {
   // coinciden con los del dueño. Se lee solo cuando el proyecto es de otro.
   const [configPropietario, setConfigPropietario] = React.useState(null);
   React.useEffect(() => {
-    const proy = mapaSupervision ? mapaSupervision.proyecto : (proyectoDelPuntoSel || proyectoActual);
+    const proy = proyectoDelPuntoSel || proyectoActual;
     const dueno = proy?.ownerId;
     if (!dueno || !user?.uid || String(dueno) === String(user.uid)) { setConfigPropietario(null); return; }
     let vivo = true;
@@ -1869,13 +1830,13 @@ function App() {
       } catch (e) { console.error('No se pudo leer la configuración del propietario:', e); }
     })();
     return () => { vivo = false; };
-  }, [proyectoActual?.ownerId, proyectoActual?.id, proyectoDelPuntoSel?.ownerId, mapaSupervision, user?.uid]);
+  }, [proyectoActual?.ownerId, proyectoActual?.id, proyectoDelPuntoSel?.ownerId, user?.uid]);
 
   // ARMADOS DEL PROYECTO. Cada obra usa los suyos, guardados en su documento.
   const armadosDelProyecto = React.useMemo(() => {
-    const proy = mapaSupervision ? mapaSupervision.proyecto : proyectoActual;
+    const proy = proyectoActual;
     return Array.isArray(proy?.armados) ? proy.armados : [];
-  }, [proyectoActual, mapaSupervision]);
+  }, [proyectoActual]);
 
   // Configuración con la que se pintan formulario y detalle: la propia, con el
   // catálogo de ferretería del dueño (los ids de material son suyos) y los armados
@@ -1883,9 +1844,9 @@ function App() {
   // El detalle y el formulario usan los armados de la obra DEL PUNTO elegido (en el mapa
   // pueden verse varias obras); sin punto elegido, los de la activa.
   const armadosDelDetalle = React.useMemo(() => {
-    const proy = mapaSupervision ? mapaSupervision.proyecto : (proyectoDelPuntoSel || proyectoActual);
+    const proy = proyectoDelPuntoSel || proyectoActual;
     return Array.isArray(proy?.armados) ? proy.armados : [];
-  }, [mapaSupervision, proyectoDelPuntoSel, proyectoActual]);
+  }, [proyectoDelPuntoSel, proyectoActual]);
   const configParaDetalle = React.useMemo(() => ({
     ...config,
     catalogoFerreteria: configPropietario?.catalogoFerreteria || config?.catalogoFerreteria || [],
@@ -1913,23 +1874,6 @@ function App() {
       return next;
     });
   }, [claveSimbologia]);
-
-  // ── SUPERVISIÓN: LA OBRA COMPLETA, SIN PODER TOCARLA ──────────────────────
-  // El supervisor ve las fibras y los cables de acero del proyecto que está mirando.
-  // Antes se le pasaba una lista vacía, pero no era una decisión de permisos: es que
-  // sus datos no llegaban (solo se escuchaba por `ownerId`), así que vaciarlas era lo
-  // único honesto. Ahora llegan, y esconderlas sería mentirle sobre la obra.
-  //
-  // Se filtra al proyecto que abrió desde EQUIPOS y no a `proyectoActual`: el supervisor
-  // no "activa" el proyecto, solo lo mira, y su proyecto activo puede ser otro.
-  const idProySupervisado = mapaSupervision ? String(mapaSupervision.proyecto?.id) : null;
-  const fibrasSupervisadas = React.useMemo(
-    () => (idProySupervisado && fibrasVisibles)
-      ? todasLasConexiones.filter(c => String(c.proyectoId) === idProySupervisado)
-      : [],
-    [idProySupervisado, fibrasVisibles, todasLasConexiones]
-  );
-  // `acerosSupervisados` vive más abajo, junto a `lineasAcero`: aquí todavía no existe.
 
   // Nombre propuesto para el próximo ramal: se toma el mayor "RAMAL NN" que ya
   // exista en el proyecto y se suma uno, así borrar uno no genera duplicados.
@@ -1984,15 +1928,6 @@ function App() {
     [lineasAcero, proyectoActual]
   );
 
-  // Los cables de acero que ve el supervisor: los del proyecto que abrió desde EQUIPOS.
-  // Va aquí y no arriba con `fibrasSupervisadas` porque necesita `lineasAcero`, que se
-  // define recién en esta parte del archivo.
-  const acerosSupervisados = React.useMemo(
-    () => idProySupervisado
-      ? lineasAcero.filter(c => String(c.proyectoId) === idProySupervisado)
-      : [],
-    [idProySupervisado, lineasAcero]
-  );
 
   // Medios tramos VISIBLES del proyecto activo que no están en ningún cable de acero.
   // Se miden sobre lo visible (mismo filtro por días que los cables) para que el número
@@ -2237,7 +2172,7 @@ function App() {
         setMapStyle={setMapStyle}
         menuDiasAbierto={menuDiasAbierto}
         toggleMenuDias={toggleMenuDias}
-        totalNotificaciones={totalNotificaciones + totalSolicitudesColaboracion}
+        totalNotificaciones={totalNotificaciones}
         // Flotante también con una sección abierta: ahí el mapa sigue detrás, y una barra
         // sólida lo empujaría 64 px hacia abajo, dejando el aviso de GPS y el nombre del
         // proyecto caídos a media pantalla.
@@ -2272,7 +2207,7 @@ function App() {
         config={config}
         totalProyectos={proyectos.length}
         totalProyectosEditor={proyectosEditor.length}
-        totalNotifProyectos={totalNotifVistaProyectos + totalSolicitudesColaboracion}
+        totalNotifProyectos={totalNotifVistaProyectos}
         notifAmigos={amistades.recibidas.length}
         perfilLabel={etiquetaPerfil(perfilActivo)}
         isDark={isDark}
@@ -2308,8 +2243,6 @@ function App() {
             // fácil dejar un punto suelto sin darse cuenta. Antes esto se lograba
             // anulando todos los eventos, y por eso el mapa tampoco se movía.
             ? () => {}
-            : mapaSupervision
-            ? () => { setPuntoSeleccionado(null); setConexionSeleccionada(null); }
             // Supervisor en la obra activa: un toque solo suelta lo elegido y no deja el punto
             // gris de AGREGAR (paso 4). En la barra de fibra sigue de largo: no dibuja nunca.
             : (soloLecturaActivo && !modoFibra)
@@ -2329,25 +2262,19 @@ function App() {
               });
             }
           }
-          puntosVisiblesMapa={mapaSupervision ? puntosSupervision : puntosVisiblesMapa}
+          puntosVisiblesMapa={puntosVisiblesMapa}
           iconSize={iconSize}
-          obtenerColorDia={mapaSupervision
-            ? () => '#3b82f6'
-            : (diaId) => filtrosVisibilidad.obtenerColorDia(diaId, todosLosProyectos, coloresPersonales)
-          }
+          obtenerColorDia={(diaId) => filtrosVisibilidad.obtenerColorDia(diaId, todosLosProyectos, coloresPersonales)}
           puntoSeleccionado={puntoSeleccionado}
-          handlePuntoClick={mapaSupervision
-            ? (e, puntoId) => { setPuntoSeleccionado(puntoId); }
-            : (e, puntoId) => mapInteractions.handlePuntoClick({
+          handlePuntoClick={(e, puntoId) => mapInteractions.handlePuntoClick({
               e, puntoId,
               puntoCoords: todosLosPuntos.find(p => String(p.id) === String(puntoId))?.coords,
               modoFibra, dibujandoFibra: dibujandoEfectivo, modoLinea, setPuntosRecorrido, setTrazoAcero,
               puntoEsMedioTramo: esMedioTramo(todosLosPuntos.find(p => String(p.id) === String(puntoId))),
               ajustarVertice: ajustarVerticeFibra,
               setPuntoSeleccionado, setPuntoTemporal
-            })
-          }
-          puntoTemporal={(mapaSupervision || soloLecturaActivo) ? null : puntoTemporal}
+            })}
+          puntoTemporal={soloLecturaActivo ? null : puntoTemporal}
           mostrarEtiquetas={mostrarEtiquetas}
           menuEtiquetasAbierto={menuEtiquetasAbierto}
           simbologiaActiva={simbologiaActiva}
@@ -2367,7 +2294,7 @@ function App() {
           cambiarColorDia={cambiarColorDia}
           uniformizarColorDias={uniformizarColorDias}
           coloresDia={COLORES_DIA}
-          proyectoActivoId={(mapaSupervision ? mapaSupervision.proyecto : proyectoActual)?.id}
+          proyectoActivoId={proyectoActual?.id}
           gpsTrigger={gpsTrigger}
           setGpsTrigger={setGpsTrigger}
           giro={GIRO_MAPA_ACTIVO && esAdmin ? giro : 0}
@@ -2376,21 +2303,7 @@ function App() {
           yaSaltoAlInicio={yaSaltoAlInicio}
           setYaSaltoAlInicio={setYaSaltoAlInicio}
           isDark={isDark}
-          verDetalle={mapaSupervision
-            ? () => {
-              const punto = puntosSupervision.find(p => p.id === puntoSeleccionado);
-              if (punto) {
-                setDatosFormulario({
-                  ...JSON.parse(JSON.stringify(punto.datos)),
-                  coords: punto.coords,
-                  direccion: punto.datos?.direccion || ''
-                });
-                setVistaAnterior('mapa');
-                setVista('verDetalle');
-              }
-            }
-            : verDetalle
-          }
+          verDetalle={verDetalle}
           // Candado del paso 4 del lado de las funciones: aunque un botón quedara a la
           // vista, en una obra donde el usuario es supervisor no escriben
           iniciarEdicion={(...a) => { if (exigirEdicion(proyectoDePunto(puntoSeleccionado)?.id)) iniciarEdicion(...a); }}
@@ -2402,7 +2315,7 @@ function App() {
           setVistaAnterior={setVistaAnterior}
           // Punto sin día asignado → botón flotante "asignar día por fecha"
           puntoSinDia={(() => {
-            if (mapaSupervision || !puntoSeleccionado) return false;
+            if (!puntoSeleccionado) return false;
             const p = todosLosPuntos.find(x => String(x.id) === String(puntoSeleccionado));
             if (!p) return false;
             const proy = todosLosProyectos.find(pr => String(pr.id) === String(p.proyectoId));
@@ -2410,8 +2323,8 @@ function App() {
           })()}
           onAsignarDiasSueltos={asignarDiasSueltos}
           // Props de MOVER
-          modoMover={mapaSupervision ? false : modoMover}
-          pendingCoords={mapaSupervision ? null : pendingCoords}
+          modoMover={modoMover}
+          pendingCoords={pendingCoords}
           iniciarMover={() => { if (exigirEdicion(proyectoDePunto(puntoSeleccionado)?.id)) setModoMover(true); }}
           cancelarMover={() => { setModoMover(false); setPendingCoords(null); }}
           confirmarMover={() => {
@@ -2426,7 +2339,7 @@ function App() {
             setPendingCoords({ puntoId, lat, lng });
           }}
           // Props de FIBRA
-          modoFibra={mapaSupervision ? false : modoFibra}
+          modoFibra={modoFibra}
           setModoFibra={setModoFibra}
           dibujandoFibra={dibujandoEfectivo}
           setDibujandoFibra={setDibujandoFibra}
@@ -2467,10 +2380,10 @@ function App() {
           setCapacidadFibra={setCapacidadFibra}
           fibrasVisibles={fibrasVisibles}
           setFibrasVisibles={setFibrasVisibles}
-          puntosRecorrido={mapaSupervision ? [] : puntosRecorrido}
+          puntosRecorrido={puntosRecorrido}
           setPuntosRecorrido={setPuntosRecorrido}
-          conexionesVisiblesMapa={mapaSupervision ? fibrasSupervisadas : conexionesVisiblesMapa}
-          conexionesLista={mapaSupervision ? fibrasSupervisadas : conexionesProyecto}
+          conexionesVisiblesMapa={conexionesVisiblesMapa}
+          conexionesLista={conexionesProyecto}
           conexionSeleccionada={conexionSeleccionada}
           setConexionSeleccionada={setConexionSeleccionada}
           handleConexionClick={(con) => {
@@ -2481,9 +2394,9 @@ function App() {
               setCapacidadFibra(con.capacidad || 12);
             }
           }}
-          totalFibras={mapaSupervision ? fibrasSupervisadas.length : conexionesProyecto.length}
-          nombreProyecto={mapaSupervision ? mapaSupervision.proyecto?.nombre : proyectoActual?.nombre}
-          totalPuntosProyecto={mapaSupervision ? puntosSupervision.length : (modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto)}
+          totalFibras={conexionesProyecto.length}
+          nombreProyecto={proyectoActual?.nombre}
+          totalPuntosProyecto={modoOrdenar ? totalPuntosOrdenar : totalPuntosProyecto}
           proyectoEsCompartido={!!proyectoActual?.esCompartido}
           onGuardarFibra={async ({ nombre = '', capacidad } = {}) => {
             if (puntosRecorrido.length < 2) return;
@@ -2533,13 +2446,10 @@ function App() {
             theme,
             onConfirm: () => { setConfirmData(null); borrarConexion(con); }
           })}
-          // Props de CABLE DE ACERO (sin ellos, en supervisión, la barra es la de fibra)
+          // Props de CABLE DE ACERO
           modoLinea={modoLinea}
           onCambiarModoLinea={cambiarModoLinea}
-          // En supervisión se pasan SOLO las líneas, para que el mapa las dibuje. Nada de
-          // las acciones de guardar, editar o borrar: la barra que las usa ya está apagada
-          // por `modoSupervision`, y sin ellas aquí no queda ningún camino a escribir.
-          acero={mapaSupervision ? { lineas: acerosSupervisados, visibles: acerosVisibles } : {
+          acero={{
             lineas: lineasAcero,
             lineasProyecto: lineasAceroProyecto,
             trazo: trazoAcero,
@@ -2565,20 +2475,12 @@ function App() {
             total: lineasAceroProyecto.length,
             onCerrar: () => { setTrazoAcero(TRAZO_ACERO_VACIO); setCableAceroSeleccionado(null); setModoLinea('fibra'); },
           }}
-          modoSupervision={!!mapaSupervision}
           // Paso 4: supervisor en la obra activa (no crea nada) y si se puede cambiar lo que
           // está elegido, según el rol en la obra de cada cosa
           soloLectura={soloLecturaActivo}
           puntoEditable={!puntoSeleccionado || puedeEditarEn(proyectoDePunto(puntoSeleccionado)?.id)}
           conexionEditable={!conexionSeleccionada || puedeEditarEn(conexionSeleccionada.proyectoId)}
           aceroEditable={!cableAceroSeleccionado || puedeEditarEn(cableAceroSeleccionado.proyectoId)}
-          onVolverSupervision={() => {
-            // Se vuelve a donde se entró: la lista de PROYECTOS (EQUIPOS se retiró el 24/09)
-            const volverA = mapaSupervision?.volverA || 'proyectos';
-            setMapaSupervision(null);
-            setPuntoSeleccionado(null);
-            setVista(volverA);
-          }}
           overlayGPSActivo={!!mostrarOverlayGPS}
           fotosConCoordenadas={fotosConCoordenadas}
           fotoPuntosActivo={fotoPuntosActivo}
@@ -2675,9 +2577,6 @@ function App() {
           tempData={tempData}
           confirmarCrearProyecto={confirmarCrearProyecto}
           confirmarCrearDia={confirmarCrearDia}
-          aprobarSupervisor={aprobarSupervisor}
-          rechazarSupervisor={rechazarSupervisor}
-          eliminarSupervisor={eliminarSupervisor}
           user={user}
           setAlertData={setAlertData}
           setConfirmData={setConfirmData}
@@ -2899,21 +2798,18 @@ function App() {
       {vista === 'verDetalle' && (
         <VerDetalle
           datos={datosFormulario}
-          proyectoActual={mapaSupervision ? mapaSupervision.proyecto : (proyectoDelPuntoSel || proyectoActual)}
+          proyectoActual={proyectoDelPuntoSel || proyectoActual}
           config={configParaDetalle}
           theme={theme}
           // Paso 4: de solo lectura si en la obra de ESE punto el usuario es supervisor; y
           // como supervisor puede dejar observaciones en la bitácora de esa obra
-          readOnly={!!mapaSupervision || !puedeEditarEn((proyectoDelPuntoSel || proyectoActual)?.id)}
-          esSupervision={!!mapaSupervision || rolEnProyecto(proyectoDelPuntoSel || proyectoActual, user?.uid) === 'supervisor'}
-          proyectoId={mapaSupervision ? mapaSupervision.proyecto?.id : (proyectoDelPuntoSel || proyectoActual)?.id}
+          readOnly={!puedeEditarEn((proyectoDelPuntoSel || proyectoActual)?.id)}
+          esSupervision={rolEnProyecto(proyectoDelPuntoSel || proyectoActual, user?.uid) === 'supervisor'}
+          proyectoId={(proyectoDelPuntoSel || proyectoActual)?.id}
           user={user}
           logoApp={logoApp}
           onVolver={() => {
-            if (mapaSupervision) {
-              // Viene del mapa supervisado, volver al mapa
-              setVista('mapa');
-            } else if (modalPendiente) {
+            if (modalPendiente) {
               setVista('proyectos');
             } else {
               setVista(vistaAnterior);
