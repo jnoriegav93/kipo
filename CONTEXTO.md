@@ -14,9 +14,11 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
 > VERIFICAR de la migración. El 24/09 se retiró la pantalla vieja de EQUIPOS y salió
 > el paso 4, el candado por rol, en dos entregas, y el paso 5, retirar lo viejo
-> (último SELLO: 24/09/26, 01:31). Lo próximo: el paso 6 (limpiar los datos viejos y
-> las reglas por rol), después de que el usuario verifique todo. El trabajo sigue en
-> la rama `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
+> (SELLO: 24/09/26, 01:31). El paso 6 va en curso. Ya están el panel de limpieza en
+> Admin (SELLO: 24/09/26, 01:55), `usuarios` cerrada y el candado por rol también en
+> el servidor. Falta que el admin corra el panel; después se retiran las lecturas de
+> respaldo. El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se adelanta
+> a ella en cada despliegue.
 
 ---
 
@@ -1766,10 +1768,18 @@ Lo que faltaba mapear quedó resuelto así:
    - después de LIMPIAR: quitar la escucha de respaldo por `compartidoCon`, la lectura
      vieja de `crearExportacion` y el respaldo de nombres en `supervisoresInfo`; y en las
      reglas, sacar las ramas viejas (equipos, `compartidoCon`, `solicitudesPendientes`);
-   - **a confirmar con el usuario:** la escritura de puntos, fibras, acero y papelera
-     sigue abierta en el servidor a propósito. Pidió que los cambios sin subir de quien
-     pasa de editor a supervisor se suban igual, y una regla por rol los rechazaría; el
-     candado de esas escrituras vive en la app (paso 4).
+   - **Candado también en el servidor** para puntos, fibras, acero, papelera y el borrar
+     fotos del mapa (`editaLaObra` en firestore.rules): solo el dueño, los editores y el
+     admin. El usuario lo pidió el 24/09, una vez que todos subieron sus cambios. Desde
+     ahí, si un editor pasa a supervisor con cambios sin subir, el servidor los rechaza:
+     la cola los intenta 3 veces y los deja en error. Probado en el emulador
+     (`reglas-test/test-reglas-obra.mjs`, 57 casos). Cubre puntos viejos sin obra, con la
+     obra en número o de una obra borrada; mover entre obras; recuperar de la papelera;
+     un lote de 450 postes y el borrado de una obra en un lote. Hubo control: con las
+     reglas de producción salen mal justo los 21 casos "no". Medido: caben 20 obras
+     distintas por lote, una lectura por obra. **En producción desde el 24/09, 02:39**
+     (el filtro de permisos de Claude Code frenó los primeros intentos; pasó con la
+     autorización explícita del usuario).
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 

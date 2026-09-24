@@ -71,9 +71,11 @@ service cloud.firestore {
         esDuenoDelProyecto(proyectoId, request.auth.uid) ||
         esEditorDelProyecto(proyectoId, request.auth.uid)
       );
+      // Quien la subió la quita, mientras siga siendo editor (paso 6: el supervisor no
+      // borra nada).
       allow delete: if request.auth != null && (
         esDuenoDelProyecto(proyectoId, request.auth.uid) ||
-        (resource.data.uid == request.auth.uid)
+        (resource.data.uid == request.auth.uid && esEditorDelProyecto(proyectoId, request.auth.uid))
       );
     }
 
@@ -87,28 +89,33 @@ service cloud.firestore {
     }
 
     // ── PUNTOS ────────────────────────────────────────────────────────────
+    // Paso 6 del rediseño de equipos: los cambian solo el dueño y los editores de SU
+    // obra; el supervisor solo mira (ver editaLaObra, abajo). Leer sigue abierto: las
+    // consultas de la app no cambian. Al cambiar un punto se mira la obra de antes y la
+    // de después (mover a otra obra exige poder editar las dos).
     match /puntos/{puntoId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
-      // Borrar: cualquier usuario autenticado (consistente con create/update, que ya están
-      // abiertos). La regla estricta anterior fallaba con puntos viejos (proyectoId numérico /
-      // sin ownerId) y no aportaba seguridad real porque editar ya está abierto.
-      allow delete: if request.auth != null;
+      allow create: if request.auth != null && editaLaObra(request.resource.data);
+      allow update: if request.auth != null && editaLaObra(resource.data) && editaLaObra(request.resource.data);
+      allow delete: if request.auth != null && editaLaObra(resource.data);
     }
 
     // ── CONEXIONES (FIBRAS) ───────────────────────────────────────────────
     match /conexiones/{conexionId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
-      // Borrar: cualquier usuario autenticado (consistente con create/update).
-      allow delete: if request.auth != null;
+      allow create: if request.auth != null && editaLaObra(request.resource.data);
+      allow update: if request.auth != null && editaLaObra(resource.data) && editaLaObra(request.resource.data);
+      allow delete: if request.auth != null && editaLaObra(resource.data);
     }
 
     // ── CABLES DE ACERO ───────────────────────────────────────────────────
     // Mensajero de poste a poste; se liquida como ferretería, por metro. Mismas
-    // reglas que las fibras: cualquier usuario autenticado lee y escribe.
+    // reglas que las fibras.
     match /cablesAcero/{cableId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && editaLaObra(request.resource.data);
+      allow update: if request.auth != null && editaLaObra(resource.data) && editaLaObra(request.resource.data);
+      allow delete: if request.auth != null && editaLaObra(resource.data);
     }
 
     // ── BITÁCORA ──────────────────────────────────────────────────────────
@@ -256,11 +263,14 @@ service cloud.firestore {
     }
 
     // ── PAPELERA (soft-delete, 15 días) ───────────────────────────────────
-    // Lectura/restauración abierta a autenticados: la papelera POR PROYECTO la ven
-    // el creador Y los editores (todo lo borrado del proyecto, por cualquiera).
+    // La papelera POR PROYECTO la ven todos (lo borrado del proyecto, por cualquiera),
+    // pero mandar algo a la papelera o sacarlo (recuperar) es de quien edita la obra
+    // (paso 6). La purga de los 15 días la hace el servidor, que no pasa por aquí.
     match /papelera/{id} {
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-      allow read, update, delete: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid &&
+        editaLaObra(request.resource.data);
+      allow update, delete: if request.auth != null && editaLaObra(resource.data);
     }
 
     // ── FUNCIONES AUXILIARES ──────────────────────────────────────────────
@@ -274,6 +284,36 @@ service cloud.firestore {
     function esMiUsuario(userId) {
       return request.auth.token.get('email', '') != '' &&
         request.auth.token.get('email', '').lower() == userId.lower();
+    }
+
+    // ── Rol por obra (paso 6) para puntos, fibras, acero y papelera ──
+    // `d` es el documento (el de antes o el de después). Lo cambia quien edita su obra:
+    // el dueño, un editor de `miembros` o, hasta que se limpien, un editor de los campos
+    // viejos (compartidoCon + permisos). El admin, siempre (sus herramientas de soporte).
+    // Sin obra conocida —puntos viejos sin proyectoId, o que quedaron de una obra que ya no
+    // existe— queda como antes: cualquier autenticado. (Al borrar una obra, su lote se
+    // evalúa con la obra todavía en pie: pasa por ser el dueño.) El proyectoId numérico de
+    // los puntos viejos se compara como texto.
+    // Cada obra se lee UNA vez (get, que da null si no existe; sin exists aparte): Firestore
+    // permite 20 lecturas por lote y cuenta una sola vez la misma obra repetida. Probado en
+    // el emulador: 450 postes de una obra en un lote pasan; más de 20 obras distintas, no.
+    function obraDe(d) {
+      return /databases/$(database)/documents/proyectos/$(string(d.proyectoId));
+    }
+
+    function sinObra(d) {
+      return d.get('proyectoId', null) == null || string(d.proyectoId) == '' || get(obraDe(d)) == null;
+    }
+
+    function editaEn(p) {
+      return p.get('ownerId', '') == request.auth.uid ||
+        p.get('miembros', {}).get(request.auth.uid, {}).get('rol', '') in ['dueno', 'editor'] ||
+        (request.auth.uid in p.get('compartidoCon', []) &&
+          p.get('permisos', {}).get(request.auth.uid, '') in ['edicion', 'ambos']);
+    }
+
+    function editaLaObra(d) {
+      return esAdmin() || sinObra(d) || editaEn(get(obraDe(d)).data);
     }
 
     function esDuenoDelProyecto(proyectoId, uid) {

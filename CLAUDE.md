@@ -34,7 +34,10 @@ reportó "no funciona" cuando en realidad el dispositivo corría la versión vie
 
 Las **reglas de Firestore van en despliegue aparte** y solo sumando permisos,
 nunca restringiendo: se aplican al instante y a todos. Una regla mal escrita deja
-a la cuadrilla sin poder subir fotos en ese mismo segundo.
+a la cuadrilla sin poder subir fotos en ese mismo segundo. Las pocas veces que hubo
+que restringir (paso 6 del rediseño de equipos) fue con el visto bueno del usuario,
+probando antes en el emulador de Firestore casos que tienen que pasar y casos que
+tienen que fallar, más una corrida de control con la regla vieja.
 
 ```bash
 firebase deploy --only firestore:rules --project kipo-d29af
@@ -117,9 +120,13 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   borre, copie o mueva puntos, fibras o proyectos tiene que llevar también sus cables:
   postes, medio tramo y fibras.
 
-- `puntos` y `conexiones`: lectura y escritura para cualquier autenticado. La
-  regla estricta rompía con puntos viejos que traen `proyectoId` numérico o sin
-  `ownerId`, y no daba seguridad real porque editar ya estaba abierto.
+- `puntos`, `conexiones`, `cablesAcero` y `papelera`: los lee cualquier autenticado;
+  los cambian solo el dueño y los editores de SU obra, y el admin (`editaLaObra` en
+  firestore.rules, paso 6 del rediseño de equipos). Cada escritura lee su proyecto una
+  vez: caben 20 obras distintas por lote, y la misma obra repetida cuenta una sola.
+  Los puntos viejos sin `proyectoId`, o de una obra que ya no existe, quedan abiertos
+  como antes, y el `proyectoId` numérico se compara como texto: una regla estricta
+  anterior rompió justo con esos puntos.
 - `proyectos/{id}/diseno`: la lee cualquiera que vea el proyecto, la escribe solo
   el dueño. El diseño es el compromiso contra el que después se liquida la obra.
 - Los `armados` de un proyecto solo los cambia el dueño.
@@ -142,7 +149,8 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   el supervisor solo mira y exporta. Todo lo que escribe en una obra pasa por
   `exigirEdicion(proyectoId)` en App.jsx, con el proyecto DE ESO que se toca (el punto,
   la fibra, el cable), no el activo: en el mapa pueden verse varias obras a la vez.
-  Código nuevo que escriba tiene que llevarlo, además de esconder su botón.
+  Código nuevo que escriba tiene que llevarlo, además de esconder su botón. Desde el
+  paso 6 el servidor también lo exige (ver `puntos` arriba).
 - **Los colores de día son de cada usuario** (`configuraciones/{uid}.coloresDia`), no
   del proyecto: el color que el día trae en el proyecto es solo el de partida. No
   volver a escribirlos en el proyecto.
