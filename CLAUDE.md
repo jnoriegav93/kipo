@@ -133,6 +133,11 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   viejos caen a P/MT/C). Lo escrito a mano no se pisa y editando un punto guardado no se
   toca: renumerar al reordenar sigue siendo trabajo aparte (`RenumerarItems`).
 
+- **Miembros de un proyecto:** `miembros` (`{ uid: { rol, desde, nombre, … } }`) y
+  `miembrosUids`. Los campos del sistema viejo (`compartidoCon`, `permisos`,
+  `supervisoresInfo`, `enListaDe`, `grupoId`) ya no se escriben: solo se leen de
+  respaldo y se limpian al quitar a alguien, hasta el paso 6 (CONTEXTO.md). No volver a
+  escribirlos.
 - **Rol por obra (paso 4 del rediseño de equipos).** Dueño y editor cambian cosas;
   el supervisor solo mira y exporta. Todo lo que escribe en una obra pasa por
   `exigirEdicion(proyectoId)` en App.jsx, con el proyecto DE ESO que se toca (el punto,

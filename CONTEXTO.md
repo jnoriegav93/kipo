@@ -13,10 +13,10 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > salió en tres entregas: invitar, amigos y avisos, y traspasar (último SELLO:
 > 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
 > VERIFICAR de la migración. El 24/09 se retiró la pantalla vieja de EQUIPOS y salió
-> el paso 4, el candado por rol, en dos entregas (último SELLO: 24/09/26, 01:14). Lo
-> próximo: el paso 5 (retirar lo viejo), cuando el usuario confirme que todos
-> actualizaron. El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se
-> adelanta a ella en cada despliegue.
+> el paso 4, el candado por rol, en dos entregas, y el paso 5, retirar lo viejo
+> (último SELLO: 24/09/26, 01:31). Lo próximo: el paso 6 (limpiar los datos viejos y
+> las reglas por rol), después de que el usuario verifique todo. El trabajo sigue en
+> la rama `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
 
 ---
 
@@ -1722,13 +1722,40 @@ Lo que faltaba mapear quedó resuelto así:
    Pruebas: render en Node de la LISTA, la revisión, el control y el exportar, como
    dueño y como supervisor (la pestaña de aprobar no se puede abrir en Node: queda
    cubierta por la lógica probada con mutantes).
-5. **Retirar lo viejo**, cuando el usuario confirme que todos actualizaron (no hay
-   seguimiento de versiones: se decidió no hacerlo): `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
-   `grupoId`, `supervisoresInfo`, la colección `equipos` y el código muerto
-   (`VistaPermisos`, `VistaSupervision`, `ModalAgregarCodigo`,
-   `aprobarSupervisor`, `rechazarSupervisor`, `codigoAcceso`).
-6. **Último:** reglas de Firestore que hagan cumplir el rol. Misma condición que
-   el paso 5: cerrarlas antes deja sin poder guardar a quien no actualizó.
+5. **Retirar lo viejo.** **Hecho el 24/09**, de noche, con el visto bueno del usuario
+   ("dale con el paso 5, verificaré todo al final"). En tres despliegues, en este orden
+   para que ningún momento quede roto:
+   - **Reglas (solo suman):** el editor de `miembros` cambia el proyecto (salvo
+     `ownerId`, `miembros`, `miembrosUids`, `compartidoCon` y `permisos`); cualquier
+     miembro puede salirse (quitarse a sí mismo); `fotosProyecto` reconoce a los
+     miembros (`miembrosUids`) y a los editores (`miembros`).
+   - **App (SELLO: 24/09/26, 01:31):** los proyectos compartidos se escuchan por
+     `miembrosUids`; se sigue escuchando `compartidoCon` como respaldo para quien solo
+     esté ahí. `permisoActual` sale del rol. La lista de proyectos son todos los
+     activos (ya no cuentan `grupoId` ni `enListaDe`). Ya no se escriben `compartidoCon`,
+     `permisos` ni `supervisoresInfo`: agregar un amigo anota al miembro con su nombre
+     en `miembros`; cambiar el rol saca a la persona del reflejo viejo; quitar y salir
+     lo siguen limpiando. Los nombres se leen de `miembros` y, de respaldo,
+     `supervisoresInfo`. Fuera: el modo supervisión (`mapaSupervision`), las solicitudes
+     viejas y su aviso rojo, aprobar/rechazar/eliminar supervisor, la sincronización de
+     `supervisoresInfo` y los archivos VistaEquipos, VistaPermisos, VistaSupervision y
+     ModalAgregarCodigo.
+   - **Funciones:** `aceptarInvitacion` anota solo en `miembros` (con nombre y empresa)
+     y `miembrosUids`; `traspasarProyecto` deja al anterior como editor con su nombre y
+     del reflejo viejo solo suelta al nuevo dueño. Probadas las dos con la función real
+     sobre la Firestore falsa (`aceptarInvitacion`: 4 mutantes; traspaso: 11).
+   **No se borró ningún dato:** los campos viejos siguen guardados, sin escribirse.
+6. **Último:** con la verificación del usuario hecha (VERIFICAR de la migración y las
+   pruebas de los pasos 3 a 5):
+   - limpiar los datos viejos de cada proyecto (`compartidoCon`, `permisos`,
+     `supervisoresInfo`, `enListaDe`, `grupoId`, `solicitudesPendientes`,
+     `codigoAcceso`) y la colección `equipos`, después de pasar a `miembros` los
+     nombres que solo estén en `supervisoresInfo`;
+   - quitar la escucha de respaldo por `compartidoCon` y la lectura vieja de
+     `crearExportacion`;
+   - reglas que hagan cumplir el rol: sacar las ramas viejas (equipos, `compartidoCon`,
+     `solicitudesPendientes`), dar escritura de puntos, fibras, acero y papelera solo a
+     dueño y editores, y cerrar `usuarios`.
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 

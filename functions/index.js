@@ -4137,10 +4137,10 @@ exports.migrarMiembros = onCall({ region: 'us-central1', timeoutSeconds: 300, me
 // link, todo en una transacción. Así la protección del código es real (el invitado no
 // puede escribirse solo en el proyecto) y un link no sirve dos veces aunque lo acepten
 // dos personas en el mismo instante.
-// Mientras convivan los dos sistemas, el miembro se anota también en los campos viejos
-// (`compartidoCon`, `permisos`, `supervisoresInfo`): con eso lo ven las reglas de hoy,
-// la exportación y los teléfonos sin actualizar. Lógica compartida con la app en
-// invitaciones.js (copia de src/utils/equipoProyecto.js).
+// Desde el paso 5 el miembro se anota solo en `miembros` (con su nombre y empresa) y en
+// `miembrosUids`: los campos viejos (`compartidoCon`, `permisos`, `supervisoresInfo`) ya
+// no se escriben. Las reglas y la app ya reconocen a los miembros por esos dos. Lógica
+// compartida con la app en invitaciones.js (copia de src/utils/equipoProyecto.js).
 // ============================================================
 exports.aceptarInvitacion = onCall({ region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
@@ -4148,7 +4148,7 @@ exports.aceptarInvitacion = onCall({ region: 'us-central1' }, async (request) =>
   if (typeof codigo !== 'string' || !/^[A-Za-z0-9]{15,40}$/.test(codigo)) {
     throw new HttpsError('invalid-argument', 'inexistente');
   }
-  const { estadoInvitacion, rolEnProyecto, permisoViejo } = require('./invitaciones');
+  const { estadoInvitacion, rolEnProyecto } = require('./invitaciones');
   const uid = request.auth.uid;
   const conf = await db.collection('configuraciones').doc(uid).get();
   const c = conf.exists ? conf.data() : {};
@@ -4176,11 +4176,8 @@ exports.aceptarInvitacion = onCall({ region: 'us-central1' }, async (request) =>
 
     const ahora = new Date().toISOString();
     tx.update(proyRef, {
-      [`miembros.${uid}`]: { rol: inv.rol, desde: ahora, por: inv.deUid || null, invitacion: codigo },
+      [`miembros.${uid}`]: { rol: inv.rol, desde: ahora, por: inv.deUid || null, invitacion: codigo, nombre, empresa: c.empresaPersonal || '' },
       miembrosUids: FV.arrayUnion(uid),
-      compartidoCon: FV.arrayUnion(uid),
-      [`permisos.${uid}`]: permisoViejo(inv.rol),
-      [`supervisoresInfo.${uid}`]: { nombre, empresa: c.empresaPersonal || '' },
     });
     if (inv.tipo === 'qr') tx.update(invRef, { usos: FV.increment(1), ultimoUso: ahora });
     else tx.update(invRef, { estado: 'usada', usadaPor: uid, usadaEn: ahora });
@@ -4195,7 +4192,7 @@ exports.aceptarInvitacion = onCall({ region: 'us-central1' }, async (request) =>
 // el catálogo de ferretería del nuevo dueño (cada uno escribe solo el suyo) y el aviso.
 // No se copia NADA de la obra: postes, fibras y fotos no viven "dentro" del dueño, son
 // documentos sueltos con proyectoId. Cambia `ownerId` del proyecto, y además:
-//  - el dueño anterior queda como editor (también en el sistema viejo, mientras conviva);
+//  - el dueño anterior queda como editor, con su nombre en `miembros`;
 //  - al nuevo se le agregan los ítems de ferretería que la obra usa y él no tiene, con
 //    el mismo id (traspaso.js);
 //  - los controles de ferretería del dueño anterior para esta obra pasan al nuevo;
@@ -4252,25 +4249,23 @@ exports.traspasarProyecto = onCall({ region: 'us-central1', timeoutSeconds: 120,
     const nuevoCfg = cfgNuevoSnap.exists ? cfgNuevoSnap.data() : {};
     const { agregar, sinOrigen } = itemsQueFaltan(usados, yoCfg.catalogoFerreteria || [], nuevoCfg.catalogoFerreteria || []);
 
-    // El dueño no va en compartidoCon; el anterior entra, como editor.
-    const compartidoCon = [...new Set([...(p.compartidoCon || []).map(String).filter(u => u !== nuevo), yo])];
-    // Cada uno conserva lo que ya tenía como miembro (desde cuándo, quién lo invitó).
+    // Cada uno conserva lo que ya tenía como miembro (desde cuándo, quién lo invitó), y el
+    // anterior queda como editor con su nombre (paso 5: los nombres viven en `miembros`).
+    // De los campos viejos solo se limpia al nuevo dueño, que no va en el reflejo; nada
+    // nuevo se escribe ahí.
     const antes = p.miembros || {};
-    const infoNuevo = (p.supervisoresInfo || {})[nuevo] || {};
+    const infoNuevo = { ...((p.supervisoresInfo || {})[nuevo] || {}), ...(antes[nuevo] || {}) };
     tx.update(proyRef, {
       ownerId: nuevo,
       // Al abrir Kipo, el nuevo dueño los pone al día con su configuración (App.jsx).
       ownerNombre: nuevoCfg.nombrePersonal || infoNuevo.nombre || String(nuevoCfg.email || '').split('@')[0] || '',
       ownerEmpresa: nuevoCfg.empresaPersonal || infoNuevo.empresa || '',
       [`miembros.${nuevo}`]: { ...(antes[nuevo] || { desde: ahora }), rol: 'dueno', duenoDesde: ahora },
-      [`miembros.${yo}`]: { ...(antes[yo] || { desde: ahora }), rol: 'editor' },
+      [`miembros.${yo}`]: { ...(antes[yo] || { desde: ahora }), rol: 'editor', nombre: miNombre, empresa: yoCfg.empresaPersonal || '' },
       miembrosUids: FV.arrayUnion(nuevo, yo),
-      compartidoCon,
+      compartidoCon: FV.arrayRemove(nuevo),
       [`permisos.${nuevo}`]: FV.delete(),
-      [`permisos.${yo}`]: 'edicion',
       [`supervisoresInfo.${nuevo}`]: FV.delete(),
-      [`supervisoresInfo.${yo}`]: { nombre: miNombre, empresa: yoCfg.empresaPersonal || '' },
-      enListaDe: FV.arrayUnion(nuevo),
     });
     // Sin configuración (no debería pasar: crearUsuario la crea) no se inventa una a medias.
     const agregados = (agregar.length && cfgNuevoSnap.exists) ? agregar.length : 0;
