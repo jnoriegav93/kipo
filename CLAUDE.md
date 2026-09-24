@@ -91,6 +91,15 @@ porque el error solo salía en la consola.
 
 **El smoke test solo llega al login**, así que no ve errores dentro de modales.
 
+**La hora de Lima, con Node, no con `date`.** En Git Bash, `TZ=America/Lima date`
+devuelve la hora **UTC** sin avisar: cinco horas de más. El 23/09 eso hizo creer que
+eran las 8:39 cuando eran las 3:39, y se frenó un despliegue por "jornada empezada".
+Lo confiable es lo mismo que usa el sello de compilación:
+
+```bash
+node -e "console.log(new Date().toLocaleString('es-PE',{timeZone:'America/Lima'}))"
+```
+
 ---
 
 ## Datos

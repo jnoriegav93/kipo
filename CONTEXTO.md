@@ -1619,8 +1619,9 @@ Lo que faltaba mapear quedó resuelto así:
    (`amistades/{uidA_uidB}`), lógica en `src/utils/amigos.js` probada con mutantes.
    El dueño suma a un amigo directo desde EQUIPO, y el amigo ve un aviso a pantalla
    completa al abrir Kipo (`avisos`, `ModalAvisos`). Las reglas de `amistades` y
-   `avisos` ya están desplegadas; la app, en la rama. Falta que el usuario pruebe 3a
-   y 3b. Visto de paso: la sincronización de `supervisoresInfo` que corre al entrar
+   `avisos` ya están desplegadas. **La app de 3a y 3b, desplegada el 23/09 (SELLO:
+   23/09/26, 21:11)**, de noche: el usuario las prueba en producción con dos cuentas,
+   porque el bloqueo por dispositivo no le deja entrar con otra cuenta desde su PC. Visto de paso: la sincronización de `supervisoresInfo` que corre al entrar
    falla para un supervisor que no es de un equipo ('lectura' no puede escribir el
    proyecto), así que su nombre queda el que se anotó al sumarlo. Es inofensivo; se
    arregla con las reglas del paso 6.
