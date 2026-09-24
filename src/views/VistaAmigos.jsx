@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, Users } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { claseBotonCabecera, claseCabecera } from '../utils/cabeceras';
 import { coincidencias } from '../utils/amigos';
 import { enviarSolicitud, aceptarSolicitud, borrarAmistad } from '../services/amigos';
@@ -8,10 +8,10 @@ import { enviarSolicitud, aceptarSolicitud, borrarAmistad } from '../services/am
 // en el menú. A un amigo el dueño lo puede agregar directo a un proyecto, sin link ni
 // aceptación; por eso la amistad es mutua y con consentimiento: uno manda la solicitud
 // y el otro la acepta. Borrarla también es mutuo, y no saca a nadie de ningún proyecto.
-// Los equipos de antes siguen a un toque, abajo, hasta el paso 5.
+// (Los equipos de antes se abrían desde aquí hasta que se retiraron, el 24/09.)
 const VistaAmigos = ({
-  theme, user, config, proyectos, amistades, notifEquipos = 0,
-  onVolver, onAbrirEquipos, setAlertData, setConfirmData,
+  theme, user, config, proyectos, amistades,
+  onVolver, setAlertData, setConfirmData,
 }) => {
   const { amigos, recibidas, enviadas } = amistades;
   const miNombre = config?.nombrePersonal || user?.email?.split('@')[0] || '';
@@ -118,23 +118,6 @@ const VistaAmigos = ({
           ))}
         </div>
 
-        {onAbrirEquipos && (
-          <div className={tarjeta}>
-            <h3 className={titulo}>Equipos (anterior)</h3>
-            <p className={`${vacio} mb-3`}>
-              Los equipos de antes siguen aquí mientras pasamos a los proyectos con miembros.
-            </p>
-            <button onClick={onAbrirEquipos}
-              className={`relative w-full py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95`}>
-              <Users size={14} /> Abrir equipos
-              {notifEquipos > 0 && (
-                <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center">
-                  {notifEquipos > 9 ? '9+' : notifEquipos}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

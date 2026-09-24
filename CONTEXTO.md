@@ -1615,8 +1615,7 @@ Lo que faltaba mapear quedó resuelto así:
    miembro llega por `compartidoCon`.
 
    **3b hecho el 23/09.** AMIGOS (`VistaAmigos`) reemplaza a EQUIPOS en el menú; los
-   equipos de antes se abren desde ahí hasta el paso 5, y el aviso rojo de AMIGOS
-   suma los dos. La amistad es mutua y con consentimiento: un documento por pareja
+   equipos de antes se abrían desde ahí hasta que se retiraron, el 24/09 (ver abajo). La amistad es mutua y con consentimiento: un documento por pareja
    (`amistades/{uidA_uidB}`), lógica en `src/utils/amigos.js` probada con mutantes.
    El dueño suma a un amigo directo desde EQUIPO, y el amigo ve un aviso a pantalla
    completa al abrir Kipo (`avisos`, `ModalAvisos`). Las reglas de `amistades` y
@@ -1646,6 +1645,24 @@ Lo que faltaba mapear quedó resuelto así:
    Probada con la función real (`.run`) sobre una Firestore falsa en memoria (seis
    escenarios; diez mutantes, todos cazados) y con un render en Node de EQUIPO y del
    aviso. Función y app desplegadas el 23/09 (**SELLO: 23/09/26, 22:08**).
+
+   **24/09, dos arreglos que salieron al mapear el paso 4.**
+   - Se quitó el "BLOQUE 6" de App.jsx: una limpieza del sistema viejo que corría una
+     vez por dispositivo y vaciaba `compartidoCon`, `permisos` y `supervisoresInfo` de
+     los proyectos propios sin equipo. Desde 3a esos campos son el reflejo de los
+     invitados: el dueño que entraba desde un teléfono nuevo los dejaba sin el
+     proyecto (**SELLO: 24/09/26, 00:11**).
+   - **Se retiró de la app la pantalla vieja de EQUIPOS** (el usuario no quiere que
+     quede nada de equipos: AMIGOS la reemplaza). Seguía a un toque desde AMIGOS
+     ("Equipos (anterior)", una decisión de 3b que no se le consultó) y sus botones
+     chocaban con el modelo nuevo: eliminar el equipo vaciaba los miembros o mandaba
+     proyectos a la papelera; salir o quitar a alguien duplicaba obras y le quitaba el
+     reflejo sin tocar `miembros`; "pasar proyecto al equipo" cambiaba el dueño sin
+     traspaso; EDITAR volvía editor a cualquiera del equipo sin invitación. Los links
+     viejos `?equipo=` ahora muestran un aviso. Quien entraba como supervisor por un
+     equipo viejo deja de ver esos proyectos hasta que el dueño lo invite (lo
+     acordado: los supervisores se reinvitan). `VistaEquipos.jsx` queda en el repo,
+     sin usar, hasta el paso 5 (**SELLO: 24/09/26, 00:32**).
 4. **Candado por rol.** `rolEnProyecto` en cada botón que escribe: el supervisor,
    solo lectura en todo (mapa, formulario, fotos, ferretería, revisión); el
    editor, sin borrar el proyecto.

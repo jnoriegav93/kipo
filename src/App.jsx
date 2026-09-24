@@ -59,7 +59,6 @@ import ModalAvisos from './components/ModalAvisos';
 import VistaMapa from './views/VistaMapa';
 import { MiniMapaRevision } from './components/Mapas';
 import VistaProyectos from './views/VistaProyectos';
-import VistaEquipos from './views/VistaEquipos';
 import VistaAmigos from './views/VistaAmigos';
 import VistaControlFerreteria from './views/VistaControlFerreteria';
 import VistaDatosUsuario from './views/VistaDatosUsuario';
@@ -252,29 +251,18 @@ function App() {
   // Modo mapa supervisión: { proyecto, puntos } o null
   const [mapaSupervision, setMapaSupervision] = React.useState(null);
 
-  // Solicitudes pendientes de MIS equipos → badge "Equipos" del menú
-  const [notifEquipos, setNotifEquipos] = React.useState(0);
-  React.useEffect(() => {
-    if (!user?.uid) { setNotifEquipos(0); return; }
-    const unsub = onSnapshot(
-      query(collection(db, 'equipos'), where('ownerId', '==', user.uid)),
-      s => setNotifEquipos(s.docs.reduce((t, d) => t + (d.data().pendientes?.length || 0), 0)),
-      () => setNotifEquipos(0)
-    );
-    return unsub;
-  }, [user?.uid]);
-
-  // BLOQUE 5: invitación a equipo por enlace (?equipo=ID en la URL)
-  const [invitacionEquipoId, setInvitacionEquipoId] = React.useState(null);
+  // Links viejos de invitación a un EQUIPO (?equipo=ID). La pantalla de equipos se
+  // retiró el 24/09: ahora cada proyecto invita a sus miembros (EQUIPO del proyecto) y
+  // AMIGOS reemplaza a EQUIPOS. El link se limpia de la URL y se explica qué hacer.
   React.useEffect(() => {
     if (!user?.uid) return;
-    const eqId = new URLSearchParams(window.location.search).get('equipo');
-    if (eqId) {
-      setInvitacionEquipoId(eqId);
-      window.history.replaceState({}, '', window.location.pathname);
-      setVista('equipos');
-    }
-  }, [user?.uid]);
+    if (!new URLSearchParams(window.location.search).get('equipo')) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    setAlertData({
+      title: 'Invitación vieja',
+      message: 'Los equipos ya no existen: ahora cada proyecto invita a sus miembros. Pídele al dueño del proyecto un link o un QR nuevo.',
+    });
+  }, [user?.uid, setAlertData]);
 
   // Notificaciones centralizadas de chat
   const [notifProyectos, setNotifProyectos] = React.useState({});
@@ -2205,7 +2193,7 @@ function App() {
         totalProyectos={proyectos.length}
         totalProyectosEditor={proyectosEditor.length}
         totalNotifProyectos={totalNotifVistaProyectos + totalSolicitudesColaboracion}
-        notifAmigos={amistades.recibidas.length + notifEquipos}
+        notifAmigos={amistades.recibidas.length}
         perfilLabel={etiquetaPerfil(perfilActivo)}
         isDark={isDark}
         setIsDark={setIsDark}
@@ -2487,8 +2475,8 @@ function App() {
           }}
           modoSupervision={!!mapaSupervision}
           onVolverSupervision={() => {
-            // Se vuelve a donde se entró: EQUIPOS o la lista de PROYECTOS (paso 3a)
-            const volverA = mapaSupervision?.volverA || 'equipos';
+            // Se vuelve a donde se entró: la lista de PROYECTOS (EQUIPOS se retiró el 24/09)
+            const volverA = mapaSupervision?.volverA || 'proyectos';
             setMapaSupervision(null);
             setPuntoSeleccionado(null);
             setVista(volverA);
@@ -2692,47 +2680,9 @@ function App() {
           config={config}
           proyectos={[...proyectos, ...proyectosSupervisados]}
           amistades={amistades}
-          notifEquipos={notifEquipos}
           onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
-          onAbrirEquipos={() => setVistaConHistorial('equipos')}
           setAlertData={setAlertData}
           setConfirmData={setConfirmData}
-        />
-      )}
-
-      {vista === 'equipos' && (
-        <VistaEquipos
-          theme={theme}
-          isDark={isDark}
-          user={user}
-          config={config}
-          saveConfig={guardarConfiguracion}
-          setConfirmData={setConfirmData}
-          setAlertData={setAlertData}
-          onVolver={() => { volverVistaAnterior(); setMenuAbierto(true); }}
-          marcarChatLeido={marcarChatLeido}
-          notificacionesSupervisados={notifSupervisados}
-          proyectosPropios={proyectos}
-          invitacionEquipoId={invitacionEquipoId}
-          onInvitacionConsumida={() => setInvitacionEquipoId(null)}
-          perfilActivo={perfilActivo}
-          onAbrirProyecto={(proy) => {
-            // EDITAR desde el equipo: activa el proyecto (EDITANDO) y va a la lista personal
-            seleccionarProyecto(proy);
-            setVista('proyectos');
-          }}
-          onGPSProyecto={(proyecto, pts, centrarEn) => {
-            setMapaSupervision({ proyecto, puntos: pts });
-            setPuntoSeleccionado(null);
-            if (centrarEn) {
-              setMapViewState({ center: [centrarEn.lat, centrarEn.lng], zoom: 19 });
-            } else if (pts.length > 0) {
-              const sumLat = pts.reduce((a, p) => a + p.coords.lat, 0);
-              const sumLng = pts.reduce((a, p) => a + p.coords.lng, 0);
-              setMapViewState({ center: [sumLat / pts.length, sumLng / pts.length], zoom: 17 });
-            }
-            setVista('mapa');
-          }}
         />
       )}
 
