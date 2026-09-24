@@ -12,9 +12,10 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > "Rediseño de equipos" más abajo. **Pasos 0 a 3 hechos y en producción**; el 3
 > salió en tres entregas: invitar, amigos y avisos, y traspasar (último SELLO:
 > 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
-> VERIFICAR de la migración. Lo próximo: el paso 4, el candado por rol en toda la
-> app. El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se adelanta a
-> ella en cada despliegue.
+> VERIFICAR de la migración. El 24/09 se retiró la pantalla vieja de EQUIPOS y salió
+> la primera entrega del paso 4, el candado por rol (SELLO: 24/09/26, 01:01). Lo
+> próximo: la segunda entrega (4b). El trabajo sigue en la rama
+> `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
 
 ---
 
@@ -1663,9 +1664,46 @@ Lo que faltaba mapear quedó resuelto así:
      equipo viejo deja de ver esos proyectos hasta que el dueño lo invite (lo
      acordado: los supervisores se reinvitan). `VistaEquipos.jsx` queda en el repo,
      sin usar, hasta el paso 5 (**SELLO: 24/09/26, 00:32**).
-4. **Candado por rol.** `rolEnProyecto` en cada botón que escribe: el supervisor,
-   solo lectura en todo (mapa, formulario, fotos, ferretería, revisión); el
-   editor, sin borrar el proyecto.
+4. **Candado por rol.** Acordado el 24/09, con las respuestas del usuario:
+   - **Supervisor: solo ver y exportar, y escribir en la bitácora.** Abre sus
+     proyectos como todos y ve todo: mapa con días, filtros y etiquetas, LISTA DE
+     PUNTOS, fibras, acero, detalle y fotos. No agrega, edita, mueve ni borra nada
+     (postes, fibras, acero, fotos), no marca revisado, no toca la ferretería y no
+     borra ni recupera de la papelera.
+   - **En cada obra vale el rol en ESA obra.** Con varias a la vista en el mapa, lo
+     que se toca va por la obra de eso que se toca; lo que se crea, por la activa.
+   - **Editor: todo menos borrar el proyecto**, incluidos renombrarlo, archivarlo y
+     los armados del proyecto: editarlos e importarlos de su colección (lo dijo el
+     23/09 a las 00:01). Importar un armado con ferretería creada a mano sigue para el
+     final; mientras tanto, si trae materiales que el dueño no tiene, se avisa y no se
+     importa.
+   - **Colores de día: de cada persona** (lo dijo el 22/09, como las etiquetas y el
+     filtro por días): `configuraciones/{uid}.coloresDia`, por id de día.
+   - Los cambios sin subir de alguien que pasa de editor a supervisor se suben igual.
+
+   **4a hecho el 24/09** (mapa, detalle, fotos y colores; **SELLO: 24/09/26, 01:01**).
+   `todosLosProyectos` incluye los del supervisor, que los abre con un ojo en vez del
+   lápiz. Lógica: `puedeEditarProyecto` (equipoProyecto.js) y, en App, `puedeEditarEn`,
+   `exigirEdicion` y `proyectoDePunto`. Candado doble: se esconde el botón y la
+   función que escribe se niega con "Solo puedes mirar". Cubre puntos (editar,
+   borrar, mover, agregar, fotos, asignar día), fibras (dibujar, editar, trazo,
+   eliminar, ajustar postes), acero (guardar, editar, tipo, eliminar), fotos del mapa
+   (asociar, capturar), archivar, desarchivar y el formulario. VistaMapa recibe
+   `soloLectura`, `puntoEditable`, `conexionEditable` y `aceroEditable`; las barras de
+   fibra y acero quedan en modo mirar (lista, ver/ocultar, cerrar), y bajo el nombre
+   de la obra sale "Solo ver: eres supervisor". El detalle toma el rol, la bitácora, el
+   catálogo del dueño y los armados de la obra DEL PUNTO, no de la activa; compartir
+   fotos queda para todos. Los colores personales arreglan de paso que a un editor los
+   postes de un proyecto compartido le salían rojos (el color se buscaba solo en los
+   propios). Pruebas: lógica pura con mutantes y render en Node del mapa (escritorio y
+   celular), las barras, el detalle y la lista de proyectos. El modo supervisión
+   (`mapaSupervision`) queda sin entradas: se retira en el paso 5.
+
+   **4b pendiente:** LISTA DE PUNTOS de solo lectura para el supervisor; revisión y
+   control de ferretería de solo lectura (ojo: `guardarPuntoFerr` y `guardarRev`, en
+   VistaProyectos, no miran el permiso por dentro); lo del editor (renombrar, archivar,
+   armados, con la regla de `proyectos` sumando a los editores para `armados`), y el
+   aviso al importar armados con materiales que el dueño no tiene.
 5. **Retirar lo viejo**, cuando el usuario confirme que todos actualizaron (no hay
    seguimiento de versiones: se decidió no hacerlo): `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
    `grupoId`, `supervisoresInfo`, la colección `equipos` y el código muerto

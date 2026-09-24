@@ -133,6 +133,15 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   viejos caen a P/MT/C). Lo escrito a mano no se pisa y editando un punto guardado no se
   toca: renumerar al reordenar sigue siendo trabajo aparte (`RenumerarItems`).
 
+- **Rol por obra (paso 4 del rediseño de equipos).** Dueño y editor cambian cosas;
+  el supervisor solo mira y exporta. Todo lo que escribe en una obra pasa por
+  `exigirEdicion(proyectoId)` en App.jsx, con el proyecto DE ESO que se toca (el punto,
+  la fibra, el cable), no el activo: en el mapa pueden verse varias obras a la vez.
+  Código nuevo que escriba tiene que llevarlo, además de esconder su botón.
+- **Los colores de día son de cada usuario** (`configuraciones/{uid}.coloresDia`), no
+  del proyecto: el color que el día trae en el proyecto es solo el de partida. No
+  volver a escribirlos en el proyecto.
+
 **Puntos viejos:** pueden traer `ownerId` ajeno o ausente, y `proyectoId`/`diaId`
 numéricos. Por eso existe `perteneceAProyecto()` en `src/utils/helpers.js`, que
 compara como texto y cae al día si falta el proyecto. Usarla siempre en vez de
