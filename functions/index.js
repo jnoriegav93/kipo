@@ -4221,3 +4221,84 @@ exports.traspasarProyecto = onCall({ region: 'us-central1', timeoutSeconds: 120,
 
   return { ok: true, completo, ...resultado };
 });
+
+// ============================================================
+// CLOUD FUNCTION — copiarMateriales
+// Armados con ferretería creada a mano (lo que quedó para el final del rediseño de
+// equipos; CONTEXTO.md). Un armado nombra sus materiales por el id del catálogo de UNA
+// persona: el del dueño de la obra si vive en un proyecto, el propio si está en la
+// colección. Al llevarlo de un catálogo a otro (FIJAR o IMPORTAR a una obra, CONSERVAR en
+// la colección), lo que el destino no tiene se copia desde el origen con el MISMO id, la
+// regla que el usuario dio para el traspaso (23/09). Lo hace el servidor porque el destino
+// puede ser el catálogo de otra persona, que nadie más puede escribir.
+//   ids: los materiales que al destino le faltan (los calcula la app).
+//   desde / hacia: 'mi' (el catálogo de quien llama) o { proyectoId } (el del dueño de esa
+//   obra). Para leer de una obra hay que ser miembro; para escribir en ella, dueño o editor.
+//   simular: devuelve lo que se copiaría sin escribir, para mostrarlo antes de confirmar.
+// Devuelve { agregados: [{ id, nombre }], sinOrigen: [ids que no están en el origen] }.
+// Si el catálogo que cambia es de otra persona, le queda un aviso.
+// ============================================================
+exports.copiarMateriales = onCall({ region: 'us-central1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+  const { ids, desde, hacia, simular = false } = request.data || {};
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) throw new HttpsError('invalid-argument', 'Faltan los materiales.');
+  const yo = request.auth.uid;
+  const { rolEnProyecto } = require('./invitaciones');
+  const { itemsQueFaltan } = require('./traspaso');
+
+  // De quién es el catálogo de cada lado. `escribir`: hace falta poder editar la obra.
+  const catalogoDe = async (lado, escribir) => {
+    if (lado === 'mi') return { uid: yo, proyecto: null };
+    const pid = lado && lado.proyectoId != null ? String(lado.proyectoId) : '';
+    if (!pid) throw new HttpsError('invalid-argument', 'Falta el proyecto.');
+    const snap = await db.collection('proyectos').doc(pid).get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Proyecto no encontrado.');
+    const p = snap.data();
+    const rol = rolEnProyecto(p, yo);
+    if (escribir ? !['dueno', 'editor'].includes(rol) : !rol) {
+      throw new HttpsError('permission-denied', escribir
+        ? 'Solo el dueño y los editores cambian los armados de la obra.'
+        : 'No eres miembro de ese proyecto.');
+    }
+    return { uid: String(p.ownerId), proyecto: { id: pid, nombre: p.nombre || '' } };
+  };
+  const origen = await catalogoDe(desde, false);
+  const destino = await catalogoDe(hacia, true);
+  const usados = [...new Set(ids.map(String))];
+  const origenRef = db.collection('configuraciones').doc(origen.uid);
+  const destinoRef = db.collection('configuraciones').doc(destino.uid);
+  const ahora = new Date().toISOString();
+  // El nombre de quien llama, para el aviso. Se lee antes: en una transacción no se puede
+  // leer después de escribir.
+  let miNombre = '';
+  if (destino.uid !== yo) {
+    const s = await db.collection('configuraciones').doc(yo).get();
+    miNombre = (s.exists && s.data().nombrePersonal) || String(request.auth.token.email || '').split('@')[0] || '';
+  }
+
+  return db.runTransaction(async (tx) => {
+    // Mismo catálogo de los dos lados: lo que falta no está en ninguna parte (y se lee una vez).
+    const mismo = origen.uid === destino.uid;
+    const snaps = await tx.getAll(...(mismo ? [destinoRef] : [origenRef, destinoRef]));
+    const dSnap = snaps[snaps.length - 1];
+    const catDestino = (dSnap.exists && dSnap.data().catalogoFerreteria) || [];
+    const catOrigen = mismo ? [] : ((snaps[0].exists && snaps[0].data().catalogoFerreteria) || []);
+    const { agregar, idsSinOrigen } = itemsQueFaltan(usados, catOrigen, catDestino);
+    const agregados = agregar.map(it => ({ id: String(it.id), nombre: it.nombre || '' }));
+    if (simular || agregar.length === 0) return { agregados, sinOrigen: idsSinOrigen };
+    // Sin configuración (no debería pasar: crearUsuario la crea) no se inventa una a medias.
+    if (!dSnap.exists) throw new HttpsError('failed-precondition', 'El dueño del catálogo no tiene configuración.');
+    tx.set(destinoRef, { catalogoFerreteria: [...catDestino, ...agregar] }, { merge: true });
+    if (destino.uid !== yo) {
+      tx.set(db.collection('avisos').doc(), {
+        para: destino.uid, tipo: 'materiales',
+        proyectoId: destino.proyecto ? destino.proyecto.id : null,
+        proyectoNombre: destino.proyecto ? destino.proyecto.nombre : '',
+        deUid: yo, deNombre: miNombre,
+        materiales: agregados.map(m => m.nombre || m.id),
+        creado: ahora, visto: false,
+      });
+    }
+    return { agregados, sinOrigen: idsSinOrigen };
+  });
+});

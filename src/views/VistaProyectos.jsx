@@ -31,8 +31,10 @@ import ScannerQR from '../components/ScannerQR';
 import { codigoDesdeTexto, rolEnProyecto, puedeEditarProyecto } from '../utils/equipoProyecto';
 import VistaPapelera from './VistaPapelera';
 import FotosProyecto from '../components/FotosProyecto';
-import { collection, getDocs, getDoc, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { copiarMateriales } from '../services/materiales';
+import { llevarArmados } from '../utils/armadosMateriales';
 
 // Reportes de datos (client-side) en curso. Module-scope: sobrevive a que la vista se
 // desmonte/monte al navegar (misma pestaña), pero se vacía al recargar la app (donde la
@@ -55,20 +57,19 @@ const persistirResultadoLS = (key, card, { eliminar = false } = {}) => {
 // tienen que leer ese. Con el propio, a un editor o supervisor los materiales que creó el
 // dueño le salían sin nombre (en la revisión, en el control de ferretería y en los Excel
 // y el KMZ que se arman en el teléfono), y un editor habría hecho armados con ids que el
-// dueño no tiene. Para una obra ajena se lee una vez por dueño; `catalogoListo` avisa
-// cuándo llegó (mientras tanto se muestra con el propio).
+// dueño no tiene. Para una obra ajena se escucha en vivo el catálogo del dueño: así, si
+// alguien le suma materiales al llevar armados (`copiarMateriales`), se ven al instante.
+// `catalogoListo` avisa cuándo llegó (mientras tanto se muestra con el propio).
 const useConfigDeObra = (proyecto, user, config) => {
   const dueno = proyecto?.ownerId != null ? String(proyecto.ownerId) : null;
   const ajena = !!dueno && !!user?.uid && dueno !== String(user.uid);
   const [catalogos, setCatalogos] = React.useState({});
   React.useEffect(() => {
-    if (!ajena || catalogos[dueno]) return undefined;
-    let vivo = true;
-    getDoc(doc(db, 'configuraciones', dueno))
-      .then(s => { if (vivo) setCatalogos(prev => ({ ...prev, [dueno]: (s.exists() && s.data().catalogoFerreteria) || [] })); })
-      .catch(e => console.error('Catálogo del dueño de la obra:', e));
-    return () => { vivo = false; };
-  }, [ajena, dueno, catalogos]);
+    if (!ajena) return undefined;
+    return onSnapshot(doc(db, 'configuraciones', dueno),
+      s => setCatalogos(prev => ({ ...prev, [dueno]: (s.exists() && s.data().catalogoFerreteria) || [] })),
+      e => console.error('Catálogo del dueño de la obra:', e));
+  }, [ajena, dueno]);
   const configObra = React.useMemo(
     () => (ajena && catalogos[dueno] ? { ...config, catalogoFerreteria: catalogos[dueno] } : config),
     [ajena, dueno, catalogos, config]);
@@ -1822,6 +1823,7 @@ const VistaProyectos = ({
           puntos={puntos}
           config={configModal}
           catalogoListo={catalogoModalListo}
+          catalogoPropio={config?.catalogoFerreteria}
           user={user}
           theme={theme}
           isDark={isDark}
@@ -2067,7 +2069,7 @@ const RotuloLineas = ({ fibras = [], aceros = [] }) => {
 };
 
 // ─── MODAL COMPARATIVO (Control de Ferretería desde el proyecto) ──────────────
-const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], config, catalogoListo = true, user, theme, isDark, setConfirmData, setAlertData, onClose }) => {
+const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], config, catalogoListo = true, catalogoPropio, user, theme, isDark, setConfirmData, setAlertData, onClose }) => {
   const isDesktop = useIsDesktop();
   const [lista, setLista] = React.useState(undefined); // undefined=cargando, null=sin lista
   const [disponibles, setDisponibles] = React.useState([]);
@@ -2113,6 +2115,48 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
   const [importar, setImportar] = React.useState(null); // { paso, origen, proyectoId, sel:[] }
   const [conflicto, setConflicto] = React.useState(null); // { entrante, existente, nombre, cola, destino }
 
+  // Lo último del proyecto y de la configuración, para lo que se guarda DESPUÉS de esperar
+  // al servidor y a una confirmación (llevar armados): con lo del render de antes se
+  // pisaría lo que cambió mientras tanto.
+  const proyectoVivo = React.useRef(proyecto);
+  const configVivo = React.useRef(config);
+  React.useEffect(() => { proyectoVivo.current = proyecto; configVivo.current = config; }, [proyecto, config]);
+
+  // LLEVAR ARMADOS DE UN CATÁLOGO A OTRO (lo último del rediseño de equipos). Un armado
+  // nombra sus materiales por id del catálogo de una persona; al llevarlo a otro catálogo,
+  // lo que falta se copia con el mismo id (utils/armadosMateriales.js y la función
+  // `copiarMateriales`), después de mostrar qué y confirmar.
+  const [llevando, setLlevando] = React.useState(false);
+  const confirmar = ({ titulo, mensaje, accion }) => new Promise(resolve => setConfirmData?.({
+    title: titulo, message: mensaje, actionText: accion,
+    onConfirm: () => { setConfirmData(null); resolve(true); },
+    onClose: () => { setConfirmData(null); resolve(false); },
+  }));
+  const avisar = ({ titulo, mensaje }) => setAlertData?.({ title: titulo, message: mensaje });
+  const llevar = async (opciones) => {
+    if (llevando) return [];
+    setLlevando(true);
+    try {
+      return await llevarArmados({ ...opciones, copiar: copiarMateriales, confirmar, avisar });
+    } catch (e) {
+      console.error('Llevar armados:', e);
+      avisar({
+        titulo: 'No se pudo',
+        mensaje: e?.code === 'functions/permission-denied' ? (e.message || 'No tienes permiso.') : 'Revisa la conexión e inténtalo de nuevo.',
+      });
+      return [];
+    } finally { setLlevando(false); }
+  };
+  // FIJAR e IMPORTAR llevan armados a ESTA obra: al catálogo de su dueño.
+  // `duenoOrigen`: de quién es el catálogo del que salen.
+  const haciaLaObra = (duenoOrigen) => ({
+    hacia: { proyectoId: String(proyecto?.id) },
+    catalogoDestino: config?.catalogoFerreteria || [],
+    mismoCatalogo: String(duenoOrigen) === String(proyecto?.ownerId),
+    destinoTexto: String(proyecto?.ownerId) === String(user?.uid)
+      ? 'Tu catálogo' : `El catálogo de ${proyecto?.ownerNombre || 'el dueño de la obra'}`,
+  });
+
   // Copia un armado del proyecto a la configuración del usuario, para reutilizarlo
   // en otras obras. Es lo contrario de importar.
   const mismosMateriales = (x, y) => {
@@ -2120,8 +2164,16 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     return norm(x) === norm(y);
   };
 
-  const conservarArmado = async (a) => {
-    const propios = config?.armados || [];
+  const conservarArmado = async (desdeObra) => {
+    // Sus materiales son del catálogo del dueño de la obra. Si la obra es ajena, lo que a
+    // tu catálogo le falte se copia antes, con confirmación.
+    const esMia = String(proyecto?.ownerId) === String(user?.uid);
+    const [a] = esMia ? [desdeObra] : await llevar({
+      armados: [desdeObra], desde: { proyectoId: String(proyecto?.id) }, hacia: 'mi',
+      catalogoDestino: catalogoPropio || [], mismoCatalogo: false, destinoTexto: 'Tu catálogo',
+    });
+    if (!a) return;
+    const propios = configVivo.current?.armados || [];
     // Mismo armado (mismo id): puede estar idéntico o haber cambiado en el proyecto
     const mismo = propios.find(x => String(x.id) === String(a.id));
     if (mismo) {
@@ -2151,7 +2203,8 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
 
   // Resuelve los choques de nombre de uno en uno y va aplicando el resto.
   const procesarCola = async (cola, destino) => {
-    const base = destino === 'config' ? (config?.armados || []) : (Array.isArray(proyecto?.armados) ? proyecto.armados : []);
+    const proy = proyectoVivo.current;
+    const base = destino === 'config' ? (configVivo.current?.armados || []) : (Array.isArray(proy?.armados) ? proy.armados : []);
     let lista = [...base];
     for (let i = 0; i < cola.length; i++) {
       const a = cola[i];
@@ -2170,25 +2223,12 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     setImportar(null);
   };
 
-  // Un armado nombra sus materiales con ids del catálogo del DUEÑO de la obra. Si trae
-  // alguno que ese catálogo no tiene (ferretería creada a mano por otro), todos verían
-  // "material no encontrado". Resolverlo quedó para el final; mientras tanto, esos armados
-  // no se importan (paso 4b).
-  const separarImportables = (armados) => {
-    const ids = new Set((config?.catalogoFerreteria || []).map(f => String(f.id)));
-    const no = armados.filter(a => (a.items || []).some(it => !ids.has(String(it.idRef))));
-    if (no.length) {
-      setAlertData?.({
-        title: no.length === 1 ? 'Un armado no se importó' : 'Algunos armados no se importaron',
-        message: `${no.map(a => `"${a.nombre}"`).join(', ')} ${no.length === 1 ? 'trae' : 'traen'} materiales que no están en el catálogo del dueño del proyecto. Importar armados con ferretería creada a mano quedó anotado para más adelante.`,
-      });
-    }
-    return armados.filter(a => !no.includes(a));
-  };
-
-  const fijarArmado = async (a) => {
-    if (!separarImportables([a]).length) return;
-    const base = Array.isArray(proyecto?.armados) ? proyecto.armados : [];
+  // FIJAR: un armado de tu colección pasa a la obra (lo que al dueño le falte, se copia)
+  const fijarArmado = async (desdeColeccion) => {
+    const [a] = await llevar({ armados: [desdeColeccion], desde: 'mi', ...haciaLaObra(user?.uid) });
+    if (!a) return;
+    const proy = proyectoVivo.current;
+    const base = Array.isArray(proy?.armados) ? proy.armados : [];
     if (base.some(x => String(x.id) === String(a.id))) return;
     await guardarArmados([...base, { id: a.id, nombre: a.nombre, items: a.items || [], visible: true }]);
   };
@@ -2475,7 +2515,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                     <>
                       <button
                         onClick={() => fijarArmado(a)}
-                        disabled={guardandoArmados}
+                        disabled={guardandoArmados || llevando}
                         className="shrink-0 px-2 py-1.5 rounded-lg border-2 border-amber-600 bg-amber-500 text-white text-[10px] font-black active:scale-95 disabled:opacity-50"
                       >
                         FIJAR
@@ -2499,8 +2539,9 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                       </button>
                       <button
                         onClick={() => conservarArmado(a)}
+                        disabled={llevando}
                         title="Guardar este armado en tu configuración para reutilizarlo"
-                        className={`shrink-0 px-2 py-1.5 rounded-lg border-2 ${theme.border} ${theme.text} text-[10px] font-black active:scale-95`}
+                        className={`shrink-0 px-2 py-1.5 rounded-lg border-2 ${theme.border} ${theme.text} text-[10px] font-black active:scale-95 disabled:opacity-50`}
                       >
                         CONSERVAR
                       </button>
@@ -2516,7 +2557,8 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                 {(a.items || []).length > 0 && (
                   <div className={`mt-2 pt-2 border-t ${theme.border} space-y-0.5`}>
                     {(a.items || []).map((it, i) => {
-                      const mat = (config?.catalogoFerreteria || []).find(f => f.id === it.idRef);
+                      // Los fijados usan el catálogo del dueño; los sin fijar son de tu colección
+                      const mat = ((a.enProyecto ? config?.catalogoFerreteria : catalogoPropio) || []).find(f => f.id === it.idRef);
                       return (
                         <p key={i} className={`text-[11px] font-bold ${muted}`}>
                           {it.cant} × {mat?.nombre || 'material no encontrado'}
@@ -2623,20 +2665,26 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                 <button onClick={() => setImportar(null)} className={`flex-1 py-2.5 rounded-xl border-2 ${theme.border} ${theme.text} text-xs font-black tracking-widest`}>CERRAR</button>
                 {importar.paso === 'lista' && (
                   <button
-                    onClick={() => {
-                      const origen = importar.origen === 'config'
-                        ? (config?.armados || [])
-                        : ((proyectos || []).find(p => String(p.id) === String(importar.proyectoId))?.armados || []);
+                    onClick={async () => {
+                      // De tu colección (tu catálogo) o de otra obra (el de su dueño); lo que al
+                      // dueño de ESTA obra le falte se copia, con confirmación.
+                      const deColeccion = importar.origen === 'config';
+                      const obraOrigen = deColeccion ? null : (proyectos || []).find(p => String(p.id) === String(importar.proyectoId));
+                      const origen = deColeccion ? (config?.armados || []) : (obraOrigen?.armados || []);
                       const elegidos = origen.filter(a => importar.sel.includes(a.id))
                         .map(a => ({ id: a.id, nombre: a.nombre, items: a.items || [], visible: true }));
-                      const importables = separarImportables(elegidos);
-                      if (importables.length) procesarCola(importables, 'proyecto');
+                      const listos = await llevar({
+                        armados: elegidos,
+                        desde: deColeccion ? 'mi' : { proyectoId: String(importar.proyectoId) },
+                        ...haciaLaObra(deColeccion ? user?.uid : obraOrigen?.ownerId),
+                      });
+                      if (listos.length) procesarCola(listos, 'proyecto');
                       else setImportar(null);
                     }}
-                    disabled={importar.sel.length === 0 || guardandoArmados}
+                    disabled={importar.sel.length === 0 || guardandoArmados || llevando}
                     className="flex-1 py-2.5 rounded-xl border-2 border-amber-600 bg-amber-500 text-white text-xs font-black tracking-widest active:scale-95 disabled:opacity-50"
                   >
-                    IMPORTAR ({importar.sel.length})
+                    {llevando ? 'REVISANDO…' : `IMPORTAR (${importar.sel.length})`}
                   </button>
                 )}
               </div>

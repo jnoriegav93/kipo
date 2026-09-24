@@ -17,10 +17,11 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > (SELLO: 24/09/26, 01:31). **El paso 6 cerró el rediseño el 24/09** (último SELLO:
 > 24/09/26, 03:37): `usuarios` cerrada, el candado por rol también en el servidor, el
 > sistema viejo fuera de la app, las funciones y las reglas, los datos viejos limpios
-> con respaldo y las herramientas de la migración retiradas. Faltan las pruebas del
-> usuario en celulares y lo que se dejó para el final (importar armados con ferretería
-> creada a mano). El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se
-> adelanta a ella en cada despliegue.
+> con respaldo y las herramientas de la migración retiradas. Esa misma madrugada salió
+> lo que se había dejado para el final: llevar armados con ferretería creada a mano
+> (último SELLO: 24/09/26, 04:04; ver "Armados con ferretería creada a mano"). Faltan
+> las pruebas del usuario en celulares. El trabajo sigue en la rama
+> `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
 
 ---
 
@@ -1680,9 +1681,9 @@ Lo que faltaba mapear quedó resuelto así:
      que se toca va por la obra de eso que se toca; lo que se crea, por la activa.
    - **Editor: todo menos borrar el proyecto**, incluidos renombrarlo, archivarlo y
      los armados del proyecto: editarlos e importarlos de su colección (lo dijo el
-     23/09 a las 00:01). Importar un armado con ferretería creada a mano sigue para el
-     final; mientras tanto, si trae materiales que el dueño no tiene, se avisa y no se
-     importa.
+     23/09 a las 00:01). Importar un armado con ferretería creada a mano quedó para el
+     final (mientras tanto se avisaba y no se importaba); se hizo el 24/09: ver
+     "Armados con ferretería creada a mano".
    - **Colores de día: de cada persona** (lo dijo el 22/09, como las etiquetas y el
      filtro por días): `configuraciones/{uid}.coloresDia`, por id de día.
    - Los cambios sin subir de alguien que pasa de editor a supervisor se suben igual.
@@ -1817,10 +1818,44 @@ Lo que faltaba mapear quedó resuelto así:
      producción con `functions:delete`), `functions/paso6.js`, `functions/miembros.js` y
      `herramientas/migrar-miembros.*`. Quedan en git. Quedan 15 funciones, las mismas
      que exporta `index.js`.
-   **El rediseño de equipos quedó terminado el 24/09.** Falta:
-   - las pruebas del usuario en celulares de los pasos 3 a 6;
-   - lo que se dejó para el final: importar armados con ferretería creada a mano (hoy
-     avisa y no importa).
+   **El rediseño de equipos quedó terminado el 24/09.** Falta: las pruebas del usuario
+   en celulares de los pasos 3 a 6.
+
+### Armados con ferretería creada a mano (24/09, SELLO: 24/09/26, 04:04)
+
+Lo que el usuario dejó para el final del rediseño ("si el armado que se importa tiene
+una ferretería que fue agregada por el usuario… hay que manejar esto con cuidado",
+23/09). Un armado nombra sus materiales por el id del catálogo de UNA persona: el del
+dueño de la obra si vive en un proyecto, el propio si está en la colección. Antes, si
+traía materiales que el dueño no tenía, se avisaba y no se importaba.
+
+Ahora, al llevarlo de un catálogo a otro, **lo que falta se copia con el mismo id**,
+la regla que el usuario dio para el traspaso (23/09: "los que no coincidan que se
+copien… a la lista de ferreterías del nuevo dueño"):
+- **FIJAR** (de tu colección a la obra) e **IMPORTAR** (de tu colección o de otra obra):
+  al catálogo del dueño de la obra.
+- **CONSERVAR** (de la obra a tu colección): a tu catálogo.
+- "Con cuidado": antes de copiar, la app pregunta al servidor qué se agregaría y lo
+  muestra ("El catálogo de Olga no tiene estos 2 materiales: … AGREGAR / CANCELAR").
+  Si el catálogo que cambia es de otra persona, le queda un aviso ("Eva llevó armados
+  a Obra P y se agregaron estos materiales a tu catálogo: …").
+- Un material que no está en ningún catálogo (ni en el de origen) no se puede reponer:
+  ese armado no se lleva, y se avisa. Si origen y destino son el catálogo de la misma
+  persona (el dueño con su propia obra), no hay de dónde copiar: se avisa como antes.
+- Lo hace la función `copiarMateriales` (el destino puede ser el catálogo de otra
+  persona, que solo escribe el servidor): para leer de una obra hay que ser miembro;
+  para escribir en ella, dueño o editor. En una transacción, sin pisar lo que el destino
+  ya tiene. Lógica en `functions/traspaso.js` (`itemsQueFaltan`, ahora también con los
+  ids sin origen) y en la app `src/utils/armadosMateriales.js` (`llevarArmados`).
+- El catálogo del dueño de una obra ajena ahora se escucha en vivo (`useConfigDeObra`):
+  lo copiado aparece al instante. Los armados sin fijar muestran sus materiales con el
+  catálogo propio (antes salían "material no encontrado" en una obra ajena).
+
+Probado: la función real sobre la Firestore falsa (8 escenarios, 8 mutantes); la
+lógica de la app con un servidor de mentira (5 mutantes); y con toques de verdad en la
+ventana real de la obra (jsdom, `dom-test/test-armados-ui.mjs`: FIJAR, IMPORTAR con
+CANCELAR y con AGREGAR, CONSERVAR, y la dueña con su propia obra; 16 casos; el control
+con la versión anterior falla). La función responde en producción.
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
@@ -1866,13 +1901,9 @@ Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
   (que todo `proyectoId` sea texto, no número) y reacomodar los cambios
   instantáneos al guardar y borrar, que hoy dependen de la lista por `ownerId`.
   Acordado con el usuario el 22/09: se hace, pero después de la tanda B2.
-- **Importar un armado que trae ferretería agregada a mano.** Con los armados
-  por proyecto, un editor va a poder importar armados desde su colección general
-  a un proyecto. Si ese armado usa una ferretería que el usuario creó (no está
-  en el catálogo duro del código), al importarla al proyecto hay que decidir qué
-  pasa: se copia el material al catálogo del proyecto, se ignora, o se avisa.
-  Planteado por el usuario el 22/09; **verlo al final del rediseño de equipos**,
-  no antes.
+- **Importar un armado que trae ferretería agregada a mano: hecho el 24/09.** Se
+  copia el material al catálogo de destino con el mismo id, después de mostrar cuál y
+  confirmar (ver "Armados con ferretería creada a mano", más arriba).
 - Ferretería automática (cálculo de materiales), pausado.
 - Endurecer reglas de Firestore y activar App Check antes del lanzamiento público.
 - El aviso de actualización recarga la página: conviene que no aparezca mientras

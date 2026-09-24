@@ -131,6 +131,12 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   el dueño. El diseño es el compromiso contra el que después se liquida la obra.
 - Los `armados` de un proyecto los cambian el dueño y los editores (rediseño de
   equipos: el editor hace todo menos borrar el proyecto); el supervisor, no.
+- **Un armado nombra sus materiales por id del catálogo de UNA persona:** el del dueño
+  de la obra si vive en el proyecto, el propio si está en la colección. Llevarlo de un
+  catálogo a otro (FIJAR, IMPORTAR, CONSERVAR) pasa por `llevarArmados`
+  (`src/utils/armadosMateriales.js`): lo que falta se copia con el mismo id con la
+  función `copiarMateriales`, después de mostrarlo y confirmar. Código nuevo que mueva
+  armados entre catálogos tiene que pasar por ahí, o quedan "material no encontrado".
 - Las fibras guardan su propio trazo (`vertices`). **Postes y fibras son
   independientes**: borrar un punto no borra fibras (las suelta con
   `soltarFibraDePunto`) y una fibra vuelve de la papelera aunque sus postes ya no

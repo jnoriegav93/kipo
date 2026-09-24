@@ -32,19 +32,21 @@ const idsFerreteriaDeObra = ({ puntos = [], armados = [], cables = [], controles
 
 // Del catálogo del dueño anterior, los ítems que la obra usa y el nuevo dueño no tiene.
 // Van tal cual, con el mismo id. Los ids que la obra usa pero el dueño anterior tampoco
-// tiene no se pueden reponer: se cuentan en `sinOrigen`, para avisar.
+// tiene no se pueden reponer: se cuentan en `sinOrigen`, para avisar, y van uno por uno
+// en `idsSinOrigen`. Lo usa también `copiarMateriales` (armados que se llevan de un
+// catálogo a otro), con cualquier par de catálogos. Un id repetido cuenta una vez.
 const itemsQueFaltan = (usados, catalogoViejo, catalogoNuevo) => {
   const tieneNuevo = new Set((catalogoNuevo || []).map(it => String(it.id)));
   const delViejo = new Map((catalogoViejo || []).map(it => [String(it.id), it]));
   const agregar = [];
-  let sinOrigen = 0;
-  for (const id of usados) {
+  const idsSinOrigen = [];
+  for (const id of new Set([...usados].map(String))) {
     if (tieneNuevo.has(id)) continue;
     const item = delViejo.get(id);
     if (item) agregar.push(item);
-    else sinOrigen++;
+    else idsSinOrigen.push(id);
   }
-  return { agregar, sinOrigen };
+  return { agregar, sinOrigen: idsSinOrigen.length, idsSinOrigen };
 };
 
 module.exports = { idsFerreteriaDeObra, itemsQueFaltan };

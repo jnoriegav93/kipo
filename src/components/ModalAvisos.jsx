@@ -20,6 +20,13 @@ const ModalAvisos = ({ avisos, theme, onEntendido }) => (
             {a.tipo === 'traspaso' ? (<>
               <span className="font-black">{a.deNombre || 'Alguien'}</span> te pasó el proyecto{' '}
               <span className="font-black">{a.proyectoNombre}</span>: ahora eres el dueño.
+            </>) : a.tipo === 'materiales' ? (<>
+              {/* copiarMateriales: al llevar armados a una obra tuya, se sumaron a tu catálogo
+                  los materiales que no tenías, con el mismo nombre */}
+              <span className="font-black">{a.deNombre || 'Alguien'}</span> llevó armados a{' '}
+              <span className="font-black">{a.proyectoNombre}</span> y se{' '}
+              {(a.materiales || []).length === 1 ? 'agregó este material' : `agregaron estos ${(a.materiales || []).length} materiales`}{' '}
+              a tu catálogo de ferretería: <span className="font-black">{(a.materiales || []).join(', ')}</span>.
             </>) : (<>
               <span className="font-black">{a.deNombre || 'Alguien'}</span> te agregó como{' '}
               <span className="font-black">{(ROL_TEXTO[a.rol] || a.rol || '').toUpperCase()}</span> del proyecto{' '}
