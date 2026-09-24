@@ -50,3 +50,10 @@ export const escucharInvitacionesAbiertas = (proyectoId, uid, alCambiar) => onSn
   (snap) => alCambiar(snap.docs.map(d => ({ codigo: d.id, ...d.data() }))),
   (error) => { console.error('Invitaciones sin usar:', error); alCambiar([]); }
 );
+
+// Pasarle el proyecto a otro miembro (paso 3c). Lo hace el servidor: toca el catálogo
+// de ferretería del nuevo dueño, que el teléfono no puede escribir.
+export const traspasarProyecto = async (proyectoId, nuevoDuenoUid) => {
+  const fn = httpsCallable(getFunctions(app, 'us-central1'), 'traspasarProyecto', { timeout: 120000 });
+  return (await fn({ proyectoId: String(proyectoId), nuevoDuenoUid: String(nuevoDuenoUid) })).data;
+};

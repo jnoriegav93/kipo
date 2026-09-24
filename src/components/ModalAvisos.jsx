@@ -17,9 +17,14 @@ const ModalAvisos = ({ avisos, theme, onEntendido }) => (
       <div className="space-y-2 max-h-[50vh] overflow-y-auto">
         {avisos.map(a => (
           <p key={a.id} className={`text-sm ${theme.text} border-2 ${theme.border} rounded-xl px-3 py-2`}>
-            <span className="font-black">{a.deNombre || 'Alguien'}</span> te agregó como{' '}
-            <span className="font-black">{(ROL_TEXTO[a.rol] || a.rol || '').toUpperCase()}</span> del proyecto{' '}
-            <span className="font-black">{a.proyectoNombre}</span>. Ya está en tu lista de proyectos.
+            {a.tipo === 'traspaso' ? (<>
+              <span className="font-black">{a.deNombre || 'Alguien'}</span> te pasó el proyecto{' '}
+              <span className="font-black">{a.proyectoNombre}</span>: ahora eres el dueño.
+            </>) : (<>
+              <span className="font-black">{a.deNombre || 'Alguien'}</span> te agregó como{' '}
+              <span className="font-black">{(ROL_TEXTO[a.rol] || a.rol || '').toUpperCase()}</span> del proyecto{' '}
+              <span className="font-black">{a.proyectoNombre}</span>. Ya está en tu lista de proyectos.
+            </>)}
           </p>
         ))}
       </div>

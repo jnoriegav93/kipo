@@ -5,7 +5,7 @@ import { db } from '../firebaseConfig';
 import ChatBitacora from './ChatBitacora';
 import { claseBotonCabecera } from '../utils/cabeceras';
 import { ROL_TEXTO, rolEnProyecto, miembrosDelProyecto, permisoViejo, linkInvitacion } from '../utils/equipoProyecto';
-import { crearInvitacion, anularInvitacion, escucharInvitacionesAbiertas } from '../services/invitaciones';
+import { crearInvitacion, anularInvitacion, escucharInvitacionesAbiertas, traspasarProyecto } from '../services/invitaciones';
 import { avisarAgregado } from '../services/amigos';
 
 const COLOR_ROL = {
@@ -33,6 +33,7 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
   const [invitaciones, setInvitaciones] = useState([]);
   const [qr, setQr] = useState(null); // { codigo, rol, imagen }
   const [ocupado, setOcupado] = useState(false);
+  const [nuevoDueno, setNuevoDueno] = useState('');
   // El QR sirve solo mientras está en pantalla: si se sale de EQUIPO con uno abierto,
   // se cierra igual.
   const qrAbierto = useRef(null);
@@ -154,6 +155,39 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
     setOcupado(false);
   };
 
+  // Pasar el proyecto (paso 3c): solo a alguien que ya es miembro. Lo hace el servidor.
+  const candidatosDueno = miembros.filter(m => m.rol !== 'dueno');
+
+  const pasar = () => {
+    if (!nuevoDueno) return;
+    const nombre = nombreDe(nuevoDueno);
+    setConfirmData?.({
+      title: 'Pasar el proyecto',
+      message: `"${proyecto.nombre}" pasará a ser de ${nombre}: podrá borrarlo, invitar y cambiar roles, y tú quedarás como editor. No se copia nada, y las invitaciones sin usar se anulan. ¿Continuar?`,
+      actionText: 'PASAR',
+      theme,
+      onConfirm: async () => {
+        setConfirmData(null);
+        setOcupado(true);
+        try {
+          const r = await traspasarProyecto(proyecto.id, nuevoDueno);
+          setNuevoDueno('');
+          setAlertData?.({
+            title: 'Proyecto pasado',
+            message: `Ahora "${r.proyectoNombre}" es de ${nombre}. Tú sigues como editor.`
+              + (r.agregados ? ` Se le sumaron ${r.agregados} material(es) a su catálogo de ferretería.` : '')
+              + (r.sinOrigen ? ` Ojo: ${r.sinOrigen} material(es) de la obra no se pudieron pasar a su catálogo.` : '')
+              + (r.completo === false ? ' Faltó anular las invitaciones sin usar o avisarle: avísale al administrador.' : ''),
+          });
+        } catch (e) {
+          console.error('Pasar el proyecto:', e);
+          setAlertData?.({ title: 'No se pudo pasar el proyecto', message: e?.message || 'Revisa la conexión e inténtalo de nuevo.' });
+        }
+        setOcupado(false);
+      },
+    });
+  };
+
   const tituloSeccion = `text-xs font-black ${theme.text} uppercase tracking-wider`;
   const botonInvitar = `flex-1 h-9 rounded-lg border-2 ${theme.border} ${theme.text} text-[11px] font-black tracking-widest flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-40`;
 
@@ -266,6 +300,30 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pasar el proyecto: al final, porque es lo más drástico (paso 3c) */}
+        {soyDueno && candidatosDueno.length > 0 && (
+          <div className="space-y-2">
+            <h4 className={tituloSeccion}>Pasar el proyecto</h4>
+            <div className="flex items-center gap-2">
+              <select
+                value={nuevoDueno}
+                onChange={(e) => setNuevoDueno(e.target.value)}
+                className={`flex-1 min-w-0 h-9 rounded-lg border-2 ${theme.border} ${theme.card} ${theme.text} text-xs font-bold px-2`}
+              >
+                <option value="">Elegir a quién…</option>
+                {candidatosDueno.map(m => <option key={m.uid} value={m.uid}>{nombreDe(m.uid)}</option>)}
+              </select>
+              <button onClick={pasar} disabled={!nuevoDueno || ocupado}
+                className="h-9 px-3 rounded-lg bg-red-600 text-white text-[11px] font-black tracking-widest active:scale-95 disabled:opacity-40 shrink-0">
+                PASAR
+              </button>
+            </div>
+            <p className={`text-[10px] ${theme.textSec}`}>
+              El nuevo dueño podrá borrar el proyecto, invitar y cambiar roles. Tú quedarás como editor. No se copia nada: la obra sigue siendo la misma.
+            </p>
           </div>
         )}
       </div>

@@ -4187,3 +4187,116 @@ exports.aceptarInvitacion = onCall({ region: 'us-central1' }, async (request) =>
     return { ...base, rol: inv.rol, yaEra: false };
   });
 });
+
+// ============================================================
+// CLOUD FUNCTION — traspasarProyecto
+// Paso 3c del rediseño de equipos: el dueño le pasa el proyecto a otro miembro. Lo
+// hace el SERVIDOR porque toca cosas que el dueño no puede escribir desde su teléfono:
+// el catálogo de ferretería del nuevo dueño (cada uno escribe solo el suyo) y el aviso.
+// No se copia NADA de la obra: postes, fibras y fotos no viven "dentro" del dueño, son
+// documentos sueltos con proyectoId. Cambia `ownerId` del proyecto, y además:
+//  - el dueño anterior queda como editor (también en el sistema viejo, mientras conviva);
+//  - al nuevo se le agregan los ítems de ferretería que la obra usa y él no tiene, con
+//    el mismo id (traspaso.js);
+//  - los controles de ferretería del dueño anterior para esta obra pasan al nuevo;
+//  - las invitaciones abiertas de la obra se anulan: las creó quien ya no es dueño;
+//  - el nuevo dueño recibe un aviso al abrir Kipo.
+// ============================================================
+exports.traspasarProyecto = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+  const { proyectoId, nuevoDuenoUid } = request.data || {};
+  if (!proyectoId || !nuevoDuenoUid) throw new HttpsError('invalid-argument', 'Faltan parámetros.');
+  const yo = request.auth.uid;
+  const nuevo = String(nuevoDuenoUid);
+  if (nuevo === yo) throw new HttpsError('invalid-argument', 'Ya eres el dueño.');
+  const { rolEnProyecto } = require('./invitaciones');
+  const { idsFerreteriaDeObra, itemsQueFaltan } = require('./traspaso');
+  const FV = admin.firestore.FieldValue;
+  const id = String(proyectoId);
+  const proyRef = db.collection('proyectos').doc(id);
+  const esMiembro = (p) => ['editor', 'supervisor'].includes(rolEnProyecto(p, nuevo));
+
+  const p0Snap = await proyRef.get();
+  if (!p0Snap.exists) throw new HttpsError('not-found', 'Proyecto no encontrado.');
+  const p0 = p0Snap.data();
+  if (String(p0.ownerId) !== yo) throw new HttpsError('permission-denied', 'Solo el dueño puede pasar el proyecto.');
+  if (!esMiembro(p0)) throw new HttpsError('failed-precondition', 'Solo se le puede pasar a alguien que ya es miembro del proyecto.');
+
+  // Lo que usa la obra, fuera de la transacción: pueden ser miles de puntos.
+  const [ptsSnap, acSnap, ctrlSnap, cfgYo] = await Promise.all([
+    db.collection('puntos').where('proyectoId', '==', id).get(),
+    db.collection('cablesAcero').where('proyectoId', '==', id).get(),
+    db.collection('controlFerreteria').where('proyectoId', '==', id).get(),
+    db.collection('configuraciones').doc(yo).get(),
+  ]);
+  // Solo los controles del dueño anterior: los que armó un editor siguen siendo suyos.
+  const misControles = ctrlSnap.docs.filter(d => String(d.data().ownerId) === yo);
+  const usados = idsFerreteriaDeObra({
+    puntos: ptsSnap.docs.map(d => d.data()),
+    armados: p0.armados || [],
+    cables: acSnap.docs.map(d => d.data()),
+    controles: misControles.map(d => d.data()),
+  });
+  const yoCfg = cfgYo.exists ? cfgYo.data() : {};
+  const miNombre = yoCfg.nombrePersonal || p0.ownerNombre || String(request.auth.token.email || '').split('@')[0] || '';
+  const ahora = new Date().toISOString();
+  const cfgNuevoRef = db.collection('configuraciones').doc(nuevo);
+
+  const resultado = await db.runTransaction(async (tx) => {
+    const [pSnap, cfgNuevoSnap] = await tx.getAll(proyRef, cfgNuevoRef);
+    const p = pSnap.data();
+    // Si mientras tanto cambió algo (otro traspaso, lo quitaron del proyecto), no se sigue.
+    if (String(p.ownerId) !== yo || !esMiembro(p)) {
+      throw new HttpsError('failed-precondition', 'El proyecto cambió mientras tanto. Vuelve a intentarlo.');
+    }
+    const nuevoCfg = cfgNuevoSnap.exists ? cfgNuevoSnap.data() : {};
+    const { agregar, sinOrigen } = itemsQueFaltan(usados, yoCfg.catalogoFerreteria || [], nuevoCfg.catalogoFerreteria || []);
+
+    // El dueño no va en compartidoCon; el anterior entra, como editor.
+    const compartidoCon = [...new Set([...(p.compartidoCon || []).map(String).filter(u => u !== nuevo), yo])];
+    // Cada uno conserva lo que ya tenía como miembro (desde cuándo, quién lo invitó).
+    const antes = p.miembros || {};
+    const infoNuevo = (p.supervisoresInfo || {})[nuevo] || {};
+    tx.update(proyRef, {
+      ownerId: nuevo,
+      // Al abrir Kipo, el nuevo dueño los pone al día con su configuración (App.jsx).
+      ownerNombre: nuevoCfg.nombrePersonal || infoNuevo.nombre || String(nuevoCfg.email || '').split('@')[0] || '',
+      ownerEmpresa: nuevoCfg.empresaPersonal || infoNuevo.empresa || '',
+      [`miembros.${nuevo}`]: { ...(antes[nuevo] || { desde: ahora }), rol: 'dueno', duenoDesde: ahora },
+      [`miembros.${yo}`]: { ...(antes[yo] || { desde: ahora }), rol: 'editor' },
+      miembrosUids: FV.arrayUnion(nuevo, yo),
+      compartidoCon,
+      [`permisos.${nuevo}`]: FV.delete(),
+      [`permisos.${yo}`]: 'edicion',
+      [`supervisoresInfo.${nuevo}`]: FV.delete(),
+      [`supervisoresInfo.${yo}`]: { nombre: miNombre, empresa: yoCfg.empresaPersonal || '' },
+      enListaDe: FV.arrayUnion(nuevo),
+    });
+    // Sin configuración (no debería pasar: crearUsuario la crea) no se inventa una a medias.
+    const agregados = (agregar.length && cfgNuevoSnap.exists) ? agregar.length : 0;
+    if (agregados) {
+      tx.set(cfgNuevoRef, { catalogoFerreteria: [...(nuevoCfg.catalogoFerreteria || []), ...agregar] }, { merge: true });
+    }
+    return { proyectoNombre: p.nombre || '', agregados, sinOrigen: sinOrigen + (agregar.length - agregados) };
+  });
+
+  // Después, lo que no necesita ir junto. Si falla, el traspaso YA está hecho: no se
+  // devuelve error, porque al reintentar diría "solo el dueño puede pasar el proyecto".
+  let completo = true;
+  try {
+    const lote = db.batch();
+    misControles.forEach(d => lote.update(d.ref, { ownerId: nuevo }));
+    const invs = await db.collection('invitaciones').where('proyectoId', '==', id).where('estado', '==', 'abierta').get();
+    invs.docs.forEach(d => lote.update(d.ref, { estado: 'anulada', anuladaEn: ahora }));
+    lote.set(db.collection('avisos').doc(), {
+      para: nuevo, tipo: 'traspaso', proyectoId: id, proyectoNombre: resultado.proyectoNombre,
+      rol: 'dueno', deUid: yo, deNombre: miNombre, creado: ahora, visto: false,
+    });
+    await lote.commit();
+  } catch (e) {
+    console.error('traspasarProyecto: pasos finales sin hacer', id, e);
+    completo = false;
+  }
+
+  return { ok: true, completo, ...resultado };
+});
