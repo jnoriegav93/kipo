@@ -31,7 +31,7 @@ import ScannerQR from '../components/ScannerQR';
 import { codigoDesdeTexto, rolEnProyecto, puedeEditarProyecto } from '../utils/equipoProyecto';
 import VistaPapelera from './VistaPapelera';
 import FotosProyecto from '../components/FotosProyecto';
-import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, getDoc, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // Reportes de datos (client-side) en curso. Module-scope: sobrevive a que la vista se
@@ -48,6 +48,31 @@ const persistirResultadoLS = (key, card, { eliminar = false } = {}) => {
     localStorage.setItem(key, JSON.stringify(next));
   } catch { /* noop */ }
   try { window.dispatchEvent(new CustomEvent('kipo-reportes-actualizado')); } catch { /* noop */ }
+};
+
+// ── CATÁLOGO DEL DUEÑO DE LA OBRA (paso 4b) ──────────────────────────────────────
+// Los puntos nombran su ferretería con ids del catálogo del DUEÑO de la obra, y todos
+// tienen que leer ese. Con el propio, a un editor o supervisor los materiales que creó el
+// dueño le salían sin nombre (en la revisión, en el control de ferretería y en los Excel
+// y el KMZ que se arman en el teléfono), y un editor habría hecho armados con ids que el
+// dueño no tiene. Para una obra ajena se lee una vez por dueño; `catalogoListo` avisa
+// cuándo llegó (mientras tanto se muestra con el propio).
+const useConfigDeObra = (proyecto, user, config) => {
+  const dueno = proyecto?.ownerId != null ? String(proyecto.ownerId) : null;
+  const ajena = !!dueno && !!user?.uid && dueno !== String(user.uid);
+  const [catalogos, setCatalogos] = React.useState({});
+  React.useEffect(() => {
+    if (!ajena || catalogos[dueno]) return undefined;
+    let vivo = true;
+    getDoc(doc(db, 'configuraciones', dueno))
+      .then(s => { if (vivo) setCatalogos(prev => ({ ...prev, [dueno]: (s.exists() && s.data().catalogoFerreteria) || [] })); })
+      .catch(e => console.error('Catálogo del dueño de la obra:', e));
+    return () => { vivo = false; };
+  }, [ajena, dueno, catalogos]);
+  const configObra = React.useMemo(
+    () => (ajena && catalogos[dueno] ? { ...config, catalogoFerreteria: catalogos[dueno] } : config),
+    [ajena, dueno, catalogos, config]);
+  return { configObra, catalogoListo: !ajena || !!catalogos[dueno] };
 };
 
 const VistaProyectos = ({
@@ -85,6 +110,8 @@ const VistaProyectos = ({
     const idBuscar = exportProyId || proyectoActual?.id;
     return proyectos.find(p => p.id === idBuscar) || proyectoActual;
   }, [proyectos, proyectoActual, exportProyId]);
+  // Lo que se exporta nombra la ferretería con el catálogo del dueño de esa obra (paso 4b)
+  const { configObra: configExport } = useConfigDeObra(activeProjectData, user, config);
 
   // Estado para exportación
   const exportKey = `kipo_export_results_${user?.uid || 'anon'}`;
@@ -286,7 +313,7 @@ const VistaProyectos = ({
         if (tipo === 'ZIP') {
           res = await descargarFotosZip(proy, puntos, logoApp, signal, limiteFotos, stampConfig);
         } else if (tipo === 'KMZ') {
-          res = await handleExportKML(proy, puntos, conexiones || [], logoApp, null, signal, limiteFotos, stampConfig, config?.catalogoFerreteria || []);
+          res = await handleExportKML(proy, puntos, conexiones || [], logoApp, null, signal, limiteFotos, stampConfig, configExport?.catalogoFerreteria || []);
         }
 
         // Agregar ID único y timestamp y TIPO CORRECTO
@@ -415,6 +442,10 @@ const VistaProyectos = ({
     const id = String(modalLocalOpen).split('_').pop();
     return proyectos.find(p => String(p.id) === id) || proyectoActual;
   }, [modalLocalOpen, proyectos, proyectoActual]);
+  // Paso 4b: si el usuario puede cambiar la obra del modal abierto (dueño o editor), y la
+  // ferretería de esa obra nombrada con el catálogo de su dueño
+  const puedeEditarModal = puedeEditarProyecto(proyModal, user?.uid);
+  const { configObra: configModal, catalogoListo: catalogoModalListo } = useConfigDeObra(proyModal, user, config);
 
   // ── FASE 4: verificación de fotos por proyecto ──────────────────────────
   const [busquedaAbierta, setBusquedaAbierta] = React.useState(false); // buscador colapsado a botón
@@ -467,6 +498,7 @@ const VistaProyectos = ({
 
   const correrReparacion = async () => {
     if (reparando || verificando || !verifData || !proyModal) return;
+    if (!puedeEditarModal) return;
     setReparando(true);
     setProgVerif({ d: 0, t: 0 });
     try {
@@ -587,7 +619,7 @@ const VistaProyectos = ({
   }, [puntos, proyModal]);
 
   const quitarEspacios = async (campo) => {
-    if (!proyModal || proyModal.esCompartido) return;
+    if (!proyModal || !puedeEditarModal) return;
     setQuitandoEspacios(campo);
     try {
       const { doc: docRef, updateDoc } = await import('firebase/firestore');
@@ -820,9 +852,10 @@ const VistaProyectos = ({
               const esCompartido = !!proy.esCompartido;          // proyecto donde soy editor/supervisor
               const esGrupo = !!proy.grupoId;                    // proyecto compartido en un equipo
               // Supervisor: abre el proyecto como todos y lo ve completo, pero no cambia nada
-              // (paso 4). Sin papelera (no borra ni recupera) y, hasta la segunda entrega del
-              // paso 4, sin LISTA DE PUNTOS.
+              // (paso 4): su LISTA DE PUNTOS es de solo lectura y no tiene papelera (no borra
+              // ni recupera). Dueño y editor cambian todo; borrar el proyecto, solo el dueño.
               const soloMirar = rolEnProyecto(proy, user?.uid) === 'supervisor';
+              const puedeEditarTarjeta = puedeEditarProyecto(proy, user?.uid);
               const desglosado = desglosadoId === proy.id;       // acordeón: uno a la vez
               const notifCount = notificacionesProyectos[proy.id] || 0;
               const idsDias = proy.dias?.map(d => d.id) || [];
@@ -851,7 +884,7 @@ const VistaProyectos = ({
                   {/* FILA PRINCIPAL: nombre + pts (izq) · ojo · EDITAR · desglose (der) */}
                   <div className="p-3 flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      {(!esCompartido && desglosado && editandoNombre?.proyId === proy.id) ? (
+                      {(puedeEditarTarjeta && desglosado && editandoNombre?.proyId === proy.id) ? (
                         <input
                           autoFocus
                           value={editandoNombre.valor}
@@ -862,8 +895,8 @@ const VistaProyectos = ({
                         />
                       ) : (
                         <h3
-                          className={`font-black text-base uppercase leading-tight truncate ${txtCls} ${desglosado && !esCompartido ? 'cursor-pointer active:opacity-60' : ''}`}
-                          onClick={() => { if (desglosado && !esCompartido) setEditandoNombre({ proyId: proy.id, valor: proy.nombre }); }}
+                          className={`font-black text-base uppercase leading-tight truncate ${txtCls} ${desglosado && puedeEditarTarjeta ? 'cursor-pointer active:opacity-60' : ''}`}
+                          onClick={() => { if (desglosado && puedeEditarTarjeta) setEditandoNombre({ proyId: proy.id, valor: proy.nombre }); }}
                         >
                           {proy.nombre}
                         </h3>
@@ -950,7 +983,7 @@ const VistaProyectos = ({
                     </div>
                     */}
                     {/* ARCHIVAR: sale de la lista y del mapa (y del equipo). Nada se borra. */}
-                    {!esCompartido && onArchivarProyecto && (
+                    {puedeEditarTarjeta && onArchivarProyecto && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -968,17 +1001,14 @@ const VistaProyectos = ({
                         <Archive size={18} className={esActivo ? iconActivo : theme.text} strokeWidth={esActivo && !activoNaranja ? 1.5 : 2} />
                       </button>
                     )}
-                    {/* LISTA DE PUNTOS abre los postes para editar: el supervisor la tendrá de
-                        solo lectura en la segunda entrega del paso 4. El GPS (ir al proyecto en
-                        el mapa) es para todos. */}
-                    {soloMirar ? <div className="flex-1" /> : (
+                    {/* LISTA DE PUNTOS y el GPS (ir al proyecto en el mapa) son para todos; para
+                        el supervisor la lista es de solo lectura (paso 4b). */}
                     <button
                       onClick={(e) => { e.stopPropagation(); setModalLocalOpen(`LISTA_PUNTOS_${proy.id}`); }}
                       className={`flex-1 h-10 rounded-lg text-[11px] font-black tracking-widest active:scale-95 transition-all ${esActivo ? `${btnActivo} ${iconActivo}` : `border-2 ${theme.border} bg-transparent ${theme.text}`}`}
                     >
                       LISTA DE PUNTOS
                     </button>
-                    )}
                     <button
                       onClick={(e) => irUbicacionProyecto(e, proy.id)}
                       className={`shrink-0 w-10 h-10 rounded-lg active:scale-95 transition-all flex items-center justify-center ${esActivo ? `${btnActivo}` : `border-2 ${theme.border} bg-transparent`}`}
@@ -1217,7 +1247,7 @@ const VistaProyectos = ({
             <ExportHubContent
               proyecto={activeProjectData}
               puntos={puntos}
-              config={config}
+              config={configExport}
               setAlertData={setAlertData}
               exportandoTipo={exportandoTipo}
               handleExportar={handleExportar}
@@ -1374,7 +1404,8 @@ const VistaProyectos = ({
                       >
                         {verificando ? <Loader2 size={20} className="animate-spin" /> : <ShieldCheck size={20} />}
                       </button>
-                      {/* Reparar (activo tras verificar, si hay problemas) */}
+                      {/* Reparar (activo tras verificar, si hay problemas). No para el supervisor. */}
+                      {puedeEditarModal && (
                       <button
                         onClick={correrReparacion}
                         disabled={!modoVerif || !verifData || verificando || reparando || problemasVerif === 0}
@@ -1383,6 +1414,7 @@ const VistaProyectos = ({
                       >
                         {reparando ? <Loader2 size={20} className="animate-spin" /> : <Wrench size={20} />}
                       </button>
+                      )}
                       {editarPosicion ? (
                         <button
                           onClick={guardarOrden}
@@ -1425,13 +1457,15 @@ const VistaProyectos = ({
                       >
                         <ListOrdered size={16} /> Ordenar por POSICIÓN {sortConfig.field === 'posicion' ? (sortConfig.dir === 'asc' ? '↑' : '↓') : ''}
                       </button>
+                      {puedeEditarModal && (
                       <button
                         onClick={() => { setConfigAbierto(false); setModalLocalOpen(null); onIniciarOrdenar?.(proyModal); }}
                         className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-black ${theme.text} hover:bg-slate-500/10 active:scale-95 transition-all`}
                       >
                         <ListOrdered size={16} /> Editar posición
                       </button>
-                      {!proyModal?.esCompartido && onIniciarMoverPuntos && (
+                      )}
+                      {puedeEditarModal && onIniciarMoverPuntos && (
                         <button
                           onClick={() => { setConfigAbierto(false); setModalLocalOpen(null); onIniciarMoverPuntos(proyModal); }}
                           className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-black ${theme.text} hover:bg-slate-500/10 active:scale-95 transition-all`}
@@ -1439,7 +1473,7 @@ const VistaProyectos = ({
                           <FolderInput size={16} /> Mover puntos a otro proyecto
                         </button>
                       )}
-                      {!proyModal.esCompartido && (
+                      {puedeEditarModal && (
                         <>
                           <div className={`h-px my-1 ${theme.border}`} />
                           <button
@@ -1458,6 +1492,7 @@ const VistaProyectos = ({
                           </button>
                         </>
                       )}
+                      {puedeEditarModal && (<>
                       <div className={`h-px my-1 ${theme.border}`} />
                       <button
                         disabled={detectandoMini}
@@ -1485,6 +1520,7 @@ const VistaProyectos = ({
                       >
                         {detectandoMini ? 'Analizando fotos…' : '🔍 Detectar fotos en miniatura'}
                       </button>
+                      </>)}
                       {/* OCULTO (a pedido): limpieza de una sola vez para puntos viejos.
                           Para reactivar, cambiar `false &&` por `onRepararPuntos &&`. */}
                       {false && onRepararPuntos && (
@@ -1784,7 +1820,8 @@ const VistaProyectos = ({
           conexiones={(conexiones || []).filter(c => String(c.proyectoId) === String(proyModal?.id ?? ''))}
           proyecto={proyModal}
           puntos={puntos}
-          config={config}
+          config={configModal}
+          catalogoListo={catalogoModalListo}
           user={user}
           theme={theme}
           isDark={isDark}
@@ -1799,7 +1836,7 @@ const VistaProyectos = ({
         <RevisionModal
           proyecto={proyModal}
           puntos={puntos}
-          config={config}
+          config={configModal}
           user={user}
           theme={theme}
           isDark={isDark}
@@ -2030,7 +2067,7 @@ const RotuloLineas = ({ fibras = [], aceros = [] }) => {
 };
 
 // ─── MODAL COMPARATIVO (Control de Ferretería desde el proyecto) ──────────────
-const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], config, user, theme, isDark, setConfirmData, setAlertData, onClose }) => {
+const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], config, catalogoListo = true, user, theme, isDark, setConfirmData, setAlertData, onClose }) => {
   const isDesktop = useIsDesktop();
   const [lista, setLista] = React.useState(undefined); // undefined=cargando, null=sin lista
   const [disponibles, setDisponibles] = React.useState([]);
@@ -2039,10 +2076,12 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
 
   // Pestaña DEFINIR FERRETERÍA
-  // ARMADOS DEL PROYECTO. Viven en el documento del proyecto y solo el dueño los
-  // toca. Mientras el proyecto no tenga los suyos se muestran los del usuario como
-  // respaldo, igual que el formulario, para no perder la vinculación existente.
-  const esDuenoProy = !proyecto?.esCompartido;
+  // ARMADOS DEL PROYECTO. Viven en el documento del proyecto y los tocan el dueño y los
+  // editores (paso 4b; el supervisor solo los mira). Mientras el proyecto no tenga los
+  // suyos se muestran los del usuario como respaldo, igual que el formulario, para no
+  // perder la vinculación existente. En una obra ajena se espera a tener el catálogo del
+  // dueño: con el propio, el editor armaría con materiales que el dueño no tiene.
+  const puedeTocarArmados = puedeEditarProyecto(proyecto, user?.uid) && catalogoListo;
   const armadosProy = React.useMemo(() => (
     Array.isArray(proyecto?.armados) ? proyecto.armados : []
   ), [proyecto]);
@@ -2063,9 +2102,10 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     const ids = new Set(enProy.map(a => String(a.id)));
     return [
       ...enProy.map(a => ({ ...a, enProyecto: true })),
-      ...(config?.armados || []).filter(a => !ids.has(String(a.id))).map(a => ({ ...a, enProyecto: false })),
+      // Los de la configuración de quien mira solo le sirven a quien puede fijarlos
+      ...(puedeTocarArmados ? (config?.armados || []) : []).filter(a => !ids.has(String(a.id))).map(a => ({ ...a, enProyecto: false })),
     ];
-  }, [proyecto, config]);
+  }, [proyecto, config, puedeTocarArmados]);
 
   // IMPORTAR y CONSERVAR.
   // 'importar' guía el flujo: primero de dónde, luego qué armados. Los ids se
@@ -2130,7 +2170,24 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     setImportar(null);
   };
 
+  // Un armado nombra sus materiales con ids del catálogo del DUEÑO de la obra. Si trae
+  // alguno que ese catálogo no tiene (ferretería creada a mano por otro), todos verían
+  // "material no encontrado". Resolverlo quedó para el final; mientras tanto, esos armados
+  // no se importan (paso 4b).
+  const separarImportables = (armados) => {
+    const ids = new Set((config?.catalogoFerreteria || []).map(f => String(f.id)));
+    const no = armados.filter(a => (a.items || []).some(it => !ids.has(String(it.idRef))));
+    if (no.length) {
+      setAlertData?.({
+        title: no.length === 1 ? 'Un armado no se importó' : 'Algunos armados no se importaron',
+        message: `${no.map(a => `"${a.nombre}"`).join(', ')} ${no.length === 1 ? 'trae' : 'traen'} materiales que no están en el catálogo del dueño del proyecto. Importar armados con ferretería creada a mano quedó anotado para más adelante.`,
+      });
+    }
+    return armados.filter(a => !no.includes(a));
+  };
+
   const fijarArmado = async (a) => {
+    if (!separarImportables([a]).length) return;
     const base = Array.isArray(proyecto?.armados) ? proyecto.armados : [];
     if (base.some(x => String(x.id) === String(a.id))) return;
     await guardarArmados([...base, { id: a.id, nombre: a.nombre, items: a.items || [], visible: true }]);
@@ -2176,7 +2233,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
       await updateDoc(doc(db, 'proyectos', String(proyecto.id)), { armados: lista });
     } catch (e) {
       console.error('Error guardando armados del proyecto:', e);
-      setAlertData?.({ title: 'No se pudo guardar', message: 'Solo el dueño del proyecto puede cambiar los armados.' });
+      setAlertData?.({ title: 'No se pudo guardar', message: 'Revisa la conexión e inténtalo de nuevo.' });
     } finally { setGuardandoArmados(false); }
   };
 
@@ -2198,7 +2255,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
     if (ob != null) return 1;
     return parseInt(a.id) - parseInt(b.id);
   }), [puntos, proyecto]);
-  const puedeEditar = !proyecto?.esCompartido || ['edicion', 'ambos'].includes(proyecto?.permisoActual);
+  const puedeEditar = puedeEditarProyecto(proyecto, user?.uid); // el supervisor solo mira (paso 4)
 
   const estadoDe = (p) => estadosOverride[p?.id] ?? p?.datos?.ferrEstado ?? null;
   // Con cambios sin guardar el visto bueno deja de valer: lo revisado ya no es lo que
@@ -2255,6 +2312,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
   const setLocalDatosDirty = (updater) => { setLocalDatos(updater); setDirty(true); };
 
   const guardarPuntoFerr = async (silent) => {
+    if (!puedeEditar) return false;
     const p = ptsOrd[idx];
     if (!p || guardandoFerr) return false;
     setGuardandoFerr(true);
@@ -2321,6 +2379,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
   }, [puntos, proyecto, cablesAceroProyecto]);
 
   const vincular = async (l) => {
+    if (!puedeEditar) return;
     setVinculando(true);
     try {
       await updateDoc(doc(db, 'controlFerreteria', l.id), { proyectoId: proyecto.id, proyectoNombre: proyecto.nombre || '' });
@@ -2346,7 +2405,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
               <h3 className={`font-black text-lg ${theme.text} uppercase truncate`}>Ferretería</h3>
               {/* LIST: clickeable para vincular (solo en comparativo) */}
               {tab === 'comparativo' && (
-                <button onClick={() => setSelectorAbierto(true)} className="flex items-center gap-1 active:opacity-60">
+                <button onClick={() => { if (puedeEditar) setSelectorAbierto(true); }} className="flex items-center gap-1 active:opacity-60">
                   <Link2 size={11} className={lista ? 'text-orange-500' : theme.textSec} strokeWidth={2.5} />
                   <span className={`text-[10px] font-black uppercase truncate ${lista ? 'text-orange-500' : theme.textSec}`}>
                     LIST: {lista ? lista.nombre : 'Sin vincular'}
@@ -2382,7 +2441,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
               );
             })()}
 
-            {esDuenoProy && (
+            {puedeTocarArmados && (
               <div className="flex gap-2">
                 <button
                   onClick={() => abrirEditorArmado(null)}
@@ -2412,7 +2471,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                       {!a.enProyecto ? ' · sin fijar' : ''}
                     </p>
                   </div>
-                  {esDuenoProy && !a.enProyecto && (
+                  {puedeTocarArmados && !a.enProyecto && (
                     <>
                       <button
                         onClick={() => fijarArmado(a)}
@@ -2430,7 +2489,7 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                       </button>
                     </>
                   )}
-                  {esDuenoProy && a.enProyecto && (
+                  {puedeTocarArmados && a.enProyecto && (
                     <>
                       <button
                         onClick={() => abrirEditorArmado(a)}
@@ -2570,7 +2629,9 @@ const ComparativoModal = ({ proyecto, puntos, conexiones = [], proyectos = [], c
                         : ((proyectos || []).find(p => String(p.id) === String(importar.proyectoId))?.armados || []);
                       const elegidos = origen.filter(a => importar.sel.includes(a.id))
                         .map(a => ({ id: a.id, nombre: a.nombre, items: a.items || [], visible: true }));
-                      procesarCola(elegidos, 'proyecto');
+                      const importables = separarImportables(elegidos);
+                      if (importables.length) procesarCola(importables, 'proyecto');
+                      else setImportar(null);
                     }}
                     disabled={importar.sel.length === 0 || guardandoArmados}
                     className="flex-1 py-2.5 rounded-xl border-2 border-amber-600 bg-amber-500 text-white text-xs font-black tracking-widest active:scale-95 disabled:opacity-50"
@@ -2923,7 +2984,7 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
     if (ob != null) return 1;
     return parseInt(a.id) - parseInt(b.id);
   }), [puntos, proyecto]);
-  const puedeEditar = !proyecto?.esCompartido || ['edicion', 'ambos'].includes(proyecto?.permisoActual);
+  const puedeEditar = puedeEditarProyecto(proyecto, user?.uid); // el supervisor solo mira (paso 4)
 
   const punto = ptsOrd[idx];
   const idPuntoRevision = punto?.id;
@@ -3038,6 +3099,7 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
   };
 
   const guardarRev = async (silent) => {
+    if (!puedeEditar) return false;
     const p = ptsOrd[idx];
     if (!p || guardando) return false;
     const errVal = validarPunto(localDatos);
@@ -3254,6 +3316,8 @@ const RevisionModal = ({ proyecto, puntos, config, user, theme, isDark, perfilAc
 };
 
 const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTipo, handleExportar, handleExportarServidor, cancelarExportacion, resultadosExportacion, setResultadosExportacion, logoApp, setLogoApp, inputLogoRef, handleCargarLogo, user, proyectoId, perfilActivo = 'avanzado' }) => {
+  // El logo es del proyecto: cambiarlo o quitarlo es cambiar la obra (paso 4b)
+  const puedeCambiarLogo = puedeEditarProyecto(proyecto, user?.uid);
   const [descargandoId, setDescargandoId] = React.useState(null);
   const [genCuant, setGenCuant] = React.useState(false);
   const [genLiq, setGenLiq] = React.useState(false);
@@ -3654,6 +3718,7 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
             <div className="flex-1 h-24 border-2 border-dashed border-slate-800 rounded-lg bg-white p-2 flex items-center justify-center relative overflow-hidden group">
               <img src={logoApp} alt="Logo" className="max-h-full max-w-full object-contain" />
             </div>
+            {puedeCambiarLogo && (
             <div className="flex flex-col gap-2 shrink-0">
               <button
                 onClick={() => inputLogoRef.current?.click()}
@@ -3696,9 +3761,11 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
                 <Trash2 size={20} strokeWidth={2.5} />
               </button>
             </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2 w-full">
+            {puedeCambiarLogo ? (<>
             <button
               onClick={() => inputLogoRef.current?.click()}
               className="w-full py-4 border-2 border-dashed border-slate-400 rounded-xl text-slate-800 text-xs font-black flex items-center justify-center gap-2 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
@@ -3713,6 +3780,9 @@ const ExportHubContent = ({ proyecto, puntos, config, setAlertData, exportandoTi
               className="hidden"
               onChange={handleCargarLogoLocal}
             />
+            </>) : (
+              <p className="text-[11px] font-bold text-slate-500">Este proyecto no tiene logo. Lo ponen el dueño o un editor.</p>
+            )}
           </div>
         )}
       </div>

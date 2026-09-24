@@ -676,6 +676,7 @@ function App() {
 
   const guardarOrdenTendido = React.useCallback(() => {
     if (guardandoOrden || !proyOrdenar?.id) return;
+    if (!exigirEdicion(proyOrdenar.id)) return;
     const ptsProy = todosLosPuntos.filter(p => perteneceAProyecto(p, proyOrdenar));
     // Solo lleva posición lo ordenado: lo retomado y lo tocado o, al corregir, lo que ya la
     // tenía y lo movido. Lo demás queda sin posición, como se ve en el mapa. Antes se
@@ -742,7 +743,7 @@ function App() {
       theme,
       onConfirm: () => { setConfirmData(null); guardar(); },
     });
-  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, prefijoOrden, modoCorregir, ordenTrabajo, movidosCorreccion, limpiarCorreccion, setPuntos, setMigracion, setModalPendiente, setVista, setAlertData, setConfirmData, theme]);
+  }, [guardandoOrden, proyOrdenar, todosLosPuntos, ordenSeleccion, prefijoOrden, modoCorregir, ordenTrabajo, movidosCorreccion, limpiarCorreccion, setPuntos, setMigracion, setModalPendiente, setVista, setAlertData, setConfirmData, theme, exigirEdicion]);
 
   // Corrigiendo, el mapa numera solo lo que va a quedar con posición: lo que ya la tenía y
   // lo que se movió. Lo demás se ve en blanco, igual que después de guardar.
@@ -754,6 +755,8 @@ function App() {
   // modo: 'copiar' (duplica, deja originales) | 'cortar' (reasigna, los saca del origen).
   // Preserva la fecha de cada punto (crea/usa el día por fecha en el destino) e incluye las fibras.
   const ejecutarCopiarCortar = React.useCallback(async (proyectoDestinoArg, modo) => {
+    // Paso 4: sacar puntos de una obra es cambiarla
+    if (proyMover && !exigirEdicion(proyMover.id)) return;
     const idsSet = new Set(puntosSeleccionadosMover);
     const puntosSel = todosLosPuntos.filter(p => idsSet.has(p.id));
     if (puntosSel.length === 0) { setModoMoverPuntos(false); setMoverProyId(null); setPuntosSeleccionadosMover([]); return; }
@@ -959,7 +962,7 @@ function App() {
     setModoMoverPuntos(false);
     setPuntosSeleccionadosMover([]);
     setMoverProyId(null);
-  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, todosLosAceros, proyMover, user, config, setPuntos, setConexiones, setCablesAcero, setProyectos, setProyectoActual, setAlertData]);
+  }, [puntosSeleccionadosMover, todosLosPuntos, conexiones, todosLosAceros, proyMover, user, config, setPuntos, setConexiones, setCablesAcero, setProyectos, setProyectoActual, setAlertData, exigirEdicion]);
 
   // Resetear modoMover y pendingCoords al deseleccionar punto
   React.useEffect(() => {
@@ -2696,6 +2699,7 @@ function App() {
           marcarChatLeido={marcarChatLeido}
           conexiones={todasLasConexiones}
           onIniciarMoverPuntos={(proy) => {
+            if (!exigirEdicion(proy?.id)) return;
             setPuntoSeleccionado(null);
             setPuntosSeleccionadosMover([]);
             setMoverProyId(proy?.id ?? null);
@@ -2707,6 +2711,7 @@ function App() {
           onArchivarProyecto={archivarProyecto}
           onDesarchivarProyecto={desarchivarProyecto}
           onIniciarOrdenar={(proy) => {
+            if (!exigirEdicion(proy?.id)) return;
             setPuntoSeleccionado(null);
             setOrdenSeleccion([]);
             setOrdenarProyId(proy?.id ?? null);
