@@ -9,10 +9,12 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > **Ahora:** el modo Diseño sigue en pausa. El 22/09 se abrió el trabajo de
 > **equipos**; tras las tandas A y B1, el 23/09 se decidió **rediseñarlo desde
 > cero**: cada proyecto con sus miembros, y amigos en lugar de equipos. Ver
-> "Rediseño de equipos" más abajo. **Diseño acordado y paso 0 hecho.** El trabajo
-> sigue en la rama `equipos-por-proyecto`; `main` queda para arreglos urgentes. Lo
-> próximo: el plan técnico del paso 1 (campos, reglas, convivencia), antes de
-> programarlo.
+> "Rediseño de equipos" más abajo. **Pasos 0 a 3 hechos y en producción**; el 3
+> salió en tres entregas: invitar, amigos y avisos, y traspasar (último SELLO:
+> 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
+> VERIFICAR de la migración. Lo próximo: el paso 4, el candado por rol en toda la
+> app. El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se adelanta a
+> ella en cada despliegue.
 
 ---
 
@@ -1504,11 +1506,10 @@ Lo que faltaba mapear quedó resuelto así:
   paso 5.
 - **Cómo saber quién actualizó.** Hoy nadie anota qué versión tiene cada teléfono:
   el sello solo aparece en su pantalla de Diagnóstico, y el aviso de actualización
-  insiste solo mientras la app está abierta. Propuesto, sin decidir: que cada
-  teléfono anote su versión al abrir la app, y una "versión mínima" que pida
-  actualizar y que bloquee solo si la actualización ya está descargada, para no
-  dejar a nadie trabado sin señal. Solo funciona en los teléfonos que ya la tengan,
-  así que conviene subirla cuanto antes, en `main` y antes del rediseño.
+  insiste solo mientras la app está abierta. Se propuso que cada teléfono anotara su
+  versión y una "versión mínima"; **el usuario decidió no hacerlo (23/09)**: son
+  pocos, todos con señal, y el aviso de actualización les aparece solo. Que todos
+  actualizaron lo confirma el usuario.
 
 ### Orden de trabajo
 
@@ -1599,8 +1600,8 @@ Lo que faltaba mapear quedó resuelto así:
 
    **3a hecho el 23/09.** Las reglas de `invitaciones` y las funciones
    `aceptarInvitacion`, `crearExportacion` y `procesarExportacion` ya están en
-   producción; la app está en la rama, sin desplegar hasta que el usuario pruebe 3a
-   y 3b. Lógica en `src/utils/equipoProyecto.js`, con una copia para el servidor en
+   producción; la app salió junto con la de 3b (ver abajo). Lógica en
+   `src/utils/equipoProyecto.js`, con una copia para el servidor en
    `functions/invitaciones.js` (la prueba compara las dos). Pantallas:
    `EquipoProyecto` (reemplaza a la EQUIPO vieja), `ModalAceptarInvitacion`,
    `ScannerQR` (compartido con EQUIPOS) y UNIRME en PROYECTOS. El supervisor tiene
@@ -1625,11 +1626,31 @@ Lo que faltaba mapear quedó resuelto así:
    falla para un supervisor que no es de un equipo ('lectura' no puede escribir el
    proyecto), así que su nombre queda el que se anotó al sumarlo. Es inofensivo; se
    arregla con las reglas del paso 6.
+
+   **3c hecho el 23/09.** El dueño pasa el proyecto desde EQUIPO ("Pasar el
+   proyecto", al final, solo si hay otro miembro), con confirmación. Lo hace el
+   servidor (`traspasarProyecto`), porque toca el catálogo del nuevo dueño. En una
+   transacción: cambia `ownerId` y `ownerNombre`/`ownerEmpresa`; en `miembros`, el
+   nuevo pasa a dueño y el anterior a editor, y cada uno conserva su `desde`; en los
+   campos viejos, `compartidoCon` pierde al nuevo y gana al anterior, con
+   `permisos` y `supervisoresInfo` a juego, y `enListaDe` suma al nuevo (sin eso, un
+   proyecto de equipo no le saldría en la lista); y al catálogo del nuevo dueño se le
+   suman los ítems que la obra usa y le faltan (`functions/traspaso.js`: puntos en
+   los dos modelos, armados del proyecto, cables de acero y los controles del dueño
+   anterior). Dentro de la transacción vuelve a mirar el proyecto: si el destino dejó
+   de ser miembro mientras tanto, no sigue. Después, aparte, los `controlFerreteria`
+   del dueño anterior para esa obra pasan al nuevo, se anulan las invitaciones
+   abiertas y el nuevo dueño recibe un aviso (`tipo: 'traspaso'`). Si esto último
+   falla, el traspaso ya está hecho y la respuesta lo dice (`completo: false`), en
+   vez de dar un error que al reintentar diría "solo el dueño puede pasarlo".
+   Probada con la función real (`.run`) sobre una Firestore falsa en memoria (seis
+   escenarios; diez mutantes, todos cazados) y con un render en Node de EQUIPO y del
+   aviso. Función y app desplegadas el 23/09 (**SELLO: 23/09/26, 22:08**).
 4. **Candado por rol.** `rolEnProyecto` en cada botón que escribe: el supervisor,
    solo lectura en todo (mapa, formulario, fotos, ferretería, revisión); el
    editor, sin borrar el proyecto.
-5. **Retirar lo viejo**, cuando la lista de versiones diga que todos
-   actualizaron: `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
+5. **Retirar lo viejo**, cuando el usuario confirme que todos actualizaron (no hay
+   seguimiento de versiones: se decidió no hacerlo): `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
    `grupoId`, `supervisoresInfo`, la colección `equipos` y el código muerto
    (`VistaPermisos`, `VistaSupervision`, `ModalAgregarCodigo`,
    `aprobarSupervisor`, `rechazarSupervisor`, `codigoAcceso`).
