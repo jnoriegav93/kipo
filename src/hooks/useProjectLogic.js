@@ -196,11 +196,13 @@ const toggleVisibilidadProyecto = (e, proy) => {
 };
 
 const solicitarBorrarProyecto = (proyId) => {
+    // Si otros son miembros, avisar que dejan de verlo y que al restaurarlo no vuelven
+    // (restaurarProyecto lo deja solo con su dueño).
+    const proy = proyectos.find(p => String(p.id) === String(proyId));
+    const otros = (proy?.miembrosUids || []).filter(u => String(u) !== String(proy?.ownerId)).length;
     setConfirmData({
       title: '¿Eliminar Proyecto?',
-      // Si el proyecto está compartido en un equipo, avisar que también desaparece de ahí
-      // (es un mismo proyecto con doble entrada: lista personal + equipo).
-      message: `El proyecto y TODOS sus puntos irán a la Papelera por 15 días. Puedes restaurarlo desde el menú principal.${proyectos.find(p => String(p.id) === String(proyId))?.grupoId ? '\n\n⚠ Este proyecto está compartido en un equipo: también se eliminará de la lista del equipo.' : ''}`,
+      message: `El proyecto y TODOS sus puntos irán a la Papelera por 15 días. Puedes restaurarlo desde el menú principal.${otros ? `\n\n⚠ Tiene ${otros} ${otros === 1 ? 'miembro' : 'miembros'} además de ti. ${otros === 1 ? 'Deja' : 'Dejan'} de verlo, y al restaurarlo no ${otros === 1 ? 'vuelve' : 'vuelven'}: hay que volver a invitar.` : ''}`,
       actionText: 'ELIMINAR',
       theme,
       onConfirm: async () => {
