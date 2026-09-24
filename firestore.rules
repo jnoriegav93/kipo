@@ -7,53 +7,38 @@ service cloud.firestore {
       // Leer: cualquier usuario autenticado
       // (la seguridad real está en los listeners que solo traen proyectos propios/compartidos)
       allow read: if request.auth != null;
-      // Crear (setDoc con doc nuevo): autenticado.
-      // Permite ownerId propio (creación normal) o ajeno (copia al salir de equipo;
-      // consistente con puntos/conexiones que permiten create a cualquier autenticado).
+      // Crear (setDoc con doc nuevo): autenticado. No se exige ownerId propio: la regla es
+      // de antes del rediseño de equipos y nada lo necesitó cerrar.
       allow create: if request.auth != null;
-      // Editar: dueño, editor, miembro del EQUIPO del proyecto (rol a nivel equipo:
-      // puede auto-agregarse como editor al presionar EDITAR en el grupo), solicitud
-      // pendiente, o auto-eliminarse de compartidoCon
+      // Editar (rediseño de equipos; desde el paso 6 solo con `miembros`, sin las ramas del
+      // sistema viejo: equipos, `compartidoCon`, solicitudes):
       allow update: if request.auth != null && (
+        // El dueño, todo.
         resource.data.ownerId == request.auth.uid ||
-        (
-        // Los ARMADOS del proyecto solo los cambia el dueño: son la plantilla con
-        // la que se liquidan los materiales de toda la obra.
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['armados']) &&
-        (
-          resource.data.get('grupoId', '') != '' &&
-          exists(/databases/$(database)/documents/equipos/$(resource.data.grupoId)) &&
-          request.auth.uid in get(/databases/$(database)/documents/equipos/$(resource.data.grupoId)).data.get('miembrosUids', [])
-        ) ||
-        (
-          request.auth.uid in resource.data.get('compartidoCon', []) &&
-          (resource.data.get('permisos', {})[request.auth.uid] == 'edicion' ||
-           resource.data.get('permisos', {})[request.auth.uid] == 'ambos')
-        ) ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['solicitudesPendientes']) ||
-        (
-          // Auto-eliminarse de compartidoCon (con o sin limpiar permisos)
-          request.resource.data.diff(resource.data).affectedKeys().hasAny(['compartidoCon']) &&
-          request.auth.uid in resource.data.get('compartidoCon', []) &&
-          !(request.auth.uid in request.resource.data.get('compartidoCon', []))
-        )
-        ) ||
-        // ── Paso 5 del rediseño de equipos (miembros por proyecto). Estas dos ramas solo
-        // SUMAN y van al final: no cambian nada de lo que ya se permitía. ──
-        // El EDITOR del modelo nuevo cambia el proyecto, salvo quién es el dueño y quiénes
-        // son miembros: eso lo hacen el dueño y el servidor.
+        // El EDITOR cambia el proyecto, salvo quién es el dueño y quiénes son miembros: eso
+        // lo hacen el dueño y el servidor.
         (
           resource.data.get('miembros', {}).get(request.auth.uid, {}).get('rol', '') == 'editor' &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerId', 'miembros', 'miembrosUids', 'compartidoCon', 'permisos'])
         ) ||
-        // Cualquier MIEMBRO puede salirse: se quita de miembros y de miembrosUids (y de los
-        // campos viejos, si estaba), sin tocar a nadie más ni nada más.
+        // Cualquier MIEMBRO puede salirse: se quita de miembros y de miembrosUids, sin tocar a
+        // nadie más ni nada más. (Los campos viejos siguen en la lista para que un teléfono
+        // sin actualizar, que todavía los limpia al salir, pueda salirse igual.)
         (
           request.auth.uid in resource.data.get('miembrosUids', []) &&
           !(request.auth.uid in request.resource.data.get('miembrosUids', [])) &&
           !(request.auth.uid in request.resource.data.get('miembros', {})) &&
           request.resource.data.get('miembros', {}).diff(resource.data.get('miembros', {})).affectedKeys().hasOnly([request.auth.uid]) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['miembros', 'miembrosUids', 'compartidoCon', 'permisos', 'supervisoresInfo', 'enListaDe'])
+        ) ||
+        // Cualquier MIEMBRO pone al día SU nombre y empresa en `miembros` (cuando cambia su
+        // configuración; antes iban a `supervisoresInfo`). Nada más: ni su rol.
+        (
+          request.auth.uid in resource.data.get('miembrosUids', []) &&
+          request.auth.uid in resource.data.get('miembros', {}) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['miembros']) &&
+          request.resource.data.miembros.diff(resource.data.miembros).affectedKeys().hasOnly([request.auth.uid]) &&
+          request.resource.data.miembros[request.auth.uid].diff(resource.data.miembros[request.auth.uid]).affectedKeys().hasOnly(['nombre', 'empresa'])
         )
       );
       // Borrar: solo el dueño
@@ -152,25 +137,8 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
-    // ── EQUIPOS ───────────────────────────────────────────────────────────
-    match /equipos/{equipoId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null &&
-        request.resource.data.ownerId == request.auth.uid;
-      allow update: if request.auth != null && (
-        resource.data.ownerId == request.auth.uid ||
-        // Solicitar ingreso (agrega a pendientes)
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendientes', 'pendientesUids']) ||
-        // Auto-eliminarse del equipo (miembro sale, puede también agregar proyectosHuerfanos)
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasAny(['miembros', 'miembrosUids']) &&
-          request.auth.uid in resource.data.get('miembrosUids', []) &&
-          !(request.auth.uid in request.resource.data.get('miembrosUids', []))
-        )
-      );
-      allow delete: if request.auth != null &&
-        resource.data.ownerId == request.auth.uid;
-    }
+    // (EQUIPOS: la colección se borró en el paso 6, con respaldo en `respaldoPaso6Equipos`,
+    // que solo lee el servidor. Sin regla, nadie la lee ni la escribe desde la app.)
 
     // ── INVITACIONES A UN PROYECTO (rediseño de equipos, paso 3a) ─────────
     // El link o el QR llevan solo el código (el id de este documento, largo y al azar);
@@ -287,9 +255,8 @@ service cloud.firestore {
     }
 
     // ── Rol por obra (paso 6) para puntos, fibras, acero y papelera ──
-    // `d` es el documento (el de antes o el de después). Lo cambia quien edita su obra:
-    // el dueño, un editor de `miembros` o, hasta que se limpien, un editor de los campos
-    // viejos (compartidoCon + permisos). El admin, siempre (sus herramientas de soporte).
+    // `d` es el documento (el de antes o el de después). Lo cambia quien edita su obra: el
+    // dueño o un editor de `miembros`. El admin, siempre (sus herramientas de soporte).
     // Sin obra conocida —puntos viejos sin proyectoId, o que quedaron de una obra que ya no
     // existe— queda como antes: cualquier autenticado. (Al borrar una obra, su lote se
     // evalúa con la obra todavía en pie: pasa por ser el dueño.) El proyectoId numérico de
@@ -307,9 +274,7 @@ service cloud.firestore {
 
     function editaEn(p) {
       return p.get('ownerId', '') == request.auth.uid ||
-        p.get('miembros', {}).get(request.auth.uid, {}).get('rol', '') in ['dueno', 'editor'] ||
-        (request.auth.uid in p.get('compartidoCon', []) &&
-          p.get('permisos', {}).get(request.auth.uid, '') in ['edicion', 'ambos']);
+        p.get('miembros', {}).get(request.auth.uid, {}).get('rol', '') in ['dueno', 'editor'];
     }
 
     function editaLaObra(d) {
@@ -321,23 +286,16 @@ service cloud.firestore {
         get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.ownerId == uid;
     }
 
-    // Colaborador: del modelo viejo (compartidoCon) o miembro del nuevo (miembrosUids, paso 5)
+    // Colaborador: miembro del proyecto (`miembrosUids`; desde el paso 6, sin `compartidoCon`)
     function esColaboradorDelProyecto(proyectoId, uid) {
-      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) && (
-        uid in get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.get('compartidoCon', []) ||
-        uid in get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.get('miembrosUids', [])
-      );
+      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) &&
+        uid in get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.get('miembrosUids', []);
     }
 
-    // Editor: del modelo viejo (compartidoCon + permisos) o del nuevo (miembros, paso 5).
-    // `.get(uid, '')`: con `[uid]`, quien no estaba en permisos daba error en vez de falso.
+    // Editor: rol 'editor' en `miembros` (desde el paso 6, sin `compartidoCon` + `permisos`)
     function esEditorDelProyecto(proyectoId, uid) {
-      let proyecto = get(/databases/$(database)/documents/proyectos/$(proyectoId)).data;
-      let permiso = proyecto.get('permisos', {}).get(uid, '');
-      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) && (
-        (uid in proyecto.get('compartidoCon', []) && (permiso == 'edicion' || permiso == 'ambos')) ||
-        proyecto.get('miembros', {}).get(uid, {}).get('rol', '') == 'editor'
-      );
+      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) &&
+        get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.get('miembros', {}).get(uid, {}).get('rol', '') == 'editor';
     }
   }
 }

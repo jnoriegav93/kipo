@@ -17,10 +17,7 @@ const rolEnProyecto = (proyecto, uid) => {
   const propio = proyecto.miembros && proyecto.miembros[u] && proyecto.miembros[u].rol;
   if (ROLES.includes(propio)) return propio;
   if (proyecto.ownerId != null && String(proyecto.ownerId) === u) return 'dueno';
-  if ((proyecto.compartidoCon || []).map(String).includes(u)) {
-    const p = proyecto.permisos ? proyecto.permisos[u] : undefined;
-    return (p === 'edicion' || p === 'ambos') ? 'editor' : 'supervisor';
-  }
+  // Desde el paso 6 no se mira el sistema viejo (`compartidoCon` + `permisos`).
   return null;
 };
 

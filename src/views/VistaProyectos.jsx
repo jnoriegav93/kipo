@@ -420,14 +420,10 @@ const VistaProyectos = ({
         setConfirmData(null);
         try {
           const { doc: dref, updateDoc: upd, arrayRemove: aRem, deleteField: dfield } = await import('firebase/firestore');
+          // Deja de ser miembro. Los campos del sistema viejo ya no existen (paso 6).
           await upd(dref(db, 'proyectos', String(proy.id)), {
-            compartidoCon: aRem(user.uid),
-            [`permisos.${user.uid}`]: dfield(),
-            enListaDe: aRem(user.uid),
-            // Y del modelo nuevo (rediseño de equipos): deja de ser miembro
             [`miembros.${user.uid}`]: dfield(),
             miembrosUids: aRem(user.uid),
-            [`supervisoresInfo.${user.uid}`]: dfield(),
           });
         } catch (e) { console.error('Salir del proyecto:', e); setAlertData?.({ title: 'Error', message: 'No se pudo salir del proyecto.' }); }
       },
@@ -850,7 +846,11 @@ const VistaProyectos = ({
             {[...proyectos].sort((x, y) => (parseInt(y.id) || 0) - (parseInt(x.id) || 0)).map(proy => {
               const esActivo = proyectoActual?.id === proy.id;   // EDITANDO (proyecto activo)
               const esCompartido = !!proy.esCompartido;          // proyecto donde soy editor/supervisor
-              const esGrupo = !!proy.grupoId;                    // proyecto compartido en un equipo
+              // Proyecto MÍO que comparto: tiene miembros además de mí. Se ve naranja como los
+              // compartidos conmigo (antes eran los de un equipo, con `grupoId`).
+              const otrosMiembros = esCompartido ? 0
+                : (proy.miembrosUids || []).filter(u => String(u) !== String(proy.ownerId)).length;
+              const loComparto = otrosMiembros > 0;
               // Supervisor: abre el proyecto como todos y lo ve completo, pero no cambia nada
               // (paso 4): su LISTA DE PUNTOS es de solo lectura y no tiene papelera (no borra
               // ni recupera). Dueño y editor cambian todo; borrar el proyecto, solo el dueño.
@@ -865,14 +865,14 @@ const VistaProyectos = ({
               const abrevTipo = proy.tipo === 'liquidacion' ? 'PRECO' : proy.tipo === 'desbMecanica' ? 'MECA' : proy.tipo === 'balanceada' ? 'BALAN' : proy.tipo === 'instalacionPostes' ? 'INSTA' : 'LEV';
               const abrev = `${abrevTipo}-${proy.modoFotos === 'altaCalidad' ? 'ALTA' : 'COMP'}`;
               // EDITANDO pinta TODA la tarjeta de negro; compartido mantiene su borde naranja
-              const activoNaranja = esActivo && (esCompartido || esGrupo); // EDITANDO un compartido → tarjeta naranja
+              const activoNaranja = esActivo && (esCompartido || loComparto); // EDITANDO un compartido → tarjeta naranja
               const bordeActivo = activoNaranja ? 'border-slate-900' : 'border-white';
               // Naranja activo: botones fondo naranja (transparente sobre la tarjeta) con borde e íconos negros
               const btnActivo = activoNaranja ? 'border-2 border-slate-900 bg-transparent' : 'border border-white bg-[#262626]';
               const iconActivo = activoNaranja ? 'text-slate-900' : 'text-white';
               const cardCls = esActivo
                 ? (activoNaranja ? 'bg-[#FCBF26] border-slate-900' : 'bg-[#262626] border-[#262626]')
-                : (esCompartido || esGrupo)
+                : (esCompartido || loComparto)
                   ? 'border-[#FCBF26] bg-[#FCBF26]/10'
                   : isDark ? `${theme.border} ${theme.card}` : 'border-slate-900 bg-slate-100';
               const txtCls = esActivo ? (activoNaranja ? 'text-slate-900' : 'text-white') : theme.text;
@@ -904,9 +904,9 @@ const VistaProyectos = ({
                       <p className={`text-[11px] font-bold ${subCls} mt-0.5 truncate`}>
                         {totalPuntosProy} pts · {abrev}
                       </p>
-                      {(esGrupo || esCompartido) && (
+                      {(loComparto || esCompartido) && (
                         <p className={`text-[10px] font-bold ${subCls} truncate`}>
-                          {esCompartido ? `Proyecto de: ${proy.ownerNombre || '—'}` : 'Compartido en equipo'}
+                          {esCompartido ? `Proyecto de: ${proy.ownerNombre || '—'}` : `Compartido con ${otrosMiembros} ${otrosMiembros === 1 ? 'persona' : 'personas'}`}
                         </p>
                       )}
                     </div>
@@ -982,14 +982,14 @@ const VistaProyectos = ({
                       )}
                     </div>
                     */}
-                    {/* ARCHIVAR: sale de la lista y del mapa (y del equipo). Nada se borra. */}
+                    {/* ARCHIVAR: sale de la lista y del mapa. Nada se borra. */}
                     {puedeEditarTarjeta && onArchivarProyecto && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setConfirmData?.({
                             title: '¿Archivar proyecto?',
-                            message: `"${proy.nombre}" saldrá de tu lista y sus puntos dejarán de verse en el mapa. No se borra nada: puedes recuperarlo desde el archivador.${proy.grupoId ? '\n\nOJO: también saldrá del equipo y al desarchivarlo quedará como proyecto personal.' : ''}`,
+                            message: `"${proy.nombre}" saldrá de tu lista y sus puntos dejarán de verse en el mapa. No se borra nada: puedes recuperarlo desde el archivador.`,
                             actionText: 'ARCHIVAR',
                             theme,
                             onConfirm: () => { setConfirmData(null); onArchivarProyecto(proy); },

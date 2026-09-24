@@ -381,12 +381,6 @@ function App() {
     config: configNube, setConfig
   } = useFirebaseData(user);
 
-  // (Aquí estaba el "BLOQUE 6": una limpieza que corría una vez por dispositivo y vaciaba
-  // `compartidoCon`, `permisos` y `supervisoresInfo` de los proyectos propios sin equipo.
-  // Se quitó el 24/09: desde el paso 3a esos campos son el reflejo de los miembros
-  // invitados, y el dueño que entraba desde un teléfono nuevo los dejaba sin el proyecto.
-  // No volver a ponerla: los campos viejos se retiran en el paso 5, con los miembros.)
-
 
   // Lo que se ve de la obra: todo lo de los proyectos del usuario, lo haya creado quien
   // lo haya creado (una sola escucha por proyecto, en useFirebaseData), con las tareas
@@ -1180,9 +1174,6 @@ function App() {
     });
   }, [user?.uid, configNube?.nombrePersonal, configNube?.empresaPersonal]);
 
-  // (Aquí se sincronizaba `supervisoresInfo` con el nombre de quien supervisa. Se retiró en
-  // el paso 5: el nombre de cada miembro se anota en `miembros` al entrar al proyecto.)
-
   // Inicializar diasVisibles para TODOS los proyectos al arrancar
   // Usa diasOcultos del localStorage para saber cuáles estaban apagados
   const diasVisiblesInitRef = React.useRef(false);
@@ -1650,21 +1641,27 @@ function App() {
         } catch (e) { console.error("Error actualizando proyecto:", e); }
       }
 
-      // Sincronizar supervisoresInfo en proyectos que superviso
+      // Mi nombre y empresa en `miembros` de los proyectos donde soy miembro (paso 6; antes
+      // iban a `supervisoresInfo`). Solo si cambiaron. La regla deja a cada miembro tocar
+      // únicamente su propio nombre y empresa, sea editor o supervisor.
+      const miNombre = nuevaConfig.nombrePersonal || '';
+      const miEmpresa = nuevaConfig.empresaPersonal || '';
       for (const proy of proyectosSupervisados) {
+        const yo = proy.miembros?.[user.uid];
+        if (!yo || ((yo.nombre || '') === miNombre && (yo.empresa || '') === miEmpresa)) continue;
         try {
-          await fbUpdateDoc(doc(db, "proyectos", proy.id), {
-            [`supervisoresInfo.${user.uid}.nombre`]: nuevaConfig.nombrePersonal || '',
-            [`supervisoresInfo.${user.uid}.empresa`]: nuevaConfig.empresaPersonal || ''
+          await fbUpdateDoc(doc(db, "proyectos", String(proy.id)), {
+            [`miembros.${user.uid}.nombre`]: miNombre,
+            [`miembros.${user.uid}.empresa`]: miEmpresa,
           });
-        } catch (e) { console.error("Error actualizando supervisión:", e); }
+        } catch (e) { console.error("Error actualizando mi nombre en el proyecto:", e); }
       }
     } catch (error) {
       console.error("Error guardando config:", error);
     }
   };
 
-  // Archivar: sale de la lista, del mapa y del EQUIPO (al desarchivar queda personal).
+  // Archivar: sale de la lista y del mapa. Los miembros siguen siéndolo.
   const archivarProyecto = React.useCallback(async (proy) => {
     if (!proy?.id) return;
     if (!exigirEdicion(proy.id)) return;
@@ -1672,8 +1669,6 @@ function App() {
       await fbUpdateDoc(doc(db, 'proyectos', String(proy.id)), {
         archivado: true,
         archivadoEn: new Date().toISOString(),
-        grupoId: deleteField(),   // se quita del equipo
-        enListaDe: deleteField(),
       });
       if (String(proyectoActual?.id) === String(proy.id)) setProyectoActual(null);
     } catch (e) {

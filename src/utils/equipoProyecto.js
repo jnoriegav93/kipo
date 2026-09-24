@@ -6,24 +6,19 @@
 export const ROLES = ['dueno', 'editor', 'supervisor'];
 export const ROL_TEXTO = { dueno: 'Dueño', editor: 'Editor', supervisor: 'Supervisor' };
 
-// El permiso del sistema viejo que le corresponde a cada rol. Mientras convivan los dos
-// sistemas, cada miembro se anota también en `compartidoCon` + `permisos`: así lo siguen
-// viendo las reglas de hoy, la exportación y los teléfonos sin actualizar. Y 'lectura'
-// no puede escribir el proyecto, que es justo lo que se quiere del supervisor.
+// El `permisoActual` que la app todavía usa por dentro ('edicion' / 'lectura'), sacado del
+// rol. Ya no se guarda en ningún lado: solo traduce el rol para el código de antes.
 export const permisoViejo = (rol) => (rol === 'editor' ? 'edicion' : 'lectura');
 
-// El rol de `uid` en el proyecto. Primero `miembros`; si no figura ahí (un proyecto sin
-// migrar, o alguien que solo está en el sistema viejo), se deduce de los campos viejos.
+// El rol de `uid` en el proyecto: el de `miembros`, o dueño si es el `ownerId`. Desde el
+// paso 6 no se mira el sistema viejo (`compartidoCon` + `permisos`): todos pasaron a
+// `miembros` y los campos viejos se borraron.
 export const rolEnProyecto = (proyecto, uid) => {
   if (!proyecto || uid == null) return null;
   const u = String(uid);
   const propio = proyecto.miembros?.[u]?.rol;
   if (ROLES.includes(propio)) return propio;
   if (proyecto.ownerId != null && String(proyecto.ownerId) === u) return 'dueno';
-  if ((proyecto.compartidoCon || []).map(String).includes(u)) {
-    const p = proyecto.permisos?.[u];
-    return (p === 'edicion' || p === 'ambos') ? 'editor' : 'supervisor';
-  }
   return null;
 };
 
@@ -34,14 +29,13 @@ export const puedeEditarProyecto = (proyecto, uid) =>
 
 const ORDEN_ROL = { dueno: 0, editor: 1, supervisor: 2 };
 
-// Todos los miembros: los de `miembros` y los que solo figuran en el sistema viejo.
+// Todos los miembros: los de `miembros`, más el dueño aunque no figure ahí.
 // Primero el dueño, después los editores y al final los supervisores.
 export const miembrosDelProyecto = (proyecto) => {
   if (!proyecto) return [];
   const uids = new Set([
     ...Object.keys(proyecto.miembros || {}),
     ...(proyecto.ownerId != null ? [String(proyecto.ownerId)] : []),
-    ...(proyecto.compartidoCon || []).map(String),
   ]);
   return [...uids]
     .map(uid => ({ uid, rol: rolEnProyecto(proyecto, uid) }))

@@ -69,7 +69,7 @@ export const useFirebaseData = (user) => {
       return;
     }
 
-    let unsubProyectos, unsubSupervisados, unsubSupervisadosViejo, unsubConfig;
+    let unsubProyectos, unsubSupervisados, unsubConfig;
     let cancelado = false;
 
     // Esperar a que el token esté validado por Firestore antes de abrir listeners
@@ -85,28 +85,19 @@ export const useFirebaseData = (user) => {
         setProyectos(docs);
       }, (error) => console.error("Error en Proyectos:", error));
 
-      // A2. PROYECTOS COMPARTIDOS: donde el usuario es miembro (editor o supervisor).
-      // Paso 5: se buscan por `miembrosUids`, el modelo nuevo. Se sigue escuchando también
-      // `compartidoCon`, el reflejo viejo, para quien solo esté ahí; se retira junto con los
-      // datos viejos, cuando se verifique que todos están en `miembrosUids`. Los propios
-      // llegan por `ownerId` (arriba) y aquí se descartan. `permisoActual` ya no se lee de
-      // `permisos`: sale del rol ('edicion' el editor, 'lectura' el supervisor).
-      const porConsulta = { nuevo: [], viejo: [] };
-      const publicarCompartidos = () => {
-        const unicos = new Map();
-        [...porConsulta.nuevo, ...porConsulta.viejo].forEach(p => { if (!unicos.has(p.id)) unicos.set(p.id, p); });
-        setProyectosSupervisados([...unicos.values()]
-          .filter(p => String(p.ownerId) !== String(user.uid))
-          .map(p => ({ ...p, esCompartido: true, permisoActual: permisoViejo(rolEnProyecto(p, user.uid) || 'supervisor') })));
-      };
+      // A2. PROYECTOS COMPARTIDOS: donde el usuario es miembro (editor o supervisor), por
+      // `miembrosUids`. Desde el paso 6 es la única escucha: la de `compartidoCon`, el
+      // reflejo viejo, se retiró después de pasar a todos a `miembros`. Los propios llegan
+      // por `ownerId` (arriba) y aquí se descartan. `permisoActual` sale del rol ('edicion'
+      // el editor, 'lectura' el supervisor).
       unsubSupervisados = onSnapshot(
         query(collection(db, "proyectos"), where("miembrosUids", "array-contains", user.uid)),
-        (snapshot) => { porConsulta.nuevo = snapshot.docs.map(d => ({ ...d.data(), id: d.id })); publicarCompartidos(); },
+        (snapshot) => {
+          setProyectosSupervisados(snapshot.docs.map(d => ({ ...d.data(), id: d.id }))
+            .filter(p => String(p.ownerId) !== String(user.uid))
+            .map(p => ({ ...p, esCompartido: true, permisoActual: permisoViejo(rolEnProyecto(p, user.uid) || 'supervisor') })));
+        },
         (error) => console.error("Error en proyectos de miembro:", error));
-      unsubSupervisadosViejo = onSnapshot(
-        query(collection(db, "proyectos"), where("compartidoCon", "array-contains", user.uid)),
-        (snapshot) => { porConsulta.viejo = snapshot.docs.map(d => ({ ...d.data(), id: d.id })); publicarCompartidos(); },
-        (error) => console.error("Error en proyectos compartidos (reflejo viejo):", error));
 
       // D. ESCUCHAR CONFIGURACIÓN
       const configRef = doc(db, "configuraciones", user.uid);
@@ -119,7 +110,6 @@ export const useFirebaseData = (user) => {
       cancelado = true;
       unsubProyectos?.();
       unsubSupervisados?.();
-      unsubSupervisadosViejo?.();
       unsubConfig?.();
     };
   }, [user]);

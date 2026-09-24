@@ -168,7 +168,10 @@ export const restaurarLista = async (entrada) => {
 // se guardaron con meta.grupo = idProyecto al borrarlo). Colaboradores NO se restauran.
 export const restaurarProyecto = async (entrada, uid) => {
   const s = { ...(entrada.snapshot || {}) };
-  delete s.compartidoCon; delete s.permisos; delete s.supervisoresInfo; // colaboradores no vuelven
+  // Colaboradores no vuelven. Y la copia de un proyecto borrado antes del paso 6 puede traer
+  // los campos del sistema viejo: tampoco vuelven.
+  ['compartidoCon', 'permisos', 'supervisoresInfo', 'enListaDe', 'grupoId', 'solicitudesPendientes', 'codigoAcceso']
+    .forEach(k => { delete s[k]; });
   // Tampoco en el modelo nuevo (rediseño de equipos): vuelve solo con su dueño.
   if (s.ownerId != null) {
     s.miembros = { [String(s.ownerId)]: { rol: 'dueno', desde: new Date().toISOString() } };

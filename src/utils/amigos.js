@@ -29,9 +29,9 @@ export const clasificarAmistades = (docs, uid) => {
 };
 
 // Las personas con las que el usuario coincide en algún proyecto: los miembros de sus
-// proyectos, menos él mismo. Cada una con los proyectos en común y su relación de hoy:
-// 'amigo', 'recibida' (le mandó solicitud), 'enviada' (se la mandó el usuario) o
-// 'libre'. El nombre sale de lo que ya trae el proyecto (dueño y `supervisoresInfo`).
+// proyectos, sin el propio usuario. Cada una con los proyectos en común y su relación de
+// hoy: 'amigo', 'recibida' (le mandó solicitud), 'enviada' (se la mandó el usuario) o
+// 'libre'. El nombre sale de lo que ya trae el proyecto (el dueño y `miembros`).
 export const coincidencias = (proyectos, uid, { amigos = [], recibidas = [], enviadas = [] } = {}) => {
   const u = String(uid);
   const relacion = new Map([
@@ -43,7 +43,7 @@ export const coincidencias = (proyectos, uid, { amigos = [], recibidas = [], env
   for (const p of proyectos || []) {
     for (const { uid: otro } of miembrosDelProyecto(p)) {
       if (otro === u) continue;
-      const nombre = otro === String(p.ownerId) ? (p.ownerNombre || '') : (p.miembros?.[otro]?.nombre || p.supervisoresInfo?.[otro]?.nombre || '');
+      const nombre = otro === String(p.ownerId) ? (p.ownerNombre || '') : (p.miembros?.[otro]?.nombre || '');
       const persona = personas.get(otro) || { uid: otro, nombre: '', proyectos: [] };
       if (!persona.nombre && nombre) persona.nombre = nombre;
       if (p.nombre && !persona.proyectos.includes(p.nombre)) persona.proyectos.push(p.nombre);

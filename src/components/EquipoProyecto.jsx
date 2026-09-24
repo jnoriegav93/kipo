@@ -24,9 +24,9 @@ const fechaCorta = (iso) => {
 // y con qué rol. Solo el dueño invita, cambia roles, quita y anula invitaciones sin usar.
 // Debajo, la bitácora, como antes.
 //
-// Desde el paso 5 los miembros viven solo en `miembros` / `miembrosUids`, con su nombre. Los
-// campos viejos (`compartidoCon`, `permisos`, `supervisoresInfo`) ya no se escriben: solo
-// se limpian al cambiar el rol de alguien o al quitarlo.
+// Los miembros viven solo en `miembros` / `miembrosUids`, con su nombre. Los campos del
+// sistema viejo (`compartidoCon`, `permisos`, `supervisoresInfo`) se borraron en el paso 6:
+// no se leen ni se escriben.
 const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertData, setConfirmData, onClose }) => {
   const soyDueno = rolEnProyecto(proyecto, user?.uid) === 'dueno';
   const miembros = miembrosDelProyecto(proyecto);
@@ -49,7 +49,7 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
 
   const nombreDe = (uid) => (String(uid) === String(proyecto.ownerId)
     ? (proyecto.ownerNombre || 'Dueño')
-    : (proyecto.miembros?.[uid]?.nombre || proyecto.supervisoresInfo?.[uid]?.nombre || 'Miembro'));
+    : (proyecto.miembros?.[uid]?.nombre || 'Miembro'));
 
   const refProyecto = () => doc(db, 'proyectos', String(proyecto.id));
 
@@ -103,13 +103,10 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
 
   const cambiarRol = async (uid, rol) => {
     try {
-      // El rol vive solo en `miembros`. Si la persona venía del reflejo viejo, se la saca
-      // de ahí: con `permisos` puesto, las reglas viejas le seguirían dando el de antes.
+      // El rol vive solo en `miembros`.
       await updateDoc(refProyecto(), {
         [`miembros.${uid}.rol`]: rol,
         miembrosUids: arrayUnion(uid),
-        compartidoCon: arrayRemove(uid),
-        [`permisos.${uid}`]: deleteField(),
       });
     } catch (e) { avisarFallo('No se pudo cambiar el rol', e); }
   };
@@ -125,10 +122,6 @@ const EquipoProyecto = ({ proyecto, user, config, theme, amigos = [], setAlertDa
         await updateDoc(refProyecto(), {
           [`miembros.${uid}`]: deleteField(),
           miembrosUids: arrayRemove(uid),
-          compartidoCon: arrayRemove(uid),
-          [`permisos.${uid}`]: deleteField(),
-          [`supervisoresInfo.${uid}`]: deleteField(),
-          enListaDe: arrayRemove(uid),
         });
       } catch (e) { avisarFallo('No se pudo quitar', e); }
     },

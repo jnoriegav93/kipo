@@ -3142,11 +3142,10 @@ exports.crearExportacion = onCall({ region: 'us-central1' }, async (request) => 
   const proyDoc = await db.collection('proyectos').doc(proyectoId).get();
   if (!proyDoc.exists) throw new HttpsError('not-found', 'Proyecto no encontrado.');
   const proy = proyDoc.data();
-  // Dueño, o miembro del modelo nuevo (`miembrosUids`) o del viejo (`compartidoCon`), sea
-  // editor o supervisor: exportar no modifica la obra.
+  // Dueño, o miembro (`miembrosUids`), sea editor o supervisor: exportar no modifica la
+  // obra. Desde el paso 6 ya no se mira `compartidoCon`, el sistema viejo.
   const tieneAcceso = proy.ownerId === userId
-    || (Array.isArray(proy.miembrosUids) && proy.miembrosUids.includes(userId))
-    || (Array.isArray(proy.compartidoCon) && proy.compartidoCon.includes(userId));
+    || (Array.isArray(proy.miembrosUids) && proy.miembrosUids.includes(userId));
   if (!tieneAcceso) throw new HttpsError('permission-denied', 'Sin acceso al proyecto.');
 
   const exportRef = await db.collection('exportaciones').add({
@@ -4251,10 +4250,9 @@ exports.traspasarProyecto = onCall({ region: 'us-central1', timeoutSeconds: 120,
 
     // Cada uno conserva lo que ya tenía como miembro (desde cuándo, quién lo invitó), y el
     // anterior queda como editor con su nombre (paso 5: los nombres viven en `miembros`).
-    // De los campos viejos solo se limpia al nuevo dueño, que no va en el reflejo; nada
-    // nuevo se escribe ahí.
+    // Los campos del sistema viejo ya no existen (paso 6): no se tocan.
     const antes = p.miembros || {};
-    const infoNuevo = { ...((p.supervisoresInfo || {})[nuevo] || {}), ...(antes[nuevo] || {}) };
+    const infoNuevo = antes[nuevo] || {};
     tx.update(proyRef, {
       ownerId: nuevo,
       // Al abrir Kipo, el nuevo dueño los pone al día con su configuración (App.jsx).
@@ -4263,9 +4261,6 @@ exports.traspasarProyecto = onCall({ region: 'us-central1', timeoutSeconds: 120,
       [`miembros.${nuevo}`]: { ...(antes[nuevo] || { desde: ahora }), rol: 'dueno', duenoDesde: ahora },
       [`miembros.${yo}`]: { ...(antes[yo] || { desde: ahora }), rol: 'editor', nombre: miNombre, empresa: yoCfg.empresaPersonal || '' },
       miembrosUids: FV.arrayUnion(nuevo, yo),
-      compartidoCon: FV.arrayRemove(nuevo),
-      [`permisos.${nuevo}`]: FV.delete(),
-      [`supervisoresInfo.${nuevo}`]: FV.delete(),
     });
     // Sin configuración (no debería pasar: crearUsuario la crea) no se inventa una a medias.
     const agregados = (agregar.length && cfgNuevoSnap.exists) ? agregar.length : 0;
