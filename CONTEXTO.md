@@ -14,11 +14,11 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
 > VERIFICAR de la migración. El 24/09 se retiró la pantalla vieja de EQUIPOS y salió
 > el paso 4, el candado por rol, en dos entregas, y el paso 5, retirar lo viejo
-> (SELLO: 24/09/26, 01:31). El paso 6 va en curso. Ya están el panel de limpieza en
-> Admin (SELLO: 24/09/26, 01:55), `usuarios` cerrada y el candado por rol también en
-> el servidor. Falta que el admin corra el panel; después se retiran las lecturas de
-> respaldo. El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se adelanta
-> a ella en cada despliegue.
+> (SELLO: 24/09/26, 01:31). El paso 6 está casi cerrado (último SELLO: 24/09/26,
+> 03:25). Ya están `usuarios` cerrada, el candado por rol también en el servidor,
+> COMPLETAR hecho y el sistema viejo fuera de la app, las funciones y las reglas. Falta
+> que el admin corra LIMPIAR (borra los campos viejos con respaldo). El trabajo sigue en
+> la rama `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
 
 ---
 
@@ -1776,11 +1776,21 @@ Lo que faltaba mapear quedó resuelto así:
      (Los primeros intentos los frenó el filtro de permisos de Claude Code porque el
      comando iba encadenado a un `cd` y a otros; solo, calza con el permiso de
      `.claude/settings.json` y pasa.)
-   **Falta:**
-   - que el admin corra SIMULAR → COMPLETAR → SIMULAR → LIMPIAR y pegue los resultados;
-   - **el cierre, listo en la rama `paso6-final`** (commit b6827bf, sin desplegar):
-     se sube recién después de COMPLETAR, porque saca todo lo que todavía lee el sistema
-     viejo. App: una sola escucha (`miembrosUids`); rol, nombres y amigos solo de
+   - **El admin corrió SIMULAR, COMPLETAR y SIMULAR** (24/09, de madrugada; los dos
+     primeros resultados no se copiaron, así que no se sabe si COMPLETAR tuvo algo que
+     escribir). La última simulación dio: 50 proyectos · por completar: 0 · con campos
+     viejos: 46 · equipos: 10. Es decir, todos ya están en `miembros`.
+   - **El panel no activaba LIMPIAR** en el teléfono del admin, ni justo después de
+     SIMULAR. El código de las 01:55 daba LIMPIAR activo con ese resultado, así que la
+     causa probable es `window.confirm` bloqueado en ese teléfono o el panel reiniciado al
+     cambiar de app. Se cambió: los tres botones siempre activos (la función ya se cuida
+     sola) y la confirmación DENTRO del panel. Probado con toques de verdad (jsdom +
+     react-dom, en el scratchpad `dom-test/test-panel.mjs`, con `confirm` bloqueado):
+     el nuevo, sin fallas; el de las 01:55, 7 fallas.
+   - **El cierre, en producción** (24/09, 03:25 a 03:28; con "por completar: 0" ya no
+     hacía falta esperar a LIMPIAR): funciones `crearExportacion`, `aceptarInvitacion` y
+     `traspasarProyecto`; hosting (SELLO: 24/09/26, 03:25, con el panel nuevo); reglas.
+     App: una sola escucha (`miembrosUids`); rol, nombres y amigos solo de
      `miembros`; salir, cambiar rol, quitar y archivar ya no escriben campos viejos; el
      nombre propio se pone al día en `miembros` (antes `supervisoresInfo`); la obra propia
      con miembros se ve naranja con "Compartido con N personas" (antes solo las de un
@@ -1792,9 +1802,14 @@ Lo que faltaba mapear quedó resuelto así:
      45 + 57 casos; finales, lo mismo en modo `final`; control: el modo final contra las
      de hoy falla justo en los 9 casos que cambian), lógica pura y funciones con
      mutantes, pantallas dibujadas (miembros y lista de proyectos), lint sin sumar y
-     compilación. Para subirlo: `git merge paso6-final` en `equipos-por-proyecto`,
-     compilar y desplegar reglas, funciones (`crearExportacion`, `aceptarInvitacion`,
-     `traspasarProyecto`) y hosting.
+     compilación. (Se preparó en la rama `paso6-final`, ya unida.)
+   **Falta:**
+   - que el admin corra LIMPIAR con el panel nuevo y pegue el resultado; después, una
+     SIMULACIÓN tiene que dar 0 con campos viejos y 0 equipos;
+   - con eso, retirar el panel y la función `paso6` (y `migrarMiembros`, del paso 2);
+   - las pruebas del usuario en celulares de los pasos 3 a 6;
+   - lo que se dejó para el final: importar armados con ferretería creada a mano (hoy
+     avisa y no importa).
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 

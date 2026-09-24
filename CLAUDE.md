@@ -129,7 +129,8 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   anterior rompió justo con esos puntos.
 - `proyectos/{id}/diseno`: la lee cualquiera que vea el proyecto, la escribe solo
   el dueño. El diseño es el compromiso contra el que después se liquida la obra.
-- Los `armados` de un proyecto solo los cambia el dueño.
+- Los `armados` de un proyecto los cambian el dueño y los editores (rediseño de
+  equipos: el editor hace todo menos borrar el proyecto); el supervisor, no.
 - Las fibras guardan su propio trazo (`vertices`). **Postes y fibras son
   independientes**: borrar un punto no borra fibras (las suelta con
   `soltarFibraDePunto`) y una fibra vuelve de la papelera aunque sus postes ya no
@@ -141,10 +142,12 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   toca: renumerar al reordenar sigue siendo trabajo aparte (`RenumerarItems`).
 
 - **Miembros de un proyecto:** `miembros` (`{ uid: { rol, desde, nombre, … } }`) y
-  `miembrosUids`. Los campos del sistema viejo (`compartidoCon`, `permisos`,
-  `supervisoresInfo`, `enListaDe`, `grupoId`) ya no se escriben: solo se leen de
-  respaldo y se limpian al quitar a alguien, hasta el paso 6 (CONTEXTO.md). No volver a
-  escribirlos.
+  `miembrosUids`, y nada más. Los campos del sistema viejo (`compartidoCon`, `permisos`,
+  `supervisoresInfo`, `enListaDe`, `grupoId`, `solicitudesPendientes`, `codigoAcceso`) y
+  la colección `equipos` se retiraron en el paso 6 (CONTEXTO.md): ni la app, ni las
+  funciones, ni las reglas los leen o escriben. LIMPIAR, en el panel de Admin, los borra
+  con respaldo en `respaldoPaso6` y `respaldoPaso6Equipos`. No volver a usarlos. Cada
+  miembro pone al día su propio nombre y empresa en `miembros` (regla aparte).
 - **Rol por obra (paso 4 del rediseño de equipos).** Dueño y editor cambian cosas;
   el supervisor solo mira y exporta. Todo lo que escribe en una obra pasa por
   `exigirEdicion(proyectoId)` en App.jsx, con el proyecto DE ESO que se toca (el punto,
