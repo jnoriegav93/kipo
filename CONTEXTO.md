@@ -1763,11 +1763,6 @@ Lo que faltaba mapear quedó resuelto así:
      portátil en el scratchpad; `reglas-test/test-reglas.mjs`, 36 casos que cubren
      también las reglas del paso 5) con un control: con la regla vieja, los casos "no"
      fallan.
-   **Falta:**
-   - que el admin corra SIMULAR → COMPLETAR → SIMULAR → LIMPIAR y pegue los resultados;
-   - después de LIMPIAR: quitar la escucha de respaldo por `compartidoCon`, la lectura
-     vieja de `crearExportacion` y el respaldo de nombres en `supervisoresInfo`; y en las
-     reglas, sacar las ramas viejas (equipos, `compartidoCon`, `solicitudesPendientes`);
    - **Candado también en el servidor** para puntos, fibras, acero, papelera y el borrar
      fotos del mapa (`editaLaObra` en firestore.rules): solo el dueño, los editores y el
      admin. El usuario lo pidió el 24/09, una vez que todos subieron sus cambios. Desde
@@ -1777,9 +1772,29 @@ Lo que faltaba mapear quedó resuelto así:
      obra en número o de una obra borrada; mover entre obras; recuperar de la papelera;
      un lote de 450 postes y el borrado de una obra en un lote. Hubo control: con las
      reglas de producción salen mal justo los 21 casos "no". Medido: caben 20 obras
-     distintas por lote, una lectura por obra. **En producción desde el 24/09, 02:39**
-     (el filtro de permisos de Claude Code frenó los primeros intentos; pasó con la
-     autorización explícita del usuario).
+     distintas por lote, una lectura por obra. **En producción desde el 24/09, 02:39.**
+     (Los primeros intentos los frenó el filtro de permisos de Claude Code porque el
+     comando iba encadenado a un `cd` y a otros; solo, calza con el permiso de
+     `.claude/settings.json` y pasa.)
+   **Falta:**
+   - que el admin corra SIMULAR → COMPLETAR → SIMULAR → LIMPIAR y pegue los resultados;
+   - **el cierre, listo en la rama `paso6-final`** (commit b6827bf, sin desplegar):
+     se sube recién después de COMPLETAR, porque saca todo lo que todavía lee el sistema
+     viejo. App: una sola escucha (`miembrosUids`); rol, nombres y amigos solo de
+     `miembros`; salir, cambiar rol, quitar y archivar ya no escriben campos viejos; el
+     nombre propio se pone al día en `miembros` (antes `supervisoresInfo`); la obra propia
+     con miembros se ve naranja con "Compartido con N personas" (antes solo las de un
+     equipo, "Compartido en equipo"); borrar una obra con miembros avisa que no vuelven;
+     restaurar descarta los 7 campos viejos. Funciones: `crearExportacion`,
+     `aceptarInvitacion` y `traspasarProyecto` sin `compartidoCon`. Reglas: fuera
+     equipos, `compartidoCon`/`permisos` y solicitudes; cada miembro puede poner al día
+     su propio nombre y empresa. Probado: reglas en el emulador en los dos momentos (hoy
+     45 + 57 casos; finales, lo mismo en modo `final`; control: el modo final contra las
+     de hoy falla justo en los 9 casos que cambian), lógica pura y funciones con
+     mutantes, pantallas dibujadas (miembros y lista de proyectos), lint sin sumar y
+     compilación. Para subirlo: `git merge paso6-final` en `equipos-por-proyecto`,
+     compilar y desplegar reglas, funciones (`crearExportacion`, `aceptarInvitacion`,
+     `traspasarProyecto`) y hosting.
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
