@@ -145,9 +145,10 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   `miembrosUids`, y nada más. Los campos del sistema viejo (`compartidoCon`, `permisos`,
   `supervisoresInfo`, `enListaDe`, `grupoId`, `solicitudesPendientes`, `codigoAcceso`) y
   la colección `equipos` se retiraron en el paso 6 (CONTEXTO.md): ni la app, ni las
-  funciones, ni las reglas los leen o escriben. LIMPIAR, en el panel de Admin, los borra
-  con respaldo en `respaldoPaso6` y `respaldoPaso6Equipos`. No volver a usarlos. Cada
-  miembro pone al día su propio nombre y empresa en `miembros` (regla aparte).
+  funciones, ni las reglas los leen o escriben, y el 24/09 se borraron de los datos, con
+  respaldo en `respaldoPaso6` y `respaldoPaso6Equipos` (solo los lee el servidor). No
+  volver a usarlos. Cada miembro pone al día su propio nombre y empresa en `miembros`
+  (regla aparte).
 - **Rol por obra (paso 4 del rediseño de equipos).** Dueño y editor cambian cosas;
   el supervisor solo mira y exporta. Todo lo que escribe en una obra pasa por
   `exigirEdicion(proyectoId)` en App.jsx, con el proyecto DE ESO que se toca (el punto,

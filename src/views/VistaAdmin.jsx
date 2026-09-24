@@ -7,7 +7,6 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, auth } from '../firebaseConfig';
 import InspectorHuerfanas from '../components/InspectorHuerfanas';
-import Paso6Panel from '../components/Paso6Panel';
 import { useFerreteriaBase, guardarFerreteriaBase } from '../hooks/useFerreteriaBase';
 import { FERRETERIA_BASE_DEFAULT } from '../data/constantes';
 import { esCableAcero } from '../utils/cablesAcero';
@@ -1090,9 +1089,6 @@ const VistaAdmin = ({ theme, isDark, onVolver, onLoginComo, esAdmin = false, per
 
         {/* Ferretería base global (solo admin) */}
         {esAdmin && <FerreteriaBasePanel isDark={isDark} />}
-
-        {/* Rediseño de equipos, paso 6: completar miembros y limpiar lo viejo (solo admin) */}
-        {esAdmin && <Paso6Panel isDark={isDark} />}
 
         {mostrarFormNuevo && (
           <div className="mb-4">

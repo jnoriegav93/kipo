@@ -14,11 +14,13 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
 > VERIFICAR de la migración. El 24/09 se retiró la pantalla vieja de EQUIPOS y salió
 > el paso 4, el candado por rol, en dos entregas, y el paso 5, retirar lo viejo
-> (SELLO: 24/09/26, 01:31). El paso 6 está casi cerrado (último SELLO: 24/09/26,
-> 03:25). Ya están `usuarios` cerrada, el candado por rol también en el servidor,
-> COMPLETAR hecho y el sistema viejo fuera de la app, las funciones y las reglas. Falta
-> que el admin corra LIMPIAR (borra los campos viejos con respaldo). El trabajo sigue en
-> la rama `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
+> (SELLO: 24/09/26, 01:31). **El paso 6 cerró el rediseño el 24/09** (último SELLO:
+> 24/09/26, 03:37): `usuarios` cerrada, el candado por rol también en el servidor, el
+> sistema viejo fuera de la app, las funciones y las reglas, los datos viejos limpios
+> con respaldo y las herramientas de la migración retiradas. Faltan las pruebas del
+> usuario en celulares y lo que se dejó para el final (importar armados con ferretería
+> creada a mano). El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se
+> adelanta a ella en cada despliegue.
 
 ---
 
@@ -1573,7 +1575,8 @@ Lo que faltaba mapear quedó resuelto así:
 
    **En curso (23/09).** La función está desplegada (`functions/index.js`; las
    reglas, en `functions/miembros.js`, probadas con Node y mutantes) y se corre
-   desde `herramientas/migrar-miembros.html`. SIMULAR no escribe; MIGRAR solo
+   desde `herramientas/migrar-miembros.html`. (Función, lógica y página se retiraron el
+   24/09, al cerrar el paso 6; quedan en git.) SIMULAR no escribe; MIGRAR solo
    agrega (campos punteados y `arrayUnion`): nunca pisa un miembro ni toca los
    campos viejos; VERIFICAR vuelve a simular y tiene que dar 0 cambios. **Migrado
    el 23/09**, revisado antes con el usuario: 50 proyectos, 43 que solo suman a su
@@ -1803,10 +1806,18 @@ Lo que faltaba mapear quedó resuelto así:
      de hoy falla justo en los 9 casos que cambian), lógica pura y funciones con
      mutantes, pantallas dibujadas (miembros y lista de proyectos), lint sin sumar y
      compilación. (Se preparó en la rama `paso6-final`, ya unida.)
-   **Falta:**
-   - que el admin corra LIMPIAR con el panel nuevo y pegue el resultado; después, una
-     SIMULACIÓN tiene que dar 0 con campos viejos y 0 equipos;
-   - con eso, retirar el panel y la función `paso6` (y `migrarMiembros`, del paso 2);
+   - **LIMPIAR, hecho por el admin** con el panel nuevo. La SIMULACIÓN final dio: 50
+     proyectos · por completar: 0 · con campos viejos: 0 · equipos: 0. (La pasada que el
+     admin copió dijo "escritos: 0": el trabajo lo hizo un toque anterior que no copió.
+     Cada proyecto se respalda y se limpia en un mismo lote, así que lo borrado está en
+     `respaldoPaso6`, y los equipos en `respaldoPaso6Equipos`; esas dos colecciones solo
+     las lee el servidor.)
+   - **Herramientas de la migración, retiradas** (SELLO: 24/09/26, 03:37): el panel del
+     paso 6 y `paso6Resumen`, las funciones `paso6` y `migrarMiembros` (borradas de
+     producción con `functions:delete`), `functions/paso6.js`, `functions/miembros.js` y
+     `herramientas/migrar-miembros.*`. Quedan en git. Quedan 15 funciones, las mismas
+     que exporta `index.js`.
+   **El rediseño de equipos quedó terminado el 24/09.** Falta:
    - las pruebas del usuario en celulares de los pasos 3 a 6;
    - lo que se dejó para el final: importar armados con ferretería creada a mano (hoy
      avisa y no importa).
