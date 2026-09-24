@@ -37,6 +37,23 @@ service cloud.firestore {
           request.auth.uid in resource.data.get('compartidoCon', []) &&
           !(request.auth.uid in request.resource.data.get('compartidoCon', []))
         )
+        ) ||
+        // ── Paso 5 del rediseño de equipos (miembros por proyecto). Estas dos ramas solo
+        // SUMAN y van al final: no cambian nada de lo que ya se permitía. ──
+        // El EDITOR del modelo nuevo cambia el proyecto, salvo quién es el dueño y quiénes
+        // son miembros: eso lo hacen el dueño y el servidor.
+        (
+          resource.data.get('miembros', {}).get(request.auth.uid, {}).get('rol', '') == 'editor' &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerId', 'miembros', 'miembrosUids', 'compartidoCon', 'permisos'])
+        ) ||
+        // Cualquier MIEMBRO puede salirse: se quita de miembros y de miembrosUids (y de los
+        // campos viejos, si estaba), sin tocar a nadie más ni nada más.
+        (
+          request.auth.uid in resource.data.get('miembrosUids', []) &&
+          !(request.auth.uid in request.resource.data.get('miembrosUids', [])) &&
+          !(request.auth.uid in request.resource.data.get('miembros', {})) &&
+          request.resource.data.get('miembros', {}).diff(resource.data.get('miembros', {})).affectedKeys().hasOnly([request.auth.uid]) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['miembros', 'miembrosUids', 'compartidoCon', 'permisos', 'supervisoresInfo', 'enListaDe'])
         )
       );
       // Borrar: solo el dueño
@@ -243,17 +260,23 @@ service cloud.firestore {
         get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.ownerId == uid;
     }
 
+    // Colaborador: del modelo viejo (compartidoCon) o miembro del nuevo (miembrosUids, paso 5)
     function esColaboradorDelProyecto(proyectoId, uid) {
-      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) &&
-        uid in get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.get('compartidoCon', []);
+      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) && (
+        uid in get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.get('compartidoCon', []) ||
+        uid in get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.get('miembrosUids', [])
+      );
     }
 
+    // Editor: del modelo viejo (compartidoCon + permisos) o del nuevo (miembros, paso 5).
+    // `.get(uid, '')`: con `[uid]`, quien no estaba en permisos daba error en vez de falso.
     function esEditorDelProyecto(proyectoId, uid) {
       let proyecto = get(/databases/$(database)/documents/proyectos/$(proyectoId)).data;
-      let permiso = proyecto.get('permisos', {})[uid];
-      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) &&
-        uid in proyecto.get('compartidoCon', []) &&
-        (permiso == 'edicion' || permiso == 'ambos');
+      let permiso = proyecto.get('permisos', {}).get(uid, '');
+      return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) && (
+        (uid in proyecto.get('compartidoCon', []) && (permiso == 'edicion' || permiso == 'ambos')) ||
+        proyecto.get('miembros', {}).get(uid, {}).get('rol', '') == 'editor'
+      );
     }
   }
 }
