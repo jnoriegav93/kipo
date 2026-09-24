@@ -401,27 +401,11 @@ function App() {
     [proyectos]
   );
 
-  // BLOQUE 6 (corte del sistema viejo): una sola vez, desvincula colaboradores y
-  // solicitudes de MIS proyectos que no pertenecen a ningún equipo. Compartir ahora
-  // pasa SIEMPRE por Equipos.
-  React.useEffect(() => {
-    if (!user?.uid || proyectos.length === 0) return;
-    if (localStorage.getItem('limpiezaColabViejos_v1')) return;
-    const viejos = proyectos.filter(p => !p.grupoId &&
-      ((p.compartidoCon || []).length > 0 || (p.solicitudesPendientes || []).length > 0));
-    if (viejos.length === 0) { localStorage.setItem('limpiezaColabViejos_v1', '1'); return; }
-    (async () => {
-      try {
-        for (const p of viejos) {
-          await fbUpdateDoc(doc(db, 'proyectos', String(p.id)), {
-            compartidoCon: [], permisos: {}, supervisoresInfo: {}, solicitudesPendientes: [],
-          });
-        }
-        localStorage.setItem('limpiezaColabViejos_v1', '1');
-        console.log('Sistema viejo: ' + viejos.length + ' proyecto(s) desvinculados de colaboradores.');
-      } catch (e) { console.error('Limpieza colaboradores viejos:', e); }
-    })();
-  }, [user?.uid, proyectos]);
+  // (Aquí estaba el "BLOQUE 6": una limpieza que corría una vez por dispositivo y vaciaba
+  // `compartidoCon`, `permisos` y `supervisoresInfo` de los proyectos propios sin equipo.
+  // Se quitó el 24/09: desde el paso 3a esos campos son el reflejo de los miembros
+  // invitados, y el dueño que entraba desde un teléfono nuevo los dejaba sin el proyecto.
+  // No volver a ponerla: los campos viejos se retiran en el paso 5, con los miembros.)
 
 
   // Lo que se ve de la obra: todo lo de los proyectos del usuario, lo haya creado quien
