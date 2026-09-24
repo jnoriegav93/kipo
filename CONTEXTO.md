@@ -1745,17 +1745,31 @@ Lo que faltaba mapear quedó resuelto así:
      del reflejo viejo solo suelta al nuevo dueño. Probadas las dos con la función real
      sobre la Firestore falsa (`aceptarInvitacion`: 4 mutantes; traspaso: 11).
    **No se borró ningún dato:** los campos viejos siguen guardados, sin escribirse.
-6. **Último:** con la verificación del usuario hecha (VERIFICAR de la migración y las
-   pruebas de los pasos 3 a 5):
-   - limpiar los datos viejos de cada proyecto (`compartidoCon`, `permisos`,
-     `supervisoresInfo`, `enListaDe`, `grupoId`, `solicitudesPendientes`,
-     `codigoAcceso`) y la colección `equipos`, después de pasar a `miembros` los
-     nombres que solo estén en `supervisoresInfo`;
-   - quitar la escucha de respaldo por `compartidoCon` y la lectura vieja de
-     `crearExportacion`;
-   - reglas que hagan cumplir el rol: sacar las ramas viejas (equipos, `compartidoCon`,
-     `solicitudesPendientes`), dar escritura de puntos, fibras, acero y papelera solo a
-     dueño y editores, y cerrar `usuarios`.
+6. **Último: limpiar lo viejo y reglas por rol.** El usuario pidió seguir sin esperar su
+   verificación ("prosigue con el siguiente paso", 24/09); lo que borra datos lo corre él,
+   con respaldo.
+   **Hecho el 24/09:**
+   - Función `paso6` (solo admin; lógica en functions/paso6.js) y su panel en Admin
+     (SELLO: 24/09/26, 01:55): SIMULAR no escribe; COMPLETAR solo agrega (quien esté
+     solo en `compartidoCon` pasa a `miembros` con su rol de hoy, los nombres pasan a
+     `miembros`, el dueño y `miembrosUids` quedan completos); LIMPIAR guarda
+     `respaldoPaso6` y `respaldoPaso6Equipos` y después borra los campos viejos y los
+     equipos, solo en los proyectos sin nada por completar. Probada con la función real
+     sobre la Firestore falsa.
+   - **`usuarios` cerrada** (reglas del 24/09, 02:03): cada uno lee solo su documento y
+     cambia solo su logo; el admin (por uid o correo), todo. Probada en el EMULADOR (Java
+     portátil en el scratchpad; `reglas-test/test-reglas.mjs`, 36 casos que cubren
+     también las reglas del paso 5) con un control: con la regla vieja, los casos "no"
+     fallan.
+   **Falta:**
+   - que el admin corra SIMULAR → COMPLETAR → SIMULAR → LIMPIAR y pegue los resultados;
+   - después de LIMPIAR: quitar la escucha de respaldo por `compartidoCon`, la lectura
+     vieja de `crearExportacion` y el respaldo de nombres en `supervisoresInfo`; y en las
+     reglas, sacar las ramas viejas (equipos, `compartidoCon`, `solicitudesPendientes`);
+   - **a confirmar con el usuario:** la escritura de puntos, fibras, acero y papelera
+     sigue abierta en el servidor a propósito. Pidió que los cambios sin subir de quien
+     pasa de editor a supervisor se suban igual, y una regla por rol los rechazaría; el
+     candado de esas escrituras vive en la app (paso 4).
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
@@ -1763,18 +1777,18 @@ Cada paso se despliega por separado y **fuera de la jornada de trabajo**.
 
 ## Pendientes fuera del diseño
 
-- **Contraseñas en texto plano: arreglado el 23/09; falta cerrar la colección.**
+- **Contraseñas en texto plano: arreglado el 23/09; la colección `usuarios` se cerró
+  el 24/09** (paso 6: cada uno lee solo su documento y cambia solo su logo).
   `crearUsuario` guardaba la contraseña de cada usuario creado desde el panel en
-  `usuarios/{email}.password`, y las reglas dejan leer y escribir esa colección a
+  `usuarios/{email}.password`, y las reglas dejaban leer y escribir esa colección a
   cualquier autenticado. Ahora la contraseña vive solo en Firebase Auth:
   `crearUsuario` ya no la guarda, "volver al admin" ya no la lee de la base (el
   menú siempre la pedía; SELLO 23/09/26, 03:09), y
   `herramientas/borrar-contrasenas.html` quitó las 18 que había (verificado: 0).
   No se pidió a nadie cambiar la contraseña: son todos de confianza, decisión del
-  usuario. **Queda:** `usuarios` sigue abierta para leer y escribir, así que
-  cualquiera puede editar los dispositivos autorizados de cualquiera. Se cierra
-  con las reglas, en el paso 6 del rediseño. Aparte, el panel de admin recuerda
-  en el navegador del admin las contraseñas de los usuarios en cuyas cuentas
+  usuario. Hasta el 24/09 `usuarios` siguió abierta para leer y escribir (cualquiera
+  podía editar los dispositivos autorizados de cualquiera); ya no. Aparte, el panel
+  de admin recuerda en el navegador del admin las contraseñas de los usuarios en cuyas cuentas
   entró (`PW_KEY`, `VistaAdmin.jsx`): es local, no está en la base.
 - **Adelgazar el bundle.** El arranque pesa 703 KB comprimidos, casi todo en un
   solo trozo: cualquier cambio obliga a rebajar 2,4 MB en cada actualización, y

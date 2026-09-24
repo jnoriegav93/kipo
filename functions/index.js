@@ -3365,7 +3365,7 @@ exports.crearUsuario = onCall({ region: 'us-central1' }, async (request) => {
   });
 
   // La contraseña NO se guarda aquí: vive solo en Firebase Auth. Antes se copiaba en
-  // texto plano, y las reglas dejan leer `usuarios` a cualquier cuenta.
+  // texto plano, y hasta el 24/09 las reglas dejaban leer `usuarios` a cualquier cuenta.
   await db.collection('usuarios').doc(email).set({
     dispositivosAutorizados: [],
     tipoAcceso: 'total',

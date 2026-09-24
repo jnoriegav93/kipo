@@ -126,9 +126,18 @@ service cloud.firestore {
     }
 
     // ── USUARIOS ──────────────────────────────────────────────────────────
+    // Cerrada en el paso 6 del rediseño (antes cualquiera leía y escribía todo, incluidos
+    // los dispositivos autorizados de los demás). El id es el correo. Cada uno lee SOLO su
+    // documento (la app lo lee al entrar: dispositivos, perfil, permisos) y cambia solo su
+    // logo; dispositivos, perfil y permisos los maneja el admin, y crearUsuario escribe
+    // con el SDK de admin. El correo se compara en minúsculas.
     match /usuarios/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow read: if request.auth != null && (esAdmin() || esMiUsuario(userId));
+      allow create: if request.auth != null && (esAdmin() ||
+        (esMiUsuario(userId) && request.resource.data.keys().hasOnly(['logoEmpresa', 'logoEmpresaBase64'])));
+      allow update: if request.auth != null && (esAdmin() ||
+        (esMiUsuario(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoEmpresa', 'logoEmpresaBase64'])));
+      allow delete: if request.auth != null && esAdmin();
     }
 
     // ── EXPORTACIONES ─────────────────────────────────────────────────────
@@ -255,6 +264,18 @@ service cloud.firestore {
     }
 
     // ── FUNCIONES AUXILIARES ──────────────────────────────────────────────
+    // El admin, por uid o por correo (los mismos que usan `sistema` y `errores`)
+    function esAdmin() {
+      return request.auth.uid == 'E8CaZVgP4eZnjnN3OKTVi7bmoJN2' ||
+        request.auth.token.get('email', '') == 'eduardo.valdivia84@gmail.com';
+    }
+
+    // El documento de `usuarios` de quien pide (el id es su correo)
+    function esMiUsuario(userId) {
+      return request.auth.token.get('email', '') != '' &&
+        request.auth.token.get('email', '').lower() == userId.lower();
+    }
+
     function esDuenoDelProyecto(proyectoId, uid) {
       return exists(/databases/$(database)/documents/proyectos/$(proyectoId)) &&
         get(/databases/$(database)/documents/proyectos/$(proyectoId)).data.ownerId == uid;
