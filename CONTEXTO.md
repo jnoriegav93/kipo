@@ -13,9 +13,10 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > salió en tres entregas: invitar, amigos y avisos, y traspasar (último SELLO:
 > 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
 > VERIFICAR de la migración. El 24/09 se retiró la pantalla vieja de EQUIPOS y salió
-> la primera entrega del paso 4, el candado por rol (SELLO: 24/09/26, 01:01). Lo
-> próximo: la segunda entrega (4b). El trabajo sigue en la rama
-> `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
+> el paso 4, el candado por rol, en dos entregas (último SELLO: 24/09/26, 01:14). Lo
+> próximo: el paso 5 (retirar lo viejo), cuando el usuario confirme que todos
+> actualizaron. El trabajo sigue en la rama `equipos-por-proyecto`, y `main` se
+> adelanta a ella en cada despliegue.
 
 ---
 
@@ -1699,11 +1700,28 @@ Lo que faltaba mapear quedó resuelto así:
    celular), las barras, el detalle y la lista de proyectos. El modo supervisión
    (`mapaSupervision`) queda sin entradas: se retira en el paso 5.
 
-   **4b pendiente:** LISTA DE PUNTOS de solo lectura para el supervisor; revisión y
-   control de ferretería de solo lectura (ojo: `guardarPuntoFerr` y `guardarRev`, en
-   VistaProyectos, no miran el permiso por dentro); lo del editor (renombrar, archivar,
-   armados, con la regla de `proyectos` sumando a los editores para `armados`), y el
-   aviso al importar armados con materiales que el dueño no tiene.
+   **4b hecho el 24/09** (**SELLO: 24/09/26, 01:14**). En la pantalla de proyectos:
+   - El supervisor tiene LISTA DE PUNTOS de solo lectura: buscar, verificar fotos (ver
+     el último análisis), ver detalle y ver en el mapa; sin reparar fotos, editar
+     posición, mover puntos, quitar espacios ni detectar miniaturas.
+   - Revisión y control de ferretería por rol (`puedeEditarProyecto`), con el freno
+     también dentro de `guardarRev`, `guardarPuntoFerr` y `vincular` (lista de control).
+   - El editor ya renombra, archiva, mueve puntos, quita espacios y maneja los armados
+     del proyecto (nuevo, editar, importar, fijar). No hizo falta tocar reglas: la de
+     `proyectos` ya dejaba a los editores cambiar `armados`; el "solo el dueño" solo
+     frenaba a los miembros de equipos viejos (precedencia de `&&` sobre `||`).
+   - **Las ventanas de una obra usan el catálogo de su DUEÑO** (`useConfigDeObra`, en
+     VistaProyectos): control de ferretería, revisión, los Excel del teléfono y el KMZ.
+     Antes usaban el de quien mira, y a un editor o supervisor los materiales creados
+     por el dueño le salían sin nombre. Los armados se editan con ese catálogo; mientras
+     no llegó, la pestaña de armados no deja tocar nada.
+   - Importar o fijar un armado con materiales que el catálogo del dueño no tiene: se
+     avisa y ese armado no se importa (el caso de fondo sigue anotado para el final).
+   - Exportar: el logo del proyecto lo cambian o quitan el dueño y los editores; el
+     supervisor exporta con el que hay.
+   Pruebas: render en Node de la LISTA, la revisión, el control y el exportar, como
+   dueño y como supervisor (la pestaña de aprobar no se puede abrir en Node: queda
+   cubierta por la lógica probada con mutantes).
 5. **Retirar lo viejo**, cuando el usuario confirme que todos actualizaron (no hay
    seguimiento de versiones: se decidió no hacerlo): `VistaEquipos`, `compartidoCon`, `permisos`, `enListaDe`,
    `grupoId`, `supervisoresInfo`, la colección `equipos` y el código muerto
