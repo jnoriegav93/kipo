@@ -158,6 +158,40 @@ manzana confirmada no la regenera, para no perder las fusiones.
 polígonos, en vez de Turf entero (~500 KB). El resto escrito a mano en
 `disenoGeo.js`. **Todavía no está instalado.**
 
+### Manzanas, casas y familias (acordado con el usuario, 24/09)
+
+Revisado contra el código de App_Design (`modules/m1-catastro/js/blocks.js`):
+- **Manzanas generadas desde las calles: siempre IRREGULARES** ("para evitar cualquier
+  error"). Se generan de los espacios cerrados entre calles, como candidatas que se
+  aceptan o descartan; un extremo de calle a menos de 10 m de otra se da por cerrado
+  solo para el cálculo, sin mover la calle.
+- **Cuadra rectangular dibujada a mano → REGULAR**, con los tres formatos del
+  prototipo: **Dos filas** (espalda con espalda), **Tres zonas** (laterales y centro
+  en dos filas) y **Una fila**, más **Girar** (cuatro orientaciones). Cuadra irregular a
+  mano → irregular.
+- **Irregular:** se parte con **divisores** (línea de dos puntos que se prolonga sola
+  hasta el borde o hasta otro divisor). Cada sección: cantidad de casas con − / +,
+  **Perpendicular o Paralelo**, y el "giro": **Lado i/n** con ↺ ↻ (de qué lado de la
+  sección toman el sentido las casas). "Limpiar divisores" vuelve a una sección.
+  **Nuevo, pedido por el usuario: botón GUÍA.** Se traza una línea y reemplaza al lado
+  elegido: las casas de esa sección se dibujan paralelas a la guía; la cantidad sigue
+  con − / +.
+- **Casas:** **fusionar** (solo si quedan pegadas; hereda la mayor cantidad de
+  familias, como en el prototipo) y **cortar** una casa (no existía: es nuevo). **Sin
+  mover linderos** ("haría más complejo el dibujo y lo que se busca es que sea ágil").
+  Lo que no es vivienda (baldío, comercio, iglesia) va con **0 familias**, sin otra
+  marca por ahora.
+- **Familias por casa** con − / +; una casa nueva nace con 1, como en el prototipo.
+- **Reconfigurar una manzana** que ya tiene casas **la resetea**: se borran sus casas,
+  fusiones y familias, avisando antes.
+- **Sin numeración de casas.**
+- Se guardan las casas tal como quedaron, un documento por manzana (la recomendación
+  del 12/09; el reset avisado es la forma de rehacerlas).
+
+**Apuntado para más adelante (el usuario, 24/09):** poner N familias a toda la manzana
+de un toque (y a una selección de casas, que el prototipo tenía); el total de casas
+por manzana.
+
 ---
 
 ## Qué está construido
@@ -191,17 +225,27 @@ en la app real**.
 
 ## Qué sigue, en orden
 
-1. **Probar en localhost con el admin**: crear un proyecto desde Diseño, buscar la
-   ubicación, dibujar y editar calles, recargar y ver que siguen ahí. Si la barra
-   dice "sin permiso de escritura", faltan desplegar las reglas de `diseno`.
-2. **Cerrar esquinas**: prolongar cada extremo hasta 10 m y pegarlo al borde de
-   otra calle si choca.
-3. **Generar manzanas desde calles**, con candidatas revisables (naranja = entra,
-   gris = no). Necesita `polygon-clipping`.
-4. **Subdividir en lotes** con la regla nueva de frontis.
-5. Divisores, familias por lote, selección múltiple y fusión.
-6. Bloque de cuadras (baja prioridad: con las calles funcionando pierde sentido).
-7. Exportar GeoJSON.
+(Plan rehecho el 24/09 con lo acordado en "Manzanas, casas y familias". Las reglas
+de `diseno` ya están en producción y la lista de Diseño muestra solo los proyectos
+propios, así que el guardado del dueño funciona.)
+1. **Que el usuario pruebe las calles en la app real**, en un proyecto chico: nunca las
+   usó fuera de la página de prueba del 12/09.
+2. **Generar manzanas desde calles** (siempre irregulares), con candidatas revisables
+   (naranja = entra, gris = no). Incluye cerrar esquinas solo para el cálculo.
+   Necesita `polygon-clipping`, en el trozo diferido de Diseño.
+3. **Formato regular** para la cuadra rectangular: Dos filas, Tres zonas, Una fila,
+   Girar.
+4. **Formato irregular:** divisores, casas por sección, Perpendicular / Paralelo, Lado
+   ↺ ↻ y la GUÍA nueva.
+5. **Casas y familias:** frontis con la regla de esquina, familias − / +, fusionar,
+   cortar, y el reset avisado al reconfigurar.
+6. Exportar GeoJSON.
+7. Bloque de cuadras (baja prioridad: con las calles funcionando pierde sentido).
+
+Arreglos chicos a meter en el camino: confirmar (o deshacer) al borrar, y que los
+números de calle y de manzana no se reutilicen (`siguienteId` hoy vuelve a dar
+`calle_003` tras borrarla; va a importar cuando las casas y las NAPs apunten a
+manzanas).
 
 Después del catastro vienen las fases 2 a 5 del plan: tramos (grafo de vanos),
 NAPs, rutas y aprobación, y reconciliación con la liquidación.
