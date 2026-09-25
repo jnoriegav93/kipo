@@ -216,6 +216,12 @@ conviene no romper:
 - **Solo lo ve el admin.** La entrada del menú está detrás de `esAdmin`, que hace
   de bandera mientras se construye: el código puede subirse a producción sin que
   exista para nadie más.
+- **Tres pantallas** (24/09): PC, celular vertical y celular horizontal, según el
+  tamaño (`modoPantalla`). Herramienta nueva = una entrada en `GRUPOS` /
+  `contenidoGrupo`, que alimentan a la vez el panel de la PC y la barra del celular;
+  y lo que pida un dato va en `contexto`, que se muestra como panel o como hoja. Los
+  pasos van en el menú ☰: no volver a poner una barra fija de pasos. Probarlo en los
+  tres modos (`pruebas/test-diseno-movil-ui.mjs`).
 
 La geometría propia está en `src/utils/disenoGeo.js`, sin dependencias de
 Leaflet, para poder probarla con Node.

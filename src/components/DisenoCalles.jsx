@@ -22,21 +22,28 @@ import { paralela, ajustarAngulo, metrosEntre, proyectarEnPolilinea, anchoLocal 
    Según el modo que elija el panel, los bordes aceptan además un clic para
    agregar vértice o para cortar. */
 
-const SNAP_PX = 14;
-const SNAP_EDICION_VERTICE_PX = 16;
-const SNAP_EDICION_BORDE_PX = 12;
+/* Con el dedo no se apunta tan fino como con el ratón: en pantallas táctiles los imanes
+   alcanzan más lejos y los tiradores son más grandes (24/09). */
+const TACTIL = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches;
+const ESCALA_TOQUE = TACTIL ? 1.7 : 1;
+const SNAP_PX = Math.round(14 * ESCALA_TOQUE);
+const SNAP_EDICION_VERTICE_PX = Math.round(16 * ESCALA_TOQUE);
+const SNAP_EDICION_BORDE_PX = Math.round(12 * ESCALA_TOQUE);
+const FRANJA_BORDE_PX = TACTIL ? 30 : 18;
 const COLOR_EDICION = '#FACC15';
 
 const bordesDe = (c) => [c.A || [], c.B || []];
 
 /* Tirador de vértice. Es una constante a propósito: si el icono cambiara en cada
    render, react-leaflet lo reemplazaría en pleno arrastre y lo cortaría. */
+const TIRADOR_PX = TACTIL ? 36 : 22;   // área que se puede tocar
+const PUNTO_PX = TACTIL ? 17 : 13;     // lo que se ve
 const ICONO_VERTICE = L.divIcon({
   className: 'diseno-vertice',
-  html: `<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:move">
-    <div style="width:13px;height:13px;border-radius:50%;background:${COLOR_EDICION};border:2.5px solid #0F1217;box-shadow:0 0 6px rgba(0,0,0,.6)"></div></div>`,
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
+  html: `<div style="width:${TIRADOR_PX}px;height:${TIRADOR_PX}px;display:flex;align-items:center;justify-content:center;cursor:move">
+    <div style="width:${PUNTO_PX}px;height:${PUNTO_PX}px;border-radius:50%;background:${COLOR_EDICION};border:2.5px solid #0F1217;box-shadow:0 0 6px rgba(0,0,0,.6)"></div></div>`,
+  iconSize: [TIRADOR_PX, TIRADOR_PX],
+  iconAnchor: [TIRADOR_PX / 2, TIRADOR_PX / 2],
 });
 
 const iconoMedida = (texto, color) => L.divIcon({
@@ -116,8 +123,10 @@ export default function DisenoCalles({
   const map = useMapEvents({
     click(e) {
       if (!dibujando) return;
-      const { punto } = resolver(map, e.latlng);
+      const { punto, imantado } = resolver(map, e.latlng);
       setTrazo([...trazo, punto]);
+      // Con el dedo no hay "pasar por encima": el largo se ve al tocar, el del tramo puesto
+      if (trazo.length > 0) onMedida?.({ largo: metrosEntre(trazo[trazo.length - 1], punto), imantado });
     },
     dblclick(e) {
       if (!dibujando || trazo.length < 2) return;
@@ -223,7 +232,7 @@ export default function DisenoCalles({
                   // Franja invisible y ancha sobre el borde: acertarle a una línea de 3 px cansa
                   <Polyline
                     positions={vivo(borde)}
-                    pathOptions={{ color: COLOR_EDICION, weight: 18, opacity: 0 }}
+                    pathOptions={{ color: COLOR_EDICION, weight: FRANJA_BORDE_PX, opacity: 0 }}
                     eventHandlers={{ click: (e) => { L.DomEvent.stop(e); onClicBorde(borde, [e.latlng.lat, e.latlng.lng]); } }}
                   />
                 )}

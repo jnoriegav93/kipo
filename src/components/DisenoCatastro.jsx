@@ -18,8 +18,10 @@ import { rectangulo3Puntos } from '../utils/disenoGeo';
    Los vértices se imantan a las manzanas ya dibujadas para que las cuadras
    vecinas compartan lado y no queden rendijas entre ellas. */
 
-const SNAP_VERTICE_PX = 14;
-const SNAP_ARISTA_PX  = 20;
+// Con el dedo el imán alcanza más lejos (24/09), igual que en las calles
+const ESCALA_TOQUE = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches ? 1.7 : 1;
+const SNAP_VERTICE_PX = Math.round(14 * ESCALA_TOQUE);
+const SNAP_ARISTA_PX  = Math.round(20 * ESCALA_TOQUE);
 
 const ES_POLIGONO = { manzanaRect: true, manzanaLibre: true, areaPoly: true };
 
@@ -144,9 +146,9 @@ export default function DisenoCatastro({
           positions={m.latlngs}
           pathOptions={{
             color: sel('manzana', m.id) ? '#FF6600' : '#E7EAEF',
-            weight: sel('manzana', m.id) ? 3 : 1.6,
+            weight: sel('manzana', m.id) ? 3 : 2,
             fillColor: sel('manzana', m.id) ? '#FF6600' : '#E7EAEF',
-            fillOpacity: sel('manzana', m.id) ? 0.22 : 0.08,
+            fillOpacity: sel('manzana', m.id) ? 0.22 : 0.14,
           }}
           eventHandlers={clic('manzana', m.id)}
         />

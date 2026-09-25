@@ -21,7 +21,9 @@ const buscarLugares = async (texto, mapa, signal) => {
   return r.json();
 };
 
-export default function DisenoBuscador({ mapa }) {
+// `clase`: el ancho (en el celular va a lo ancho, sobre el mapa). `alElegir`: al ir a un
+// lugar, para que quien lo abrió lo cierre.
+export default function DisenoBuscador({ mapa, clase = 'w-72 max-w-[40vw]', autoFocus = false, alElegir }) {
   const [texto, setTexto] = useState('');
   const [estado, setEstado] = useState('inactivo');   // inactivo | buscando | resultados | vacio | error
   const [resultados, setResultados] = useState([]);
@@ -57,17 +59,19 @@ export default function DisenoBuscador({ mapa }) {
     }
     setTexto(lugar.display_name.split(',')[0]);
     setEstado('inactivo');
+    alElegir?.();
   };
 
   const abierto = estado === 'resultados' || estado === 'vacio' || estado === 'error';
 
   return (
-    <div className="relative w-72 max-w-[40vw] shrink-0">
+    <div className={`relative shrink-0 ${clase}`}>
       <form
         onSubmit={(e) => { e.preventDefault(); buscar(); }}
         className="h-10 flex items-center rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] focus-within:border-brand-500 transition-colors"
       >
         <input
+          autoFocus={autoFocus}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Escape') cerrar(); }}

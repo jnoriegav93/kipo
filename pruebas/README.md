@@ -48,6 +48,7 @@ node pruebas/render-4a.mjs
 node pruebas/render-4b.mjs
 node pruebas/test-armados-ui.mjs        # CON TOQUES (jsdom): FIJAR, IMPORTAR, CONSERVAR
 node pruebas/test-diseno-manzanas-ui.mjs  # CON TOQUES: Diseño, generar manzanas, borrar, números
+node pruebas/test-diseno-movil-ui.mjs     # CON TOQUES: Diseño en celular vertical, horizontal y PC
 ```
 
 El modo Diseño se toca con `stub-react-leaflet.jsx`: Leaflet no dibuja en jsdom, así que

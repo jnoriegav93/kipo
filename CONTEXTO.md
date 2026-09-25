@@ -219,6 +219,36 @@ por manzana.
 | Cada manzana guarda cómo nació (`forma`: `rect`, `libre` o `calles`) y el panel lo muestra | hecho (24/09) |
 | **Borrar pide un segundo toque** ("¿Borrar…? No se puede deshacer") | hecho (24/09) |
 | **Los números no se repiten**: el último de cada tipo va en `ultimos` del catastro | hecho (24/09) |
+| **Diseño en el celular** (24/09, pedido del usuario "a tu ingenio"): ver "Diseño en el celular", abajo | hecho — SELLO: 24/09/26, 20:50 |
+
+### Diseño en el celular (24/09)
+
+La pantalla se elige por tamaño (`modoPantalla` en `VistaDiseno.jsx`): **PC** si mide al
+menos 900 × 560 (una tablet echada cuenta como PC); si no, **vertical** u **horizontal**.
+- **Sin barra de pasos** en ningún modo: los pasos y "Cambiar de proyecto" van en el
+  **menú ☰** (el usuario: "esa barra está de más").
+- **PC:** igual que antes (panel de herramientas a la izquierda, lo seleccionado a la
+  derecha, barra de estado abajo) más el menú ☰.
+- **Vertical:** cabecera chica (volver, nombre del proyecto con el guardado en un punto de
+  color, lupa, ☰); el mapa entero; **barra de abajo** con Calles, Manzanas, Áreas, Puntos
+  y Capas. Cada una abre su **hoja** sobre la barra; elegir una herramienta la cierra. Lo
+  seleccionado o lo que falta completar sale en otra hoja abajo, con X para cerrar.
+- **Horizontal:** sin cabecera. Una **barra delgada a la izquierda**, solo con íconos
+  (volver, guardado, los cinco grupos, lupa, ☰); los grupos se abren a su lado y lo
+  seleccionado a la derecha, del alto de su contenido.
+- En todos: botones sobre el mapa para agrandar / achicar postes, **centrar en el
+  proyecto** y **mi ubicación**; el mapa se reacomoda solo al girar el teléfono
+  (`AjustarTamano`, con `invalidateSize`).
+- Con el dedo: imanes 1,7 veces más largos, tiradores de vértice más grandes, franja más
+  ancha para tocar un borde, el largo del tramo se ve al tocar (no hay "pasar por
+  encima"), y las ayudas dicen "Toca… · Cerrar para terminar" en vez de "doble clic".
+- Sobre el satélite, los botones apagados van sólidos y en gris (transparentes no se
+  veían), y las manzanas tienen algo más de relleno.
+
+Probado con toques en los tres modos (`pruebas/test-diseno-movil-ui.mjs`, 23 pasos; la
+versión anterior falla) y mirado en capturas de la página de prueba local
+(`harness-diseno/movil.html`, fuera de git: siembra una cuadrícula de calles y
+manzanas) a 390 × 844, 844 × 390 y 1366 × 768.
 
 Archivos: `src/views/VistaDiseno.jsx`, `src/components/DisenoCatastro.jsx`,
 `src/components/DisenoCalles.jsx`, `src/components/DisenoBuscador.jsx`,
