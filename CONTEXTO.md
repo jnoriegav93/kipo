@@ -4,9 +4,25 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 24 de septiembre de 2026, 04:20 (hora de Lima).
+Última actualización: 25 de septiembre de 2026, 09:40 (hora de Lima).
 
-> **Ahora:** el **rediseño de equipos está terminado y en producción** (último SELLO:
+> **Ahora:** el **modo Diseño** (catastro), que solo ve el admin. Último SELLO:
+> 24/09/26, 21:53. Lo último, del 24/09:
+> - manzanas desde calles;
+> - Diseño en el celular (vertical, horizontal y PC);
+> - crear un proyecto en Diseño sin esperar al servidor. Ese arreglo quitó también una
+>   descarga de más en toda la app: ver "Crear un proyecto en Diseño sin esperar".
+>
+> Sigue el **formato regular** de la cuadra rectangular (ver "Qué sigue, en orden").
+>
+> **Falta que el usuario pruebe en celulares:**
+> - los pasos 3 a 6 de equipos y los armados;
+> - las calles, las manzanas desde calles y Diseño en vertical y horizontal;
+> - crear un proyecto desde Diseño.
+>
+> Ante cualquier "no funciona", lo primero es confirmar el SELLO en Diagnóstico.
+>
+> El **rediseño de equipos está terminado y en producción** (SELLO del cierre:
 > 24/09/26, 04:04). Empezó el 22/09 con el trabajo de equipos; el 23/09 se decidió
 > rehacerlo desde cero, y salió en pasos del 0 al 6 entre el 23 y el 24/09:
 > - cada proyecto con sus miembros: dueño, editores y supervisores; el rol vale por obra;
@@ -21,12 +37,6 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > Al final salió también lo que se había dejado para el final: llevar armados con
 > ferretería creada a mano. Ver "Rediseño de equipos" y "Armados con ferretería creada
 > a mano", más abajo.
->
-> **Falta:** que el usuario pruebe en celulares los pasos 3 a 6 y los armados. Ante
-> cualquier "no funciona", lo primero es confirmar el SELLO en Diagnóstico.
->
-> **Después:** el modo Diseño, en pausa desde el 22/09 (ver "En qué estamos: el modo
-> DISEÑO").
 >
 > Las pruebas automáticas de estas tandas están en `pruebas/`: reglas en el emulador,
 > funciones sobre una Firestore falsa, lógica y pantallas (ver su README).
@@ -220,6 +230,7 @@ por manzana.
 | **Borrar pide un segundo toque** ("¿Borrar…? No se puede deshacer") | hecho (24/09) |
 | **Los números no se repiten**: el último de cada tipo va en `ultimos` del catastro | hecho (24/09) |
 | **Diseño en el celular** (24/09, pedido del usuario "a tu ingenio"): ver "Diseño en el celular", abajo | hecho — SELLO: 24/09/26, 20:50 |
+| **Crear un proyecto en Diseño sin esperar** (24/09, el usuario: "se queda en cargando y demora"): ver abajo | hecho — SELLO: 24/09/26, 21:53 |
 
 ### Diseño en el celular (24/09)
 
@@ -258,6 +269,54 @@ Archivos: `src/views/VistaDiseno.jsx`, `src/components/DisenoCatastro.jsx`,
 Lo del 12/09 (guardado, edición de calles, proyecto nuevo y buscador) está probado
 en Chrome con la página de prueba de abajo, pero **todavía no con el usuario admin
 en la app real**.
+
+### Crear un proyecto en Diseño sin esperar (24/09)
+
+El usuario: "al crear un proyecto de diseño se queda en cargando y demora en iniciar".
+Había tres esperas, una detrás de otra:
+1. `crearProyectoDiseno` esperaba que el servidor confirmara el proyecto: el botón Crear
+   giraba, y sin señal giraba para siempre.
+2. Después, la vista esperaba al servidor para leer el catastro ("Cargando…"). Era un
+   documento que el equipo no tenía, y la espera solo servía para enterarse de que
+   estaba vacío.
+3. Y esa respuesta quedaba en cola detrás de una descarga grande. Cualquier cambio en la
+   lista de proyectos cerraba y reabría TODAS las escuchas de puntos, fibras y cables.
+   Para Firestore, un grupo con otra lista de proyectos es una consulta nueva, así que
+   volvía a bajar todo lo de hasta 30 obras. Pasaba en toda la app, no solo en Diseño:
+   al crear un proyecto, al sumarse a uno o al salir de uno.
+
+Arreglo:
+- **El proyecto sale sin esperar.** `crearProyectoDiseno(nombre, alFallar)` devuelve el
+  id en el acto, y la escritura sale antes de volver. Si el servidor la rechaza, el
+  proyecto sale de la lista y la vista vuelve a la lista con el formulario y un aviso.
+- **El catastro vacío va detrás.** `iniciarCatastro(id)` (disenoService) lo escribe justo
+  después, y la escucha lo encuentra en el equipo y lo entrega en el acto. El orden
+  importa: el servidor aplica las escrituras de un equipo en el orden en que salieron, y
+  la regla del diseño lee el proyecto (`esDuenoDelProyecto`).
+- **Las escuchas ya no se rehacen enteras.** Lo hace `src/utils/escuchasPorProyecto.js`,
+  que usa `useFirebaseData`:
+  - Al arrancar, los grupos se arman de 30 en 30 como siempre. Son las mismas consultas
+    de antes, así que Firestore retoma lo que tenía guardado en el equipo.
+  - Después, un proyecto que aparece va a un grupo nuevo y los demás no se tocan.
+  - Uno que sale se oculta en el acto, y su grupo se cierra cuando ya no le queda
+    ninguno a la vista.
+  - Costo: en el arranque siguiente los grupos se rearman de 30 en 30, y el que cambió
+    se baja entero una vez. Antes eso pasaba en el momento, con la persona esperando.
+- **La lista cuenta en una pasada.** Para mostrar los postes de cada proyecto, la lista
+  filtraba todos los puntos una vez por proyecto, en cada render y también con un
+  proyecto abierto. Ahora usa `contarPorProyecto` (helpers.js), en una pasada y solo con
+  la lista a la vista.
+
+Probado:
+- `pruebas/test-escuchas-proyecto.mjs` prueba la lógica de las escuchas. El algoritmo de
+  antes falla 13 casos, y siete mutantes fallan cada uno por su lado.
+- `pruebas/test-datos-proyectos-ui.mjs` monta `useFirebaseData` con React (StrictMode)
+  sobre una Firestore de mentira. El hook del commit anterior falla 7 de 17: al crear un
+  proyecto cerraba 6 escuchas y abría otras 6, con 30 y 6 obras.
+- `pruebas/test-diseno-crear-ui.mjs` crea un proyecto desde Diseño sin señal, revisa el
+  orden de las escrituras y el caso de rechazo. Con la versión anterior, el proyecto no
+  se abre.
+- **Falta** que el usuario cree un proyecto desde Diseño en su celular.
 
 ## Qué sigue, en orden
 

@@ -23,6 +23,7 @@ node pruebas/test-paso4.mjs               # candado por rol y colores de día po
 node pruebas/test-traspaso.mjs            # qué ferretería se copia al traspasar una obra
 node pruebas/test-armados-materiales.mjs  # llevar armados de un catálogo a otro
 node pruebas/test-manzanas-calles.mjs     # modo Diseño: manzanas desde las calles (geometría)
+node pruebas/test-escuchas-proyecto.mjs   # escuchas de puntos/fibras/cables al cambiar la lista de proyectos
 ```
 
 ## Cloud Functions sobre una Firestore falsa
@@ -49,7 +50,13 @@ node pruebas/render-4b.mjs
 node pruebas/test-armados-ui.mjs        # CON TOQUES (jsdom): FIJAR, IMPORTAR, CONSERVAR
 node pruebas/test-diseno-manzanas-ui.mjs  # CON TOQUES: Diseño, generar manzanas, borrar, números
 node pruebas/test-diseno-movil-ui.mjs     # CON TOQUES: Diseño en celular vertical, horizontal y PC
+node pruebas/test-diseno-crear-ui.mjs     # CON TOQUES: crear proyecto en Diseño sin señal, orden de escrituras, rechazo
+node pruebas/test-datos-proyectos-ui.mjs  # useFirebaseData con React: qué escuchas se abren y cierran
 ```
+
+Las dos últimas usan `stub-firestore-vivo.js`, una Firestore de mentira que anota en orden
+lo que se escribe y se escucha, y cuyas escuchas responde la prueba a mano (la de
+`stub-firestore.js` responde sola). Con `stub-firebaseConfig-vivo.js` hay sesión abierta.
 
 El modo Diseño se toca con `stub-react-leaflet.jsx`: Leaflet no dibuja en jsdom, así que
 cada polígono es un `<div>` con su color y su trazo, y el clic llama a su

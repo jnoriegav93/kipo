@@ -70,17 +70,27 @@ const armarProyectoNuevo = ({ nombre, tipo = 'levantamiento', modoFotos = 'compr
 /* Proyecto creado desde el modo Diseño. Nace sin postes —el diseño puede ir antes
    que el levantamiento— pero es un proyecto normal de Kipo, con su Día 1, para que
    después la cuadrilla levante sobre él. No cambia el proyecto activo del mapa.
-   Devuelve el id cuando Firestore confirma; si falla, lo quita de la lista. */
-const crearProyectoDiseno = async (nombre) => {
+   Devuelve el id en el acto (24/09): Firestore guarda el proyecto primero en el equipo
+   y lo sube por detrás, también sin señal. Antes se esperaba la confirmación del
+   servidor, y la vista se quedaba detenida hasta que llegaba.
+   La escritura sale ANTES de volver, y así lo que se escriba después en la obra (su
+   diseño, que la regla solo deja escribir al dueño) llega al servidor detrás de ella.
+   Si el servidor la rechaza, el proyecto se quita de la lista y se avisa con alFallar. */
+const crearProyectoDiseno = (nombre, alFallar) => {
     const { nuevo } = armarProyectoNuevo({ nombre });
     nuevo.creadoDesde = 'diseno';
     setProyectos(prev => (prev.some(p => p.id === nuevo.id) ? prev : [...prev, nuevo]));
+    let escritura;
     try {
-        await setDoc(doc(db, "proyectos", nuevo.id), nuevo);
+        escritura = setDoc(doc(db, "proyectos", nuevo.id), nuevo);
     } catch (error) {
-        setProyectos(prev => prev.filter(p => p.id !== nuevo.id));
-        throw error;
+        escritura = Promise.reject(error); // datos inválidos: setDoc lanza en vez de rechazar
     }
+    escritura.catch((error) => {
+        console.error('No se pudo crear el proyecto', error);
+        setProyectos(prev => prev.filter(p => p.id !== nuevo.id));
+        alFallar?.(error);
+    });
     return nuevo.id;
 };
 

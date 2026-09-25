@@ -153,6 +153,12 @@ Colecciones: `proyectos`, `puntos`, `conexiones`, `cablesAcero`, `bitacora`,
   borre, copie o mueva puntos, fibras o proyectos tiene que llevar también sus cables:
   postes, medio tramo y fibras.
 
+- **Escuchas de puntos, fibras y cables** (`useFirebaseData`, que usa
+  `src/utils/escuchasPorProyecto.js`). Van por grupos de hasta 30 proyectos (`in`), y
+  para Firestore un grupo con otra lista es una consulta nueva, que baja todo de nuevo.
+  Por eso, pasado el arranque, un proyecto que aparece abre su propio grupo y los demás
+  no se tocan. No volver a rehacer todos los grupos ante cualquier cambio de la lista:
+  así era hasta el 24/09, y crear un proyecto volvía a bajar hasta 30 obras.
 - `puntos`, `conexiones`, `cablesAcero` y `papelera`: los lee cualquier autenticado;
   los cambian solo el dueño y los editores de SU obra, y el admin (`editaLaObra` en
   firestore.rules, paso 6 del rediseño de equipos). Cada escritura lee su proyecto una
@@ -222,6 +228,12 @@ conviene no romper:
   y lo que pida un dato va en `contexto`, que se muestra como panel o como hoja. Los
   pasos van en el menú ☰: no volver a poner una barra fija de pasos. Probarlo en los
   tres modos (`pruebas/test-diseno-movil-ui.mjs`).
+- **No esperar al servidor lo que ya se sabe** (24/09). Una escucha de un documento que
+  el equipo no tiene espera al servidor, aunque se sepa que está vacío. Por eso un
+  proyecto nuevo se abre en el acto: `crearProyectoDiseno` devuelve el id sin esperar la
+  confirmación, e `iniciarCatastro` escribe el catastro vacío DETRÁS del proyecto, para
+  que la escucha lo tenga en el equipo. Ese orden lo pide la regla del diseño, que lee el
+  proyecto (`pruebas/test-diseno-crear-ui.mjs`).
 
 La geometría propia está en `src/utils/disenoGeo.js`, sin dependencias de
 Leaflet, para poder probarla con Node.

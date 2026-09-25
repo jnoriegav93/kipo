@@ -23,9 +23,18 @@ export const suscribirCatastro = (proyectoId, onDatos) =>
   suscribirCapa(proyectoId, 'catastro', (d) => onDatos({ ...CATASTRO_VACIO, ...(d || {}) }));
 
 /* Asíncrona a propósito: con datos inválidos setDoc lanza en el acto en vez de
-   rechazar la promesa, y ese error se escapaba sin que nadie lo viera. */
+   rechazar la promesa, y ese error se escapaba sin que nadie lo viera. La escritura
+   sale igual en el acto: el cuerpo corre sin esperar hasta el setDoc. */
 export const guardarCapa = async (proyectoId, capa, datos) =>
   setDoc(refCapa(proyectoId, capa), aFirestore({ ...datos, actualizadoEn: Date.now() }));
+
+/* Catastro vacío de un proyecto recién creado (24/09). Un documento que el equipo no
+   tiene obliga a la escucha a esperar al servidor, aunque se sepa que está vacío; y esa
+   respuesta puede quedar en cola detrás de otras descargas. Escrito aquí, Firestore lo
+   guarda primero en el equipo y la escucha lo entrega en el acto.
+   Tiene que escribirse DESPUÉS del proyecto: el servidor aplica las escrituras de un
+   equipo en el orden en que salieron, y la regla del diseño lee el proyecto. */
+export const iniciarCatastro = (proyectoId) => guardarCapa(proyectoId, 'catastro', CATASTRO_VACIO);
 
 /* Guardado con retardo: dibujar mueve el estado muchas veces seguidas y no tiene
    sentido escribir en cada vértice. La escritura real ocurre 600 ms después del

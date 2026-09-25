@@ -8,13 +8,13 @@ import {
   Spline, Minus, Plus, FlipHorizontal, Scissors, PenLine, FolderPlus, LayoutGrid,
   Menu, Search, Maximize, LocateFixed,
 } from 'lucide-react';
-import { perteneceAProyecto } from '../utils/helpers';
+import { perteneceAProyecto, contarPorProyecto } from '../utils/helpers';
 import DisenoCatastro from '../components/DisenoCatastro';
 import DisenoCalles from '../components/DisenoCalles';
 import DisenoBuscador from '../components/DisenoBuscador';
 import DisenoCandidatas from '../components/DisenoCandidatas';
 import { manzanasDesdeCalles } from '../utils/disenoManzanas';
-import { suscribirCatastro, crearGuardadoDiferido, CAPAS } from '../services/disenoService';
+import { suscribirCatastro, iniciarCatastro, crearGuardadoDiferido, CAPAS } from '../services/disenoService';
 import {
   areaM2, paralela, largoPolilinea, proyectarEnPolilinea, insertarVertice, cortarCalle, anchosCalle,
 } from '../utils/disenoGeo';
@@ -209,7 +209,6 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const [proyectoId, setProyectoId] = useState(null);
   const [mapa, setMapa] = useState(null);              // el mapa de Leaflet, para el buscador
   const [nuevoNombre, setNuevoNombre] = useState(null); // null: formulario de proyecto nuevo cerrado
-  const [creando, setCreando] = useState(false);
   const [errorCrear, setErrorCrear] = useState(null);
   const [lupa, setLupa] = useState(0.8);
   const [paso, setPaso] = useState('catastro');
@@ -252,6 +251,13 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     [puntos, proyecto]
   );
 
+  // Postes de cada proyecto, para la lista: en una pasada y solo con la lista a la vista.
+  // Antes se filtraban todos los puntos una vez por proyecto en cada render (24/09).
+  const postesPorProyecto = useMemo(
+    () => (proyecto ? null : contarPorProyecto(proyectos, puntos)),
+    [proyecto, proyectos, puntos]
+  );
+
   useEffect(() => {
     if (!proyectoId) return;
     const cortar = suscribirCatastro(proyectoId, (datos) => setCatastroDoc({ proyectoId, datos }));
@@ -283,22 +289,22 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const claveEncuadre = `${proyectoId}:${cargando ? 'cargando' : 'listo'}:${puntosProy.length > 0}:${nonceEncuadre}`;
   const proyectoVacio = !cargando && coordsEncuadre.length === 0;
 
-  /* Proyecto nuevo desde Diseño: nace sin postes y se abre en el acto. */
-  const crearProyecto = async () => {
+  /* Proyecto nuevo desde Diseño: nace sin postes y se abre en el acto, sin esperar al
+     servidor (24/09). onCrearProyecto ya dejó salir la escritura del proyecto; detrás va
+     su catastro vacío, para que la escucha lo tenga en el equipo y no espere a nadie.
+     Si el servidor rechaza el proyecto, se vuelve a la lista con el formulario abierto. */
+  const crearProyecto = () => {
     const nombre = (nuevoNombre || '').trim();
-    if (!nombre || creando || !onCrearProyecto) return;
-    setCreando(true);
+    if (!nombre || !onCrearProyecto) return;
     setErrorCrear(null);
-    try {
-      const id = await onCrearProyecto(nombre);
-      setNuevoNombre(null);
-      setProyectoId(id);
-    } catch (e) {
-      console.error('No se pudo crear el proyecto', e);
-      setErrorCrear('No se pudo crear el proyecto. Revisa la conexión.');
-    } finally {
-      setCreando(false);
-    }
+    const id = onCrearProyecto(nombre, () => {
+      setProyectoId(actual => (String(actual) === String(id) ? null : actual));
+      setNuevoNombre(nombre);
+      setErrorCrear('El servidor no aceptó el proyecto. Vuelve a intentarlo.');
+    });
+    iniciarCatastro(id).catch((e) => console.error('No se pudo iniciar el catastro', e));
+    setNuevoNombre(null);
+    setProyectoId(id);
   };
 
   const guardar = (parche) => {
@@ -1159,9 +1165,9 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           </p>
           {errorCrear && <p className="text-[11px] font-black text-red-400">{errorCrear}</p>}
           <div className="flex gap-2">
-            <button onClick={crearProyecto} disabled={!nuevoNombre.trim() || creando}
+            <button onClick={crearProyecto} disabled={!nuevoNombre.trim()}
               className={`${btn} flex-1 bg-brand-500 border-brand-600 text-white disabled:opacity-30`}>
-              {creando ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Crear
+              <Check size={13} /> Crear
             </button>
             <button onClick={() => { setNuevoNombre(null); setErrorCrear(null); }} title="Cancelar"
               className={`${btnBase} w-10 px-0`}>
@@ -1175,7 +1181,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       ) : (
         <div className="space-y-2">
           {proyectos.map(p => {
-            const n = puntos.filter(x => perteneceAProyecto(x, p)).length;
+            const n = postesPorProyecto?.get(String(p.id)) || 0;
             return (
               <button
                 key={p.id}

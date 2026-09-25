@@ -64,7 +64,7 @@ try {
   globalThis.__fs = { docs: { 'proyectos/P/diseno/catastro': aFirestore({ calles: CALLES, manzanas: [], ultimos: { calle: 6 } }) }, escrituras: [] };
   const cont = document.createElement('div'); document.body.appendChild(cont);
   const root = createRoot(cont);
-  const props = { onVolver() {}, proyectos: [{ id: 'P', nombre: 'OBRA P', ownerId: 'U', dias: [] }], puntos: [], onCrearProyecto: async () => 'X' };
+  const props = { onVolver() {}, proyectos: [{ id: 'P', nombre: 'OBRA P', ownerId: 'U', dias: [] }], puntos: [], onCrearProyecto: () => 'X' };
   await act(async () => { root.render(React.createElement(VistaDiseno, props)); await esperar(10); });
 
   const botones = () => [...cont.querySelectorAll('button')];

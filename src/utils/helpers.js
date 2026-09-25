@@ -546,3 +546,25 @@ export const perteneceAProyecto = (item, proy) => {
   if (pid !== undefined && pid !== null && String(pid) !== '') return String(pid) === String(proy.id);
   return !!proy.dias?.some(d => d.id === item?.diaId);
 };
+
+/* Cuántos elementos tiene cada proyecto, con el mismo criterio que perteneceAProyecto
+   pero en una sola pasada: filtrar la lista entera una vez por proyecto se vuelve lento
+   con miles de puntos. Devuelve un Map: id del proyecto (texto) → cantidad. */
+export const contarPorProyecto = (proyectos, items) => {
+  const cuenta = new Map(proyectos.map(p => [String(p.id), 0]));
+  const porDia = new Map(); // id del día → proyectos que lo tienen
+  proyectos.forEach(p => (p.dias || []).forEach(d => {
+    if (!porDia.has(d.id)) porDia.set(d.id, new Set());
+    porDia.get(d.id).add(String(p.id));
+  }));
+  for (const item of items) {
+    const pid = item?.proyectoId;
+    if (pid !== undefined && pid !== null && String(pid) !== '') {
+      const id = String(pid);
+      if (cuenta.has(id)) cuenta.set(id, cuenta.get(id) + 1);
+    } else {
+      porDia.get(item?.diaId)?.forEach(id => cuenta.set(id, cuenta.get(id) + 1));
+    }
+  }
+  return cuenta;
+};

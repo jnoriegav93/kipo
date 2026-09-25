@@ -2,11 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc } from "firebase/firestore";
 import { db, auth } from '../firebaseConfig';
 import { permisoViejo, rolEnProyecto } from '../utils/equipoProyecto';
-
-// Firestore no acepta más de 30 valores en un `in`. Con más proyectos hay que partir la
-// consulta en grupos y abrir una escucha por grupo. Antes se hacía `slice(0, 30)` y los
-// proyectos que sobraban se quedaban sin datos, en silencio y sin aviso.
-const TOPE_IN = 30;
+import { crearEscuchasPorProyecto, soloVisibles } from '../utils/escuchasPorProyecto';
 
 // UNA sola escucha por colección, por `proyectoId`: trae TODO lo de los proyectos que el
 // usuario ve, lo haya creado quien lo haya creado. Reemplaza a las dos de antes (lo
@@ -14,43 +10,37 @@ const TOPE_IN = 30;
 // partían la app en "lo mío" y "lo de todos": varias funciones miraban solo lo mío y
 // fallaban con lo de un compañero de obra.
 //
+// Firestore no acepta más de 30 valores en un `in`: los proyectos van en grupos, con una
+// escucha por grupo. Cómo se arman y por qué un proyecto nuevo no reabre los demás
+// grupos (24/09): src/utils/escuchasPorProyecto.js.
+//
 // Devuelve [docs, setDocs]. El setter sirve para los cambios optimistas de las
 // escrituras DIRECTAS, que el SDK confirma enseguida con su propio snapshot. Lo que
 // espera en la cola de sincronización no depende de él: lo aplica encima
 // `aplicarPendientes` (src/utils/colaSync.js), porque cualquier snapshot lo pisaría.
-const useDocsPorProyecto = (coleccion, ids) => {
-  const [docs, setDocs] = useState([]);
+const useDocsPorProyecto = (coleccion, ids, asentado) => {
+  const [crudos, setCrudos] = useState([]);
+  const [escuchas] = useState(() => crearEscuchasPorProyecto({
+    escuchar: (grupo, alDatos, alError) => onSnapshot(
+      query(collection(db, coleccion), where('proyectoId', 'in', grupo)),
+      (snap) => alDatos(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
+      (error) => {
+        console.error(`Error escuchando ${coleccion} por proyecto:`, error);
+        alError(error); // un grupo que falla no puede dejar a los demás sin mostrarse
+      }
+    ),
+    publicar: setCrudos,
+  }));
   // La lista se compara como texto: un array nuevo en cada render reabriría las
   // escuchas sin parar.
   const clave = ids.join(',');
   useEffect(() => {
-    if (!clave) { setDocs([]); return; }
-    const lista = clave.split(',');
-    const grupos = [];
-    for (let i = 0; i < lista.length; i += TOPE_IN) grupos.push(lista.slice(i, i + TOPE_IN));
-    // Cada grupo guarda su propio resultado: un snapshot de uno no borra lo de los otros.
-    // Y no se publica nada hasta que llegaron todos una vez: si no, al cambiar la lista
-    // de proyectos el mapa se vaciaría a medias mientras llegan los demás grupos.
-    const porGrupo = grupos.map(() => []);
-    const llegaron = grupos.map(() => false);
-    const publicar = () => { if (llegaron.every(Boolean)) setDocs(porGrupo.flat()); };
-    const unsubs = grupos.map((grupo, i) => onSnapshot(
-      query(collection(db, coleccion), where('proyectoId', 'in', grupo)),
-      (snap) => {
-        porGrupo[i] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-        llegaron[i] = true;
-        publicar();
-      },
-      (error) => {
-        console.error(`Error escuchando ${coleccion} por proyecto:`, error);
-        // Un grupo que falla no puede dejar a los demás sin mostrarse
-        llegaron[i] = true;
-        publicar();
-      }
-    ));
-    return () => unsubs.forEach(u => u());
-  }, [coleccion, clave]);
-  return [docs, setDocs];
+    escuchas.sincronizar(clave ? clave.split(',') : [], asentado);
+  }, [escuchas, clave, asentado]);
+  useEffect(() => () => escuchas.cerrar(), [escuchas]);
+  // Un proyecto que ya no está a la vista se quita aquí: su escucha puede seguir abierta
+  const docs = useMemo(() => soloVisibles(crudos, clave ? clave.split(',') : []), [crudos, clave]);
+  return [docs, setCrudos];
 };
 
 export const useFirebaseData = (user) => {
@@ -58,6 +48,9 @@ export const useFirebaseData = (user) => {
   const [proyectos, setProyectos] = useState([]);
   const [proyectosSupervisados, setProyectosSupervisados] = useState([]);
   const [config, setConfig] = useState(null);
+  // Si ya llegaron las dos listas de proyectos: hasta entonces, las escuchas de puntos,
+  // fibras y cables se arman como siempre (ver src/utils/escuchasPorProyecto.js)
+  const [llegaron, setLlegaron] = useState({ propios: false, compartidos: false });
 
   // 2. EFECTO: los proyectos y la configuración. Lo que hay DENTRO de cada proyecto
   // (puntos, fibras, cables) se escucha más abajo, por proyecto.
@@ -66,11 +59,13 @@ export const useFirebaseData = (user) => {
       setProyectos([]);
       setProyectosSupervisados([]);
       setConfig(null);
+      setLlegaron({ propios: false, compartidos: false });
       return;
     }
 
     let unsubProyectos, unsubSupervisados, unsubConfig;
     let cancelado = false;
+    const llego = (lista) => setLlegaron(l => (l[lista] ? l : { ...l, [lista]: true }));
 
     // Esperar a que el token esté validado por Firestore antes de abrir listeners
     // auth.currentUser puede ser null si el dispositivo fue bloqueado y se cerró sesión
@@ -83,7 +78,8 @@ export const useFirebaseData = (user) => {
       unsubProyectos = onSnapshot(qProyectos, (snapshot) => {
         const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         setProyectos(docs);
-      }, (error) => console.error("Error en Proyectos:", error));
+        llego('propios');
+      }, (error) => { console.error("Error en Proyectos:", error); llego('propios'); });
 
       // A2. PROYECTOS COMPARTIDOS: donde el usuario es miembro (editor o supervisor), por
       // `miembrosUids`. Desde el paso 6 es la única escucha: la de `compartidoCon`, el
@@ -96,8 +92,9 @@ export const useFirebaseData = (user) => {
           setProyectosSupervisados(snapshot.docs.map(d => ({ ...d.data(), id: d.id }))
             .filter(p => String(p.ownerId) !== String(user.uid))
             .map(p => ({ ...p, esCompartido: true, permisoActual: permisoViejo(rolEnProyecto(p, user.uid) || 'supervisor') })));
+          llego('compartidos');
         },
-        (error) => console.error("Error en proyectos de miembro:", error));
+        (error) => { console.error("Error en proyectos de miembro:", error); llego('compartidos'); });
 
       // D. ESCUCHAR CONFIGURACIÓN
       const configRef = doc(db, "configuraciones", user.uid);
@@ -124,9 +121,10 @@ export const useFirebaseData = (user) => {
     return Array.from(ids);
   }, [proyectos, proyectosSupervisados]);
 
-  const [puntos, setPuntos] = useDocsPorProyecto('puntos', idsVisibles);
-  const [conexiones, setConexiones] = useDocsPorProyecto('conexiones', idsVisibles);
-  const [cablesAcero, setCablesAcero] = useDocsPorProyecto('cablesAcero', idsVisibles);
+  const asentado = llegaron.propios && llegaron.compartidos;
+  const [puntos, setPuntos] = useDocsPorProyecto('puntos', idsVisibles, asentado);
+  const [conexiones, setConexiones] = useDocsPorProyecto('conexiones', idsVisibles, asentado);
+  const [cablesAcero, setCablesAcero] = useDocsPorProyecto('cablesAcero', idsVisibles, asentado);
 
   // 3. RETURN (Entregamos los datos a App.jsx)
   return {
