@@ -24,6 +24,7 @@ node pruebas/test-traspaso.mjs            # qué ferretería se copia al traspas
 node pruebas/test-armados-materiales.mjs  # llevar armados de un catálogo a otro
 node pruebas/test-manzanas-calles.mjs     # modo Diseño: manzanas desde las calles (geometría)
 node pruebas/test-escuchas-proyecto.mjs   # escuchas de puntos/fibras/cables al cambiar la lista de proyectos
+node pruebas/test-casas.mjs               # modo Diseño: casas del formato regular (formatos, giros, frentes)
 ```
 
 ## Cloud Functions sobre una Firestore falsa
@@ -51,6 +52,7 @@ node pruebas/test-armados-ui.mjs        # CON TOQUES (jsdom): FIJAR, IMPORTAR, C
 node pruebas/test-diseno-manzanas-ui.mjs  # CON TOQUES: Diseño, generar manzanas, borrar, números
 node pruebas/test-diseno-movil-ui.mjs     # CON TOQUES: Diseño en celular vertical, horizontal y PC
 node pruebas/test-diseno-crear-ui.mjs     # CON TOQUES: crear proyecto en Diseño sin señal, orden de escrituras, rechazo
+node pruebas/test-diseno-casas-ui.mjs     # CON TOQUES Y GESTOS: formato regular, familias, vértices y lados con el dedo
 node pruebas/test-datos-proyectos-ui.mjs  # useFirebaseData con React: qué escuchas se abren y cierran
 ```
 
@@ -59,8 +61,12 @@ lo que se escribe y se escucha, y cuyas escuchas responde la prueba a mano (la d
 `stub-firestore.js` responde sola). Con `stub-firebaseConfig-vivo.js` hay sesión abierta.
 
 El modo Diseño se toca con `stub-react-leaflet.jsx`: Leaflet no dibuja en jsdom, así que
-cada polígono es un `<div>` con su color y su trazo, y el clic llama a su
-`eventHandlers.click`. Para una corrida de control contra otra versión de la vista, se le
+cada polígono es un `<div>` con su color, su trazo y sus puntos, y el clic llama a su
+`eventHandlers.click`. Los círculos y líneas que se tocan también son `<div>` (con
+`data-clase`, el `className` de Leaflet: `toque-vertice`, `toque-lado`, `toque-punto`).
+El mapa convierte x = lng·1e5, y = −lat·1e5; los gestos se prueban mandando eventos de
+puntero a `getContainer()` (jsdom no trae PointerEvent: se usa MouseEvent con
+`pointerId`), y `__mapaFalso.dragging` dice si el mapa se puede arrastrar. Para una corrida de control contra otra versión de la vista, se le
 pasa su ruta (en Git Bash, con `MSYS_NO_PATHCONV=1`, o convierte `/src/...` en una ruta de
 Windows).
 

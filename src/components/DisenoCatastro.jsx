@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Polygon, Polyline, Circle, CircleMarker, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { rectangulo3Puntos } from '../utils/disenoGeo';
+import { buscarIman } from '../utils/disenoIman';
+import { useArrastreLejos, usePresionarYArrastrar } from '../hooks/useArrastreMapa';
 
 /* Capa de dibujo del catastro sobre el mapa del modo Diseño.
 
@@ -16,51 +18,17 @@ import { rectangulo3Puntos } from '../utils/disenoGeo';
    - etiqueta     Un clic; el texto se escribe después.
 
    Los vértices se imantan a las manzanas ya dibujadas para que las cuadras
-   vecinas compartan lado y no queden rendijas entre ellas. */
+   vecinas compartan lado y no queden rendijas entre ellas.
 
-// Con el dedo el imán alcanza más lejos (24/09), igual que en las calles
-const ESCALA_TOQUE = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches ? 1.7 : 1;
-const SNAP_VERTICE_PX = Math.round(14 * ESCALA_TOQUE);
-const SNAP_ARISTA_PX  = Math.round(20 * ESCALA_TOQUE);
+   Con el dedo (25/09):
+   - En la cuadra rectangular, el 2.º y el 3.er punto también se ponen manteniendo
+     presionado y arrastrando: la base o el rectángulo siguen al dedo hasta soltar.
+   - Un punto ya puesto se toca y queda marcado; un dedo en cualquier parte del mapa lo
+     mueve sin taparlo (ver hooks/useArrastreMapa.js). Tocar el mapa lo suelta. */
 
+const TACTIL = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches;
+const RADIO_TOQUE = TACTIL ? 20 : 10;
 const ES_POLIGONO = { manzanaRect: true, manzanaLibre: true, areaPoly: true };
-
-/* Busca el punto imantado más cercano: primero vértices, luego aristas. */
-const buscarIman = (map, latlng, manzanas) => {
-  const raton = map.latLngToContainerPoint(latlng);
-  let mejorV = null, dV = SNAP_VERTICE_PX;
-  let mejorA = null, dA = SNAP_ARISTA_PX;
-
-  for (const m of manzanas) {
-    const pts = m.latlngs || [];
-    const n = pts.length;
-    if (n < 2) continue;
-
-    for (const p of pts) {
-      const px = map.latLngToContainerPoint(L.latLng(p[0], p[1]));
-      const d = Math.hypot(raton.x - px.x, raton.y - px.y);
-      if (d < dV) { dV = d; mejorV = p; }
-    }
-
-    for (let i = 0; i < n; i++) {
-      const a = pts[i], b = pts[(i + 1) % n];
-      const aPx = map.latLngToContainerPoint(L.latLng(a[0], a[1]));
-      const bPx = map.latLngToContainerPoint(L.latLng(b[0], b[1]));
-      const dx = bPx.x - aPx.x, dy = bPx.y - aPx.y;
-      const largoSq = dx * dx + dy * dy;
-      if (largoSq < 1) continue;
-      const t = Math.max(0, Math.min(1, ((raton.x - aPx.x) * dx + (raton.y - aPx.y) * dy) / largoSq));
-      const cx = aPx.x + t * dx, cy = aPx.y + t * dy;
-      const d = Math.hypot(raton.x - cx, raton.y - cy);
-      if (d < dA) {
-        dA = d;
-        const ll = map.containerPointToLatLng(L.point(cx, cy));
-        mejorA = [ll.lat, ll.lng];
-      }
-    }
-  }
-  return mejorV || mejorA || null;
-};
 
 const metros = (a, b) => L.latLng(a[0], a[1]).distanceTo(L.latLng(b[0], b[1]));
 
@@ -76,32 +44,41 @@ export default function DisenoCatastro({
   manzanas = [], areas = [], marcadores = [], etiquetas = [],
   capas, herramienta, pts, setPts, onFinalizar,
   seleccion, onSeleccionar,
+  puntoMarcado = null, setPuntoMarcado = () => {}, onClicVacio, manzanaViva = null,
 }) {
   const [raton, setRaton] = useState(null);
+  const inicioPunto = useRef(null);
+
+  const imantar = (ll) => {
+    const bruto = Array.isArray(ll) ? ll : [ll.lat, ll.lng];
+    return ES_POLIGONO[herramienta] ? (buscarIman(map, bruto, manzanas) || bruto) : bruto;
+  };
+
+  /* Pone el punto siguiente de la herramienta activa, venga de un toque o de soltar
+     un arrastre. */
+  const ponerPunto = (p) => {
+    if (herramienta === 'marcador' || herramienta === 'etiqueta') {
+      onFinalizar(herramienta, { latlng: p });
+      return;
+    }
+    const nuevos = [...pts, p];
+    if (herramienta === 'manzanaRect' && nuevos.length === 3) {
+      onFinalizar('manzana', { latlngs: rectangulo3Puntos(map, nuevos[0], nuevos[1], nuevos[2]) });
+      setPts([]); setRaton(null); return;
+    }
+    if (herramienta === 'areaCirc' && nuevos.length === 2) {
+      onFinalizar('areaCirc', { center: nuevos[0], radius: metros(nuevos[0], nuevos[1]) });
+      setPts([]); setRaton(null); return;
+    }
+    setPts(nuevos);
+  };
 
   const map = useMapEvents({
     click(e) {
-      if (!herramienta) return;
-      const bruto = [e.latlng.lat, e.latlng.lng];
-      const p = ES_POLIGONO[herramienta] ? (buscarIman(map, e.latlng, manzanas) || bruto) : bruto;
-
-      // Herramientas de un solo clic
-      if (herramienta === 'marcador' || herramienta === 'etiqueta') {
-        onFinalizar(herramienta, { latlng: p });
-        return;
-      }
-
-      const nuevos = [...pts, p];
-
-      if (herramienta === 'manzanaRect' && nuevos.length === 3) {
-        onFinalizar('manzana', { latlngs: rectangulo3Puntos(map, nuevos[0], nuevos[1], nuevos[2]) });
-        setPts([]); setRaton(null); return;
-      }
-      if (herramienta === 'areaCirc' && nuevos.length === 2) {
-        onFinalizar('areaCirc', { center: nuevos[0], radius: metros(nuevos[0], nuevos[1]) });
-        setPts([]); setRaton(null); return;
-      }
-      setPts(nuevos);
+      if (!herramienta) { onClicVacio?.(); return; }
+      // Con un punto marcado, tocar el mapa lo suelta (no pone otro)
+      if (puntoMarcado != null) { setPuntoMarcado(null); return; }
+      ponerPunto(imantar(e.latlng));
     },
     dblclick(e) {
       if ((herramienta !== 'manzanaLibre' && herramienta !== 'areaPoly') || pts.length < 3) return;
@@ -110,10 +87,31 @@ export default function DisenoCatastro({
       setPts([]); setRaton(null);
     },
     mousemove(e) {
-      if (!herramienta || pts.length === 0) return;
-      const bruto = [e.latlng.lat, e.latlng.lng];
-      setRaton(ES_POLIGONO[herramienta] ? (buscarIman(map, e.latlng, manzanas) || bruto) : bruto);
+      if (!herramienta || pts.length === 0 || puntoMarcado != null) return;
+      setRaton(imantar(e.latlng));
     },
+  });
+
+  // Presionar y arrastrar: el 2.º y el 3.er punto de la cuadra rectangular
+  usePresionarYArrastrar(map, herramienta === 'manzanaRect' && (pts.length === 1 || pts.length === 2) && puntoMarcado == null, {
+    alEmpezar: (ll) => setRaton(imantar(ll)),
+    alMover: (ll) => setRaton(imantar(ll)),
+    alSoltar: (ll) => { setRaton(null); ponerPunto(imantar(ll)); },
+    alCancelar: () => setRaton(null),
+  });
+
+  // Un punto ya puesto, marcado: se mueve desde lejos
+  const moverPunto = ({ dx, dy }) => {
+    const base = inicioPunto.current;
+    if (!base) return;
+    const ll = map.containerPointToLatLng([base.x + dx, base.y + dy]);
+    const p = imantar([ll.lat, ll.lng]);
+    setPts(pts.map((q, k) => (k === puntoMarcado ? p : q)));
+  };
+  useArrastreLejos(map, puntoMarcado != null && !!pts[puntoMarcado], {
+    alEmpezar: () => { inicioPunto.current = map.latLngToContainerPoint(pts[puntoMarcado]); },
+    alMover: moverPunto,
+    alSoltar: (d) => { if (d) moverPunto(d); inicioPunto.current = null; },
   });
 
   // Vista previa mientras se dibuja
@@ -143,7 +141,7 @@ export default function DisenoCatastro({
       {capas.manzanas && manzanas.map(m => (
         <Polygon
           key={m.id}
-          positions={m.latlngs}
+          positions={manzanaViva && String(manzanaViva.id) === String(m.id) ? manzanaViva.latlngs : m.latlngs}
           pathOptions={{
             color: sel('manzana', m.id) ? '#FF6600' : '#E7EAEF',
             weight: sel('manzana', m.id) ? 3 : 2,
@@ -180,10 +178,16 @@ export default function DisenoCatastro({
 
       {previa}
 
-      {/* Vértices ya puestos, para ver dónde se ancló el imán */}
+      {/* Vértices ya puestos, para ver dónde se ancló el imán. Se tocan para marcarlos
+          y moverlos desde lejos. */}
       {herramienta && pts.map((p, i) => (
-        <CircleMarker key={i} center={p} radius={4}
-          pathOptions={{ color: '#0F1217', weight: 2, fillColor: '#FF6600', fillOpacity: 1 }} />
+        <CircleMarker key={i} center={p} radius={puntoMarcado === i ? 8 : 4} interactive={false}
+          pathOptions={{ color: '#0F1217', weight: 2, fillColor: puntoMarcado === i ? '#FACC15' : '#FF6600', fillOpacity: 1 }} />
+      ))}
+      {herramienta && ES_POLIGONO[herramienta] && pts.map((p, i) => (
+        <CircleMarker key={`toque-${i}`} center={p} radius={RADIO_TOQUE}
+          pathOptions={{ stroke: false, fillColor: '#FFFFFF', fillOpacity: 0.001, className: 'toque-punto' }}
+          eventHandlers={{ click: (e) => { L.DomEvent.stop(e); setPuntoMarcado(puntoMarcado === i ? null : i); } }} />
       ))}
     </>
   );

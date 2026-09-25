@@ -4,21 +4,25 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 25 de septiembre de 2026, 09:40 (hora de Lima).
+Última actualización: 25 de septiembre de 2026, 10:45 (hora de Lima).
 
 > **Ahora:** el **modo Diseño** (catastro), que solo ve el admin. Último SELLO:
-> 24/09/26, 21:53. Lo último, del 24/09:
-> - manzanas desde calles;
-> - Diseño en el celular (vertical, horizontal y PC);
-> - crear un proyecto en Diseño sin esperar al servidor. Ese arreglo quitó también una
->   descarga de más en toda la app: ver "Crear un proyecto en Diseño sin esperar".
+> 25/09/26, 10:38. Lo último:
+> - 24/09: manzanas desde calles; Diseño en el celular (vertical, horizontal y PC); crear
+>   un proyecto en Diseño sin esperar al servidor, que quitó también una descarga de más
+>   en toda la app (ver "Crear un proyecto en Diseño sin esperar");
+> - 25/09: el **formato regular** (la cuadra rectangular nace con sus casas: formatos,
+>   − / +, girar y familias) y los **vértices con el dedo** (ver "Formato regular y
+>   vértices con el dedo").
 >
-> Sigue el **formato regular** de la cuadra rectangular (ver "Qué sigue, en orden").
+> Sigue **fusionar y cortar casas** (el usuario las dejó para esta entrega siguiente) y
+> después el formato irregular (ver "Qué sigue, en orden").
 >
 > **Falta que el usuario pruebe en celulares:**
 > - los pasos 3 a 6 de equipos y los armados;
 > - las calles, las manzanas desde calles y Diseño en vertical y horizontal;
-> - crear un proyecto desde Diseño.
+> - crear un proyecto desde Diseño;
+> - el formato regular y los vértices con el dedo.
 >
 > Ante cualquier "no funciona", lo primero es confirmar el SELLO en Diagnóstico.
 >
@@ -231,6 +235,8 @@ por manzana.
 | **Los números no se repiten**: el último de cada tipo va en `ultimos` del catastro | hecho (24/09) |
 | **Diseño en el celular** (24/09, pedido del usuario "a tu ingenio"): ver "Diseño en el celular", abajo | hecho — SELLO: 24/09/26, 20:50 |
 | **Crear un proyecto en Diseño sin esperar** (24/09, el usuario: "se queda en cargando y demora"): ver abajo | hecho — SELLO: 24/09/26, 21:53 |
+| **Formato regular** (25/09): la cuadra rectangular nace con sus casas; Dos filas, Tres zonas, Una fila, − / +, Girar; familias por casa; aviso antes de rehacer. Ver abajo | hecho — SELLO: 25/09/26, 10:38 |
+| **Vértices con el dedo** (25/09, pedido del usuario): marcar un vértice o un lado y moverlo desde lejos; presionar y arrastrar el 2.º y 3.er punto de la cuadra rectangular. Ver abajo | hecho — SELLO: 25/09/26, 10:38 |
 
 ### Diseño en el celular (24/09)
 
@@ -318,6 +324,75 @@ Probado:
   se abre.
 - **Falta** que el usuario cree un proyecto desde Diseño en su celular.
 
+### Formato regular y vértices con el dedo (25/09)
+
+Lo acordado con el usuario el 25/09 (sus respuestas, por número):
+1. Al generar, **una casa cada 6 m** a lo largo de la fila.
+2. **Aviso antes de rehacer** solo si hay cambios a mano. Rehacer las casas (formato,
+   cantidad, girar o forma de la manzana) no pregunta nada mientras no se tocaron; si ya
+   se cambiaron familias (y, más adelante, si hay fusiones o cortes), primero avisa.
+3. **Dos toques:** el primero en una casa elige su manzana; con la manzana ya elegida, el
+   siguiente elige la casa.
+4. **Fusionar y cortar**, en la entrega siguiente.
+5. **Vértices:** se toca un vértice (o un lado) y queda marcado. Después, un dedo en
+   cualquier parte del mapa lo mueve sin taparlo. Creando o editando, el mapa se mueve
+   con un dedo como siempre, pero con algo marcado, solo con dos dedos.
+6. **Vértices** editables en todas las manzanas; **lados**, solo en las rectangulares.
+7. El 3.er punto de la cuadra rectangular (y el 2.º, como recomendé; el usuario no
+   objetó) se pone **manteniendo presionado y arrastrando**, con la cuadra en vivo hasta
+   soltar.
+
+Cómo quedó:
+- **Casas** (`src/utils/disenoCasas.js`, portado de `blocks.js` de App_Design):
+  - Se reparten por interpolación bilineal entre las cuatro esquinas, así que siguen
+    sirviendo si un vértice movido deja la cuadra torcida.
+  - Nacen en **Dos filas**, con las filas a lo largo del lado más largo.
+  - **Tres zonas:** un cuarto del largo a cada costado y dos filas en el medio.
+  - **Una fila:** casas de todo el fondo.
+  - **Girar:** 2 sentidos en Dos filas y Tres zonas, 4 en Una fila, donde elige a qué
+    calle dan.
+  - **Frente:** la arista de la casa sobre la calle, con la regla de esquina del 24/09.
+    En Una fila, el fondo no cuenta.
+  - Tope de 80 casas por fila.
+- **Qué es regular:** `forma: 'rect'`. Las de antes del 24/09, sin `forma`, cuentan como
+  regulares si tienen cuatro esquinas, como en App_Design. Las irregulares dicen
+  "formato irregular (pronto)".
+- **Guardado** (`disenoService.js`):
+  - Un documento por manzana, `diseno/casas_{manzanaId}`, con `tipo: 'casas'`, el
+    `formato`, las casas y `editadas`. Borrar la manzana borra su documento.
+  - Las casas se escriben **en el acto**, sin el retardo de 600 ms del catastro. Si no,
+    la primera respuesta de su escucha las pisaba.
+  - Un proyecto recién creado arranca con las casas "cargadas" (vacías).
+- **En el mapa** (`DisenoCasas.jsx`):
+  - Cada casa lleva su frente en naranja y su número de familias, con color por
+    cantidad.
+  - El número sale solo si la casa mide al menos 16 px en pantalla (casas de 6 m, desde
+    el zoom 19). De lejos, los números eran una mancha azul que tapaba la manzana.
+- **Gestos** (`src/hooks/useArrastreMapa.js`):
+  - `useArrastreLejos` (marcado) y `usePresionarYArrastrar` (espera de 350 ms; si el
+    dedo se mueve antes, se mueve el mapa).
+  - Van con eventos de puntero y `touch-action: none` mientras duran.
+  - El clic que el navegador manda al soltar se descarta, uno solo y dentro de 250 ms,
+    para no tragarse el toque siguiente de la persona.
+- **Vértices y lados** (`DisenoEdicionManzana.jsx`): la franja para tocar un lado va
+  **por fuera** de la manzana, sobre la calle. Centrada, tapaba las casas con el dedo.
+  El imán de las manzanas, ahora en `src/utils/disenoIman.js`, también actúa al mover.
+- **Arreglos de pantalla vistos en capturas:**
+  - en el celular, el mapa se corre para que la manzana elegida no quede debajo de la
+    hoja;
+  - abrir un grupo de herramientas suelta lo elegido (su hoja no se veía);
+  - en horizontal, las barras de arriba le dejan lugar al panel de la derecha, que
+    tapaba "Listo".
+
+Probado:
+- `pruebas/test-casas.mjs`: formatos, cantidades, giros, frentes y cuadra torcida, con 7
+  mutantes.
+- `pruebas/test-diseno-casas-ui.mjs`: con toques y gestos de puntero, del alta de la
+  cuadra al borrado. La vista anterior falla desde el primer paso.
+- Mirado en capturas de `harness-diseno/casas.html` (local, fuera de git) a 390 × 844 y
+  844 × 390, con celular táctil emulado.
+- **Falta** la prueba del usuario en su celular.
+
 ## Qué sigue, en orden
 
 (Plan rehecho el 24/09 con lo acordado en "Manzanas, casas y familias". Las reglas
@@ -331,12 +406,14 @@ propios, así que el guardado del dueño funciona.)
    (`pruebas/test-manzanas-calles.mjs`, 4 mutantes) y con toques
    (`pruebas/test-diseno-manzanas-ui.mjs`, 15 pasos, control con la versión anterior).
    Falta que el usuario lo pruebe con calles de verdad.
-3. **Formato regular** para la cuadra rectangular: Dos filas, Tres zonas, Una fila,
-   Girar.
-4. **Formato irregular:** divisores, casas por sección, Perpendicular / Paralelo, Lado
+3. ~~Formato regular~~ **hecho el 25/09**, junto con los vértices con el dedo, el frente
+   con la regla de esquina, las familias − / + y el aviso antes de rehacer (ver "Formato
+   regular y vértices con el dedo").
+4. **Fusionar y cortar casas** (la entrega siguiente, según el usuario). Fusionar: solo
+   pegadas, hereda la mayor cantidad de familias. Cortar: trazando la línea, y cada
+   mitad nace con 1 familia. Las dos marcan la manzana como editada (`editadas`).
+5. **Formato irregular:** divisores, casas por sección, Perpendicular / Paralelo, Lado
    ↺ ↻ y la GUÍA nueva.
-5. **Casas y familias:** frontis con la regla de esquina, familias − / +, fusionar,
-   cortar, y el reset avisado al reconfigurar.
 6. Exportar GeoJSON.
 7. Bloque de cuadras (baja prioridad: con las calles funcionando pierde sentido).
 

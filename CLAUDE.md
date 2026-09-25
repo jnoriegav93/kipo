@@ -234,6 +234,17 @@ conviene no romper:
   confirmación, e `iniciarCatastro` escribe el catastro vacío DETRÁS del proyecto, para
   que la escucha lo tenga en el equipo. Ese orden lo pide la regla del diseño, que lee el
   proyecto (`pruebas/test-diseno-crear-ui.mjs`).
+- **Casas: un documento por manzana** (`diseno/casas_{manzanaId}`, con `tipo: 'casas'`
+  para escucharlas todas con una consulta), escrito en el acto y no con el retardo del
+  catastro: si no, la primera respuesta de su escucha las pisaba. Código que borre,
+  copie o mueva manzanas tiene que llevar también su documento de casas. Rehacer casas
+  que ya se tocaron a mano (`editadas`) pide confirmación: fusiones, cortes y familias
+  no se pierden en silencio.
+- **Gestos con el dedo** (`src/hooks/useArrastreMapa.js`): con algo marcado, un dedo
+  mueve lo marcado desde cualquier parte y el mapa se mueve con dos. Van con eventos de
+  puntero y `touch-action: none`: sin eso, el navegador corta el arrastre. En jsdom se
+  prueban mandando `pointerdown`/`pointermove`/`pointerup` al contenedor del mapa de
+  mentira (`pruebas/test-diseno-casas-ui.mjs`).
 
 La geometría propia está en `src/utils/disenoGeo.js`, sin dependencias de
 Leaflet, para poder probarla con Node.

@@ -6,15 +6,22 @@ import {
   ZoomIn, ZoomOut, Square, PenTool, Undo2, Check, X, Trash2, Loader2,
   Circle as CircleIcon, MapPin, Type, PanelLeftClose, PanelLeft, ChevronDown,
   Spline, Minus, Plus, FlipHorizontal, Scissors, PenLine, FolderPlus, LayoutGrid,
-  Menu, Search, Maximize, LocateFixed,
+  Menu, Search, Maximize, LocateFixed, RotateCw,
 } from 'lucide-react';
 import { perteneceAProyecto, contarPorProyecto } from '../utils/helpers';
 import DisenoCatastro from '../components/DisenoCatastro';
 import DisenoCalles from '../components/DisenoCalles';
 import DisenoBuscador from '../components/DisenoBuscador';
 import DisenoCandidatas from '../components/DisenoCandidatas';
+import DisenoCasas from '../components/DisenoCasas';
+import DisenoEdicionManzana from '../components/DisenoEdicionManzana';
 import { manzanasDesdeCalles } from '../utils/disenoManzanas';
-import { suscribirCatastro, iniciarCatastro, crearGuardadoDiferido, CAPAS } from '../services/disenoService';
+import {
+  FORMATOS, MAX_CASAS, admiteFormatoRegular, formatoNuevo, generarCasas, girosDe, siguienteGiro, totalFamilias,
+} from '../utils/disenoCasas';
+import {
+  suscribirCatastro, iniciarCatastro, crearGuardadoDiferido, CAPAS, suscribirCasas, borrarCasas, capaCasas,
+} from '../services/disenoService';
 import {
   areaM2, paralela, largoPolilinea, proyectarEnPolilinea, insertarVertice, cortarCalle, anchosCalle,
 } from '../utils/disenoGeo';
@@ -80,6 +87,11 @@ const nuevosIds = (catastro, lista, prefijo, n = 1) => {
 
 // Cómo nació cada manzana: lo va a necesitar su configuración (regular o irregular)
 const FORMA_TEXTO = { rect: 'Rectangular, dibujada', libre: 'Irregular, dibujada', calles: 'Desde calles (irregular)' };
+
+/* Regular: la cuadra rectangular dibujada a mano (acordado el 24/09). Las de antes del
+   24/09 no guardaban cómo nacieron: cuentan como regulares si tienen cuatro esquinas,
+   como en App_Design. */
+const esRegular = (m) => !!m && (m.forma ? m.forma === 'rect' : admiteFormatoRegular(m.latlngs));
 
 /* Encuadra el mapa al abrir el proyecto: sobre sus postes y, si todavía no tiene,
    sobre lo ya dibujado. Solo cuando cambia `clave` (otro proyecto, fin de la carga,
@@ -221,7 +233,15 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const [seleccion, setSeleccion] = useState(null);   // { tipo, id }
   const [pendiente, setPendiente] = useState(null);   // elemento a la espera de tipo o texto
   const [texto, setTexto] = useState('');
-  const [capas, setCapas] = useState({ calles: true, manzanas: true, areas: true, marcadores: true, etiquetas: true, postes: true });
+  const [capas, setCapas] = useState({ calles: true, manzanas: true, casas: true, areas: true, marcadores: true, etiquetas: true, postes: true });
+  // Casas de las manzanas regulares, un documento por manzana (25/09)
+  const [casasDoc, setCasasDoc] = useState(null);     // { proyectoId, porManzana: { [manzanaId]: { formato, casas, editadas } } }
+  // Vértices con el dedo (25/09): el punto del dibujo marcado, y el vértice o lado
+  // marcado de la manzana elegida, que se mueven desde lejos
+  const [puntoMarcado, setPuntoMarcado] = useState(null);
+  const [marcado, setMarcado] = useState(null);       // { tipo: 'vertice' | 'lado', i }
+  const [formaViva, setFormaViva] = useState(null);   // { manzanaId, latlngs } mientras se arrastra
+  const [avisoReset, setAvisoReset] = useState(null); // { manzanaId, formato?, latlngs? } a la espera del "sí"
   const [trazoCalle, setTrazoCalle] = useState([]);
   const [borrador, setBorrador] = useState(null);   // calle a la espera de ancho y lado
   const [edicion, setEdicion] = useState(null);     // { id, A, B, modo, corte, aviso } — calle en edición
@@ -264,6 +284,12 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     return () => cortar();
   }, [proyectoId]);
 
+  useEffect(() => {
+    if (!proyectoId) return undefined;
+    const cortar = suscribirCasas(proyectoId, (porManzana) => setCasasDoc({ proyectoId, porManzana }));
+    return () => cortar();
+  }, [proyectoId]);
+
   // Al cerrar la vista se escribe lo que quede pendiente, sin esperar el retardo
   useEffect(() => () => { guardado.forzar().catch(() => {}); }, [guardado]);
 
@@ -275,6 +301,38 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const marcadores = catastro?.marcadores || [];
   const etiquetas  = catastro?.etiquetas  || [];
   const calles     = catastro?.calles     || [];
+
+  // Casas por manzana, solo de las manzanas que existen
+  const casasListas = !!casasDoc && String(casasDoc.proyectoId) === String(proyectoId);
+  const casasPorManzana = useMemo(() => {
+    if (!casasListas) return {};
+    const ids = new Set((catastro?.manzanas || []).map(m => String(m.id)));
+    return Object.fromEntries(Object.entries(casasDoc.porManzana).filter(([id]) => ids.has(String(id))));
+  }, [casasListas, casasDoc, catastro]);
+  const totalCasas = Object.values(casasPorManzana).reduce((s, d) => s + (d.casas?.length || 0), 0);
+  // Mientras se arrastra un vértice o un lado, las casas que le quedarían a la manzana
+  const casasVivas = useMemo(() => {
+    const doc = formaViva && casasPorManzana[formaViva.manzanaId];
+    return doc ? { manzanaId: formaViva.manzanaId, casas: generarCasas(formaViva.latlngs, doc.formato) } : null;
+  }, [formaViva, casasPorManzana]);
+
+  /* Lo marcado vale para lo que se está tocando: cambiar la selección suelta el vértice
+     y descarta el aviso pendiente; cambiar de herramienta o de cantidad de puntos suelta
+     el punto del dibujo. Se ajusta en el render, como en el resto del repo. */
+  const claveSel = seleccion ? `${seleccion.tipo}:${seleccion.manzanaId || ''}:${seleccion.id}` : '';
+  const [claveSelAntes, setClaveSelAntes] = useState(claveSel);
+  if (claveSel !== claveSelAntes) {
+    setClaveSelAntes(claveSel);
+    setMarcado(null);
+    setFormaViva(null);
+    setAvisoReset(null);
+  }
+  const claveDibujo = `${herramienta || ''}:${pts.length}`;
+  const [claveDibujoAntes, setClaveDibujoAntes] = useState(claveDibujo);
+  if (claveDibujo !== claveDibujoAntes) {
+    setClaveDibujoAntes(claveDibujo);
+    setPuntoMarcado(null);
+  }
 
   // Dónde encuadrar al abrir: los postes y, si no hay, lo ya dibujado
   const coordsEncuadre = puntosProy.length
@@ -303,6 +361,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       setErrorCrear('El servidor no aceptó el proyecto. Vuelve a intentarlo.');
     });
     iniciarCatastro(id).catch((e) => console.error('No se pudo iniciar el catastro', e));
+    setCasasDoc({ proyectoId: id, porManzana: {} }); // recién nacido: no tiene casas en ninguna parte
     setNuevoNombre(null);
     setProyectoId(id);
   };
@@ -313,6 +372,48 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     guardado.encolar(proyectoId, CAPAS.CATASTRO, datos);
   };
 
+  /* Casas: se escriben en el acto, sin el retardo del catastro. Así Firestore ya las
+     tiene en el equipo cuando llega la primera respuesta de su escucha, y esa respuesta
+     no las pisa. Cada cambio de casas es un toque (−/+, girar, familias), no un arrastre. */
+  const guardarCasas = (manzanaId, datos) => {
+    setCasasDoc(prev => ({
+      proyectoId,
+      porManzana: { ...(prev && String(prev.proyectoId) === String(proyectoId) ? prev.porManzana : {}), [manzanaId]: datos },
+    }));
+    guardado.encolar(proyectoId, capaCasas(manzanaId), { tipo: 'casas', manzanaId, ...datos });
+    guardado.forzar().catch(() => {}); // el error ya llega al indicador de guardado
+  };
+  const quitarCasas = (manzanaId) => {
+    if (!casasPorManzana[manzanaId]) return;
+    setCasasDoc(prev => {
+      if (!prev || String(prev.proyectoId) !== String(proyectoId)) return prev;
+      const { [manzanaId]: _fuera, ...resto } = prev.porManzana;
+      return { proyectoId, porManzana: resto };
+    });
+    borrarCasas(proyectoId, manzanaId).catch((e) => console.error('No se pudieron borrar las casas', e));
+  };
+
+  /* Cambiar el formato o la forma de una manzana rehace sus casas. Si ya se tocaron a mano
+     (familias; más adelante fusiones y cortes), primero se avisa (acordado el 24-25/09). */
+  const aplicarCambioManzana = (manzanaId, { formato, latlngs } = {}) => {
+    const m = manzanas.find(x => String(x.id) === String(manzanaId));
+    if (!m) return;
+    const forma = latlngs || m.latlngs;
+    if (latlngs) guardar({ manzanas: manzanas.map(x => (String(x.id) === String(manzanaId) ? { ...x, latlngs } : x)) });
+    const f = formato || casasPorManzana[manzanaId]?.formato;
+    if (f && admiteFormatoRegular(forma)) guardarCasas(manzanaId, { formato: f, casas: generarCasas(forma, f), editadas: false });
+    setFormaViva(null);
+    setAvisoReset(null);
+  };
+  const pedirCambioManzana = (manzanaId, cambio) => {
+    if (casasPorManzana[manzanaId]?.editadas) {
+      setMarcado(null);
+      setAvisoReset({ manzanaId, ...cambio });
+      return;
+    }
+    aplicarCambioManzana(manzanaId, cambio);
+  };
+
   /* Las herramientas con tipo o texto no guardan al primer clic: dejan el
      elemento en espera y el panel derecho pide el dato que falta. */
   const finalizar = (tipo, geo) => {
@@ -321,6 +422,13 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       const { ids, ultimos } = nuevosIds(catastro, manzanas, 'manzana');
       const forma = herramienta === 'manzanaRect' ? 'rect' : 'libre';
       guardar({ manzanas: [...manzanas, { id: ids[0], latlngs: geo.latlngs, forma }], ultimos });
+      // La cuadra rectangular nace con sus casas (Dos filas, una cada 6 m) y queda
+      // elegida, con el formato a la vista para ajustarlo (25/09)
+      if (forma === 'rect' && admiteFormatoRegular(geo.latlngs)) {
+        const formato = formatoNuevo(geo.latlngs);
+        guardarCasas(ids[0], { formato, casas: generarCasas(geo.latlngs, formato), editadas: false });
+        setSeleccion({ tipo: 'manzana', id: ids[0] });
+      }
       setHerramienta(null);
       setPts([]);
       return;
@@ -362,7 +470,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const borrarSeleccion = () => {
     if (!seleccion) return;
     const { tipo, id } = seleccion;
-    if (tipo === 'manzana')  guardar({ manzanas: manzanas.filter(x => x.id !== id) });
+    if (tipo === 'manzana')  { guardar({ manzanas: manzanas.filter(x => x.id !== id) }); quitarCasas(id); }
     if (tipo === 'area')     guardar({ areas: areas.filter(x => x.id !== id) });
     if (tipo === 'marcador') guardar({ marcadores: marcadores.filter(x => x.id !== id) });
     if (tipo === 'etiqueta') guardar({ etiquetas: etiquetas.filter(x => x.id !== id) });
@@ -473,7 +581,9 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
 
   // En el celular se toca: no hay doble clic ni ratón que pase por encima
   const AYUDA = {
-    manzanaRect:  movil ? ['Toca el inicio de la base', 'Toca el fin de la base', 'Toca hasta dónde llega el ancho'] : ['Clic: inicio de la base', 'Clic: fin de la base', 'Clic: ancho'],
+    manzanaRect:  movil
+      ? ['Toca el inicio de la base', 'Fin de la base: toca, o mantén y arrastra', 'Ancho: toca, o mantén y arrastra']
+      : ['Clic: inicio de la base', 'Clic: fin de la base (o mantén y arrastra)', 'Clic: ancho (o mantén y arrastra)'],
     manzanaLibre: [movil ? 'Toca cada vértice · Cerrar para terminar' : 'Clic por vértice · doble clic para cerrar'],
     areaPoly:     [movil ? 'Toca cada vértice · Cerrar para terminar' : 'Clic por vértice · doble clic para cerrar'],
     areaCirc:     movil ? ['Toca el centro', 'Toca el borde'] : ['Clic: centro', 'Clic: borde'],
@@ -486,7 +596,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     seleccion.tipo === 'area'     ? areas.find(x => x.id === seleccion.id)      :
     seleccion.tipo === 'marcador' ? marcadores.find(x => x.id === seleccion.id) :
     seleccion.tipo === 'calle'    ? calles.find(x => x.id === seleccion.id)      :
-    etiquetas.find(x => x.id === seleccion.id)
+    seleccion.tipo === 'etiqueta' ? etiquetas.find(x => x.id === seleccion.id)  :
+    null // una casa tiene su propio panel
   );
   const anchosSeleccion = seleccion?.tipo === 'calle' && seleccionado ? anchosCalle(seleccionado.A, seleccionado.B) : null;
 
@@ -497,6 +608,23 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       ? (edicion.corte ? 'Ahora toca el borde de enfrente.' : 'Toca un borde y luego el de enfrente: la calle se parte en dos.')
       : 'Arrastra los vértices de cualquiera de los dos bordes. Se imantan a los de otras calles.';
 
+  /* En el celular, la hoja de lo elegido tapa el mapa: abajo en vertical, a la derecha en
+     horizontal. Si la manzana elegida queda debajo, el mapa se corre para dejarla a la
+     vista (25/09). Solo cuando cambia la manzana, no a cada toque dentro de ella. */
+  const manzanaEnfocada = seleccion?.tipo === 'manzana' ? seleccion.id : seleccion?.tipo === 'casa' ? seleccion.manzanaId : null;
+  useEffect(() => {
+    if (!mapa || !manzanaEnfocada || modo === 'pc' || !mapa.getSize) return;
+    const m = (catastro?.manzanas || []).find(x => String(x.id) === String(manzanaEnfocada));
+    if (!m?.latlngs?.length) return;
+    const tam = mapa.getSize();
+    const px = m.latlngs.map(p => mapa.latLngToContainerPoint(p));
+    const cx = px.reduce((s, p) => s + p.x, 0) / px.length;
+    const cy = px.reduce((s, p) => s + p.y, 0) / px.length;
+    if (modo === 'vertical' && cy > tam.y * 0.5) mapa.panBy([0, cy - tam.y * 0.3]);
+    if (modo === 'horizontal' && cx > tam.x - 300) mapa.panBy([cx - (tam.x - 300) / 2, 0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapa, manzanaEnfocada, modo]);
+
   // Los avisos del mapa (ubicación, centrar) se van solos
   useEffect(() => {
     if (!avisoMapa) return undefined;
@@ -506,6 +634,51 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
 
   const elegir = (h) => { usar(h); setGrupoAbierto(null); };
   const seleccionar = (s) => { setSeleccion(s); setGrupoAbierto(null); };
+
+  /* ── Casas (formato regular, 25/09) ──────────────────────────────────────────
+     Dos toques: el primero elige la manzana y, con ella elegida, el siguiente la casa. */
+  const manzanaSel = seleccion?.tipo === 'manzana' ? manzanas.find(x => String(x.id) === String(seleccion.id)) || null : null;
+  const docCasasSel = manzanaSel ? casasPorManzana[manzanaSel.id] || null : null;
+  const casaSel = seleccion?.tipo === 'casa'
+    ? (casasPorManzana[seleccion.manzanaId]?.casas || []).find(c => c.id === seleccion.id) || null
+    : null;
+
+  const tocarCasa = (manzanaId, casaId) => {
+    if (edicion || generacion) return;
+    const elegida = seleccion?.tipo === 'casa' ? seleccion.manzanaId : seleccion?.tipo === 'manzana' ? seleccion.id : null;
+    seleccionar(String(elegida) === String(manzanaId)
+      ? { tipo: 'casa', manzanaId, id: casaId }
+      : { tipo: 'manzana', id: manzanaId });
+  };
+
+  // Otro formato conserva el sentido de las filas; las cantidades se vuelven a calcular
+  const elegirFormato = (tipo) => {
+    if (!manzanaSel) return;
+    const actual = docCasasSel?.formato;
+    if (actual?.tipo === tipo) return;
+    pedirCambioManzana(manzanaSel.id, { formato: formatoNuevo(manzanaSel.latlngs, tipo, actual ? actual.giro % 2 : null) });
+  };
+  const cambiarCantidad = (campo, delta) => {
+    const f = docCasasSel?.formato;
+    if (!f) return;
+    const valor = Math.max(1, Math.min(MAX_CASAS, (Number(f[campo]) || 1) + delta));
+    if (valor === f[campo]) return;
+    pedirCambioManzana(manzanaSel.id, { formato: { ...f, [campo]: valor } });
+  };
+  const girar = () => {
+    const f = docCasasSel?.formato;
+    if (!f) return;
+    pedirCambioManzana(manzanaSel.id, { formato: formatoNuevo(manzanaSel.latlngs, f.tipo, siguienteGiro(f.tipo, f.giro)) });
+  };
+  const cambiarFamilias = (delta) => {
+    if (seleccion?.tipo !== 'casa') return;
+    const doc = casasPorManzana[seleccion.manzanaId];
+    if (!doc) return;
+    const casas = doc.casas.map(c => (c.id === seleccion.id
+      ? { ...c, familias: Math.max(0, Math.min(99, (Number(c.familias) || 0) + delta)) }
+      : c));
+    guardarCasas(seleccion.manzanaId, { ...doc, casas, editadas: true });
+  };
 
   const centrarProyecto = () => {
     if (coordsEncuadre.length === 0) { setAvisoMapa('El proyecto todavía no tiene nada que centrar.'); return; }
@@ -581,6 +754,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       <>
         <Interruptor label="Calles"     valor={capas.calles}     cuenta={calles.length}     onClick={() => setCapas(c => ({ ...c, calles: !c.calles }))} />
         <Interruptor label="Manzanas"   valor={capas.manzanas}   cuenta={manzanas.length}   onClick={() => setCapas(c => ({ ...c, manzanas: !c.manzanas }))} />
+        <Interruptor label="Casas"      valor={capas.casas}      cuenta={totalCasas}        onClick={() => setCapas(c => ({ ...c, casas: !c.casas }))} />
         <Interruptor label="Áreas"      valor={capas.areas}      cuenta={areas.length}      onClick={() => setCapas(c => ({ ...c, areas: !c.areas }))} />
         <Interruptor label="Marcadores" valor={capas.marcadores} cuenta={marcadores.length} onClick={() => setCapas(c => ({ ...c, marcadores: !c.marcadores }))} />
         <Interruptor label="Etiquetas"  valor={capas.etiquetas}  cuenta={etiquetas.length}  onClick={() => setCapas(c => ({ ...c, etiquetas: !c.etiquetas }))} />
@@ -588,6 +762,86 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       </>
     );
   };
+
+  /* ── Casas de la manzana elegida: formato, cantidades y girar en las regulares, o el
+     aviso antes de rehacerlas. Las irregulares esperan su formato (pronto). ───────── */
+  const stepperCasas = (label, campo) => {
+    const valor = Number(docCasasSel?.formato?.[campo]) || 1;
+    const clase = 'w-9 h-9 rounded-lg border-2 border-[var(--d-borde)] bg-[var(--d-alto)] flex items-center justify-center active:scale-95 disabled:opacity-30';
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="flex-1 text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">{label}</span>
+        <button onClick={() => cambiarCantidad(campo, -1)} disabled={valor <= 1} title="Una casa menos" className={clase}>
+          <Minus size={12} strokeWidth={3} />
+        </button>
+        <span className="w-9 text-center text-sm font-black tabular-nums">{valor}</span>
+        <button onClick={() => cambiarCantidad(campo, 1)} disabled={valor >= MAX_CASAS} title="Una casa más" className={clase}>
+          <Plus size={12} strokeWidth={3} />
+        </button>
+      </div>
+    );
+  };
+  const avisoAqui = !!avisoReset && !!manzanaSel && String(avisoReset.manzanaId) === String(manzanaSel.id);
+  const panelCasas = manzanaSel && (
+    <div className="space-y-2">
+      {avisoAqui ? (
+        <div className="rounded-xl border-2 border-amber-500/70 p-2 space-y-2">
+          <p className="text-[11px] font-black text-amber-300 leading-snug">
+            Esta manzana tiene familias cambiadas a mano. Si sigues, sus casas se rehacen y vuelven a 1 familia.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => aplicarCambioManzana(avisoReset.manzanaId, avisoReset)}
+              className={`${btn} flex-1 bg-amber-500 border-amber-600 text-[#0F1217]`}>
+              Sí, rehacer
+            </button>
+            <button onClick={() => { setAvisoReset(null); setFormaViva(null); }} className={`${btnBase} flex-1`}>No</button>
+          </div>
+        </div>
+      ) : !esRegular(manzanaSel) ? (
+        <p className="text-[10px] font-bold text-[var(--d-suave)] leading-snug">Casas: con el formato irregular (pronto).</p>
+      ) : !casasListas ? (
+        <p className="text-[10px] font-bold text-[var(--d-suave)]">Cargando casas…</p>
+      ) : (
+        <>
+          <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">Casas</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {FORMATOS.map(f => (
+              <button key={f.id} onClick={() => elegirFormato(f.id)}
+                className={`h-9 px-1 rounded-lg border-2 text-[10px] font-black uppercase tracking-wide leading-tight active:scale-95 transition-all
+                  ${docCasasSel?.formato?.tipo === f.id
+                    ? 'bg-brand-500 border-brand-600 text-white'
+                    : 'bg-[var(--d-alto)] border-[var(--d-borde)] text-[var(--d-texto)]'}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {docCasasSel ? (
+            <>
+              {docCasasSel.formato.tipo === 'tres-zonas'
+                ? <>{stepperCasas('Costados', 'nLat')}{stepperCasas('Centro', 'nCentro')}</>
+                : stepperCasas(docCasasSel.formato.tipo === 'dos-filas' ? 'Por fila' : 'Casas', 'n')}
+              <button onClick={girar} className={`${btnBase} w-full`}>
+                <RotateCw size={13} /> Girar
+                <span className="text-[var(--d-suave)] normal-case tracking-normal">
+                  {(docCasasSel.formato.giro || 0) + 1}/{girosDe(docCasasSel.formato.tipo)}
+                </span>
+              </button>
+              <p className="text-[11px] font-bold text-[var(--d-suave)]">
+                {docCasasSel.casas.length} casas · {totalFamilias(docCasasSel.casas)} familias · toca una casa para sus familias
+              </p>
+            </>
+          ) : (
+            <p className="text-[10px] font-bold text-[var(--d-suave)] leading-snug">Sin casas: elige un formato.</p>
+          )}
+        </>
+      )}
+      {!avisoAqui && (
+        <p className="text-[10px] font-bold text-[var(--d-suave)] leading-snug">
+          Toca un vértice{esRegular(manzanaSel) ? ' o un lado' : ''} para ajustarlo.
+        </p>
+      )}
+    </div>
+  );
 
   /* ── Lo que pide el dato que falta o describe lo seleccionado ─────────────── */
   let contexto = null;
@@ -689,6 +943,46 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
         </button>
       </>
     );
+  } else if (casaSel) {
+    const familias = Number(casaSel.familias) || 0;
+    contexto = (
+      <>
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">Casa</p>
+            <p className="text-sm font-black uppercase">
+              {casaSel.id} · {String(seleccion.manzanaId).replace('_', ' ')}
+            </p>
+          </div>
+          {movil && (
+            <button onClick={() => setSeleccion(null)} title="Cerrar" className={`${btnBase} w-10 px-0 shrink-0`}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)] mb-1.5">Familias</p>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => cambiarFamilias(-1)} disabled={familias <= 0} title="Una familia menos"
+              className={`${btnBase} w-10 px-0 disabled:opacity-30`}><Minus size={13} strokeWidth={3} /></button>
+            <span className="flex-1 text-center text-lg font-black tabular-nums">{familias}</span>
+            <button onClick={() => cambiarFamilias(1)} title="Una familia más"
+              className={`${btnBase} w-10 px-0`}><Plus size={13} strokeWidth={3} /></button>
+          </div>
+          <p className="mt-1 text-[10px] font-bold text-[var(--d-suave)]">
+            {familias === 0 ? 'No es vivienda (baldío, comercio, iglesia…)' : casaSel.esquina ? 'Casa de esquina' : ' '}
+          </p>
+        </div>
+        <button onClick={() => seleccionar({ tipo: 'manzana', id: seleccion.manzanaId })} className={`${btnBase} w-full`}>
+          <ArrowLeft size={13} /> Manzana
+        </button>
+        {!movil && (
+          <button onClick={() => setSeleccion(null)} className={`${btnBase} w-full`}>
+            Deseleccionar
+          </button>
+        )}
+      </>
+    );
   } else if (seleccionado) {
     contexto = (
       <>
@@ -705,11 +999,12 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
         </div>
         <div className="space-y-1 text-[11px] font-bold text-[var(--d-suave)]">
           {seleccion.tipo === 'manzana' && (
-            <>
-              {seleccionado.forma && <p>{FORMA_TEXTO[seleccionado.forma]}</p>}
-              <p>{Math.round(areaM2(seleccionado.latlngs)).toLocaleString('es-PE')} m²</p>
-              <p>{seleccionado.latlngs.length} vértices</p>
-            </>
+            // En una línea: el panel de la manzana ahora lleva sus casas debajo
+            <p>
+              {[seleccionado.forma && FORMA_TEXTO[seleccionado.forma],
+                `${Math.round(areaM2(seleccionado.latlngs)).toLocaleString('es-PE')} m²`,
+                `${seleccionado.latlngs.length} vértices`].filter(Boolean).join(' · ')}
+            </p>
           )}
           {seleccion.tipo === 'area' && (
             <>
@@ -728,6 +1023,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           {seleccion.tipo === 'marcador' && <p>{seleccionado.tipo}</p>}
           {seleccion.tipo === 'etiqueta' && <p>“{seleccionado.texto}”</p>}
         </div>
+        {seleccion.tipo === 'manzana' && panelCasas}
         {seleccion.tipo === 'calle' && (
           <button onClick={() => editarCalle(seleccionado)} className={`${btnBase} w-full`}>
             <PenLine size={13} /> Editar
@@ -841,7 +1137,11 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     return (
       <button
         key={g.id}
-        onClick={() => setGrupoAbierto(v => (v === g.id ? null : g.id))}
+        onClick={() => {
+          // Abrir un grupo suelta lo elegido: su hoja no se veía detrás de la de la selección
+          if (grupoAbierto !== g.id) setSeleccion(null);
+          setGrupoAbierto(v => (v === g.id ? null : g.id));
+        }}
         title={g.label}
         className={`flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all active:scale-95
           ${vertical ? 'w-11 h-11' : 'flex-1 h-12'}
@@ -901,7 +1201,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
 
   /* ── Barras de arriba del mapa: dibujo en curso y manzanas desde calles ─────── */
   const claseBarraSup = movil
-    ? 'absolute top-2 inset-x-2 z-[500] flex flex-wrap items-center justify-center gap-1.5'
+    ? `absolute top-2 left-2 ${modo === 'horizontal' && contexto ? 'right-[17.5rem]' : 'right-2'} z-[500] flex flex-wrap items-center justify-center gap-1.5`
     : 'absolute top-3 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-2 max-w-[calc(100%-7rem)]';
   // Sobre el satélite, un botón apagado transparente no se ve: va sólido y en gris
   const apagadoSobreMapa = 'disabled:bg-[var(--d-alto)] disabled:border-[var(--d-borde)] disabled:text-[#5B6474] disabled:shadow-none';
@@ -968,13 +1268,21 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       </button>
     </div>
   );
+  // Un punto del dibujo marcado se mueve desde lejos; "Listo" lo suelta (25/09)
   const barraAyuda = herramienta && herramienta !== 'calle' && (
     <div className={claseBarraSup}>
-      <div className="rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] px-3 h-10 flex items-center shadow-xl">
+      <div className="rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] px-3 min-h-10 flex items-center shadow-xl">
         <p className="text-[10px] font-black uppercase tracking-widest text-brand-500">
-          {AYUDA[herramienta][Math.min(pts.length, AYUDA[herramienta].length - 1)]}
+          {puntoMarcado != null
+            ? (movil ? 'Punto marcado · arrastra un dedo en cualquier parte' : 'Punto marcado · arrastra en cualquier parte del mapa')
+            : AYUDA[herramienta][Math.min(pts.length, AYUDA[herramienta].length - 1)]}
         </p>
       </div>
+      {puntoMarcado != null && (
+        <button onClick={() => setPuntoMarcado(null)} className={`${btn} bg-brand-500 border-brand-600 text-white shadow-xl`}>
+          <Check size={13} /> Listo
+        </button>
+      )}
       <button onClick={() => setPts(v => v.slice(0, -1))} disabled={pts.length === 0}
         className={`${btnBase} shadow-xl ${apagadoSobreMapa}`}>
         <Undo2 size={13} /> Atrás
@@ -990,6 +1298,23 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       )}
       <button onClick={cancelarDibujo} title="Cancelar" className={`${btn} bg-[var(--d-alto)] border-red-500/60 text-red-400 shadow-xl`}>
         <X size={13} />
+      </button>
+    </div>
+  );
+
+  // Vértice o lado marcado de la manzana elegida: se mueve desde lejos (25/09)
+  const barraMarcado = marcado && manzanaSel && !herramienta && (
+    <div className={claseBarraSup}>
+      <div className="rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] px-3 py-1.5 min-h-10 flex flex-col justify-center shadow-xl">
+        <p className="text-[10px] font-black uppercase tracking-widest text-brand-500">
+          {marcado.tipo === 'vertice' ? 'Vértice marcado' : 'Lado marcado'}
+        </p>
+        <p className="text-[10px] font-bold text-[var(--d-suave)]">
+          {movil ? 'Arrastra un dedo en cualquier parte · con dos dedos se mueve el mapa' : 'Arrastra en cualquier parte del mapa para moverlo'}
+        </p>
+      </div>
+      <button onClick={() => setMarcado(null)} className={`${btn} bg-brand-500 border-brand-600 text-white shadow-xl`}>
+        <Check size={13} /> Listo
       </button>
     </div>
   );
@@ -1067,7 +1392,37 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           pts={pts} setPts={setPts}
           onFinalizar={finalizar}
           seleccion={seleccion} onSeleccionar={(s) => { if (!edicion && !generacion) seleccionar(s); }}
+          puntoMarcado={puntoMarcado} setPuntoMarcado={setPuntoMarcado}
+          onClicVacio={() => setMarcado(null)}
+          manzanaViva={formaViva ? { id: formaViva.manzanaId, latlngs: formaViva.latlngs } : null}
         />
+
+        {/* Casas encima de las manzanas: el primer toque elige la manzana y el segundo la casa */}
+        <DisenoCasas
+          casasPorManzana={casasPorManzana}
+          vivas={casasVivas}
+          visible={capas.casas && capas.manzanas}
+          herramienta={paso === 'catastro' ? herramienta : null}
+          seleccion={seleccion}
+          onTocarCasa={tocarCasa}
+        />
+
+        {/* Vértices (y lados, en las regulares) de la manzana elegida, para ajustarlos */}
+        {manzanaSel && paso === 'catastro' && !herramienta && !edicion && !generacion && !avisoAqui && (
+          <DisenoEdicionManzana
+            manzana={manzanaSel}
+            forma={formaViva && String(formaViva.manzanaId) === String(manzanaSel.id) ? formaViva.latlngs : null}
+            marcado={marcado}
+            onMarcar={setMarcado}
+            conLados={esRegular(manzanaSel)}
+            manzanas={manzanas}
+            onArrastre={(latlngs) => setFormaViva({ manzanaId: manzanaSel.id, latlngs })}
+            onSoltar={(latlngs) => {
+              if (!latlngs) { setFormaViva(null); return; }
+              pedirCambioManzana(manzanaSel.id, { latlngs });
+            }}
+          />
+        )}
 
         {/* Candidatas a manzana, encima de todo mientras se revisan */}
         {generacion && <DisenoCandidatas candidatas={generacion.candidatas} onAlternar={alternarCandidata} />}
@@ -1109,6 +1464,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       )}
 
       {barraGeneracion}
+      {barraMarcado}
       {barraCalle}
       {barraAyuda}
 
@@ -1249,6 +1605,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           <span>{puntosProy.length} postes</span>
           <span>{calles.length} calles</span>
           <span>{manzanas.length} manzanas</span>
+          <span>{totalCasas} casas</span>
           <span>{areas.length} áreas</span>
           <span>{marcadores.length + etiquetas.length} puntuales</span>
           <EstadoGuardado cargando={cargando} {...estadoGuardado} />

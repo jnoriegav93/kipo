@@ -1,4 +1,4 @@
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { aFirestore, desdeFirestore } from '../utils/disenoGeo';
 
@@ -79,3 +79,24 @@ export const crearGuardadoDiferido = (ms = 600, onEstado = () => {}) => {
 };
 
 export const CAPAS = { CATASTRO: 'catastro', RED: 'red', LOTES: 'lotes', META: 'meta' };
+
+/* Casas de las manzanas (formato regular, 25/09): un documento por manzana,
+   `casas_{manzanaId}`, como se acordó el 24/09. Cada uno lleva el formato con que se
+   generaron, las casas tal como quedaron y si ya se tocaron a mano (`editadas`).
+   `tipo: 'casas'` es lo que permite escucharlos todos con una consulta. */
+export const capaCasas = (manzanaId) => `casas_${manzanaId}`;
+
+export const suscribirCasas = (proyectoId, onDatos) => onSnapshot(
+  query(collection(db, 'proyectos', String(proyectoId), 'diseno'), where('tipo', '==', 'casas')),
+  (snap) => {
+    const porManzana = {};
+    snap.docs.forEach(d => {
+      const x = desdeFirestore(d.data());
+      if (x.manzanaId) porManzana[x.manzanaId] = x;
+    });
+    onDatos(porManzana);
+  },
+  (e) => { console.error('Error leyendo las casas', e); onDatos({}); },
+);
+
+export const borrarCasas = (proyectoId, manzanaId) => deleteDoc(refCapa(proyectoId, capaCasas(manzanaId)));
