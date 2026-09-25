@@ -20,7 +20,11 @@ Guía para dejar el proyecto funcionando (build + deploy) en otra PC con Windows
 
 ## 2) Carpeta del proyecto
 
-Copiá toda la carpeta `app-fibra-pwa` tal cual. **Importante**, asegurate de que estén estos archivos/carpetas que NO están en git pero hacen falta:
+**Si la otra PC ya tiene el proyecto:** basta con `git pull` en la carpeta (GitHub
+`jnoriegav93/kipo`; ramas `main` y `equipos-por-proyecto`). Antes de pasarse de PC, en
+la que se deja hay que hacer commit **y push**: lo que no se sube no llega.
+
+Si es una PC sin el proyecto, copiá toda la carpeta tal cual. **Importante**, asegurate de que estén estos archivos/carpetas que NO están en git pero hacen falta:
 
 - `.env`  ← variables de entorno (necesario, no se sube a git)
 - `.firebaserc` y `firebase.json` ← apuntan al proyecto `kipo-d29af`
@@ -93,8 +97,8 @@ Datos del proyecto:
 
 ## 7) (Opcional) Llevar la "memoria" de Claude
 
-El contexto que Claude recuerda del proyecto está en la carpeta personal del usuario, no en el proyecto:
+El contexto que Claude recuerda del proyecto está en la carpeta personal del usuario, no en el proyecto. El nombre de la carpeta sale de la ruta del proyecto; para `C:\Users\USER\Documents\Kipo\kipo` es:
 
-`C:\Users\<TU_USUARIO>\.claude\projects\c--Users-USER-app-fibra-pwa\`
+`C:\Users\<TU_USUARIO>\.claude\projects\c--Users-USER-Documents-Kipo-kipo\`
 
-Si querés que Claude tenga el mismo contexto en la PC nueva, copiá esa carpeta a la ruta equivalente del nuevo usuario. Si no, no pasa nada: Claude se reorienta leyendo el código y este archivo.
+Desde el 24/09 lo importante ya viaja con git: las preferencias de trabajo están en `CLAUDE.md` ("Cómo trabaja el usuario") y el estado y las decisiones en `CONTEXTO.md`. Copiar la memoria es opcional.

@@ -4,24 +4,32 @@ Documento de traspaso entre sesiones y entre máquinas. Se actualiza al cerrar
 cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 `CLAUDE.md`; esto es el **estado**.
 
-Última actualización: 23 de septiembre de 2026.
+Última actualización: 24 de septiembre de 2026, 04:20 (hora de Lima).
 
-> **Ahora:** el modo Diseño sigue en pausa. El 22/09 se abrió el trabajo de
-> **equipos**; tras las tandas A y B1, el 23/09 se decidió **rediseñarlo desde
-> cero**: cada proyecto con sus miembros, y amigos en lugar de equipos. Ver
-> "Rediseño de equipos" más abajo. **Pasos 0 a 3 hechos y en producción**; el 3
-> salió en tres entregas: invitar, amigos y avisos, y traspasar (último SELLO:
-> 23/09/26, 22:08). El usuario los prueba con dos cuentas. Falta el resultado de
-> VERIFICAR de la migración. El 24/09 se retiró la pantalla vieja de EQUIPOS y salió
-> el paso 4, el candado por rol, en dos entregas, y el paso 5, retirar lo viejo
-> (SELLO: 24/09/26, 01:31). **El paso 6 cerró el rediseño el 24/09** (último SELLO:
-> 24/09/26, 03:37): `usuarios` cerrada, el candado por rol también en el servidor, el
-> sistema viejo fuera de la app, las funciones y las reglas, los datos viejos limpios
-> con respaldo y las herramientas de la migración retiradas. Esa misma madrugada salió
-> lo que se había dejado para el final: llevar armados con ferretería creada a mano
-> (último SELLO: 24/09/26, 04:04; ver "Armados con ferretería creada a mano"). Faltan
-> las pruebas del usuario en celulares. El trabajo sigue en la rama
-> `equipos-por-proyecto`, y `main` se adelanta a ella en cada despliegue.
+> **Ahora:** el **rediseño de equipos está terminado y en producción** (último SELLO:
+> 24/09/26, 04:04). Empezó el 22/09 con el trabajo de equipos; el 23/09 se decidió
+> rehacerlo desde cero, y salió en pasos del 0 al 6 entre el 23 y el 24/09:
+> - cada proyecto con sus miembros: dueño, editores y supervisores; el rol vale por obra;
+> - amigos en lugar de equipos;
+> - invitación por link (un uso) o por QR;
+> - traspaso de la obra a otro miembro;
+> - candado por rol en la app y en el servidor;
+> - `usuarios` cerrada;
+> - el sistema viejo retirado de la app, las funciones, las reglas y los datos (con
+>   respaldo).
+>
+> Al final salió también lo que se había dejado para el final: llevar armados con
+> ferretería creada a mano. Ver "Rediseño de equipos" y "Armados con ferretería creada
+> a mano", más abajo.
+>
+> **Falta:** que el usuario pruebe en celulares los pasos 3 a 6 y los armados. Ante
+> cualquier "no funciona", lo primero es confirmar el SELLO en Diagnóstico.
+>
+> **Después:** el modo Diseño, en pausa desde el 22/09 (ver "En qué estamos: el modo
+> DISEÑO").
+>
+> El trabajo va en la rama `equipos-por-proyecto`. `main` se adelanta a ella en cada
+> despliegue, y las dos se suben a GitHub (`jnoriegav93/kipo`).
 
 ---
 

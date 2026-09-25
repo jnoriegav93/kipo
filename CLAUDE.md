@@ -60,6 +60,35 @@ lo que vale ahí es `node -c` y el `require` de prueba.
 
 ---
 
+## Cómo trabaja el usuario
+
+Viene de la memoria de Claude en la PC del rediseño de equipos (23-24/09). Está aquí
+para que viaje con el proyecto a cualquier máquina.
+
+- **Commit y push al cerrar cada tanda, con `CONTEXTO.md` al día.** Alterna entre dos
+  PCs y lo único que viaja es git (GitHub `jnoriegav93/kipo`, ramas `main` y
+  `equipos-por-proyecto`). Un commit sin push no llega a la otra PC.
+- **Desplegar cada cambio verificado sin preguntar** y reportar el SELLO ("súbelo,
+  siempre súbelo", 15/09). Las reglas de Firestore van aparte (ver arriba).
+- **Prueba en producción, con varios celulares y cuentas.** Desde su PC no puede usar
+  más de una cuenta (bloqueo por dispositivo). Nada de servidor local ni páginas en
+  localhost: lo que haya que correr como admin va en el panel Admin de la app, con
+  simulacro antes de escribir.
+- **Conversar antes de codear una función nueva:** una propuesta corta y dudas numeradas
+  en términos de campo, que contesta por número. Después, un resumen de lo acordado, y
+  recién ahí programar. No volver a preguntar lo ya acordado: está en CONTEXTO.md.
+- **No parchar:** al segundo o tercer parche sobre la misma pieza, parar y proponer
+  alternativas con su costo, incluida la de descartar el enfoque.
+- **No hacerlo esperar a ciegas.** Las tareas en segundo plano se vigilan a tiempo, y
+  para mapear código conviene buscar directo en vez de delegar.
+- **Despliegues y commits, como comandos sueltos:** `firebase deploy …` y `git commit …`
+  solos, sin `cd … &&` ni otros comandos encadenados. Así calzan con los permisos de
+  `.claude/settings.json` y el filtro automático de Claude Code no los frena (24/09).
+- **App_Design (GPON Design)** es un prototipo local que nunca se despliega: solo sirve
+  de referencia para portar herramientas al modo Diseño de Kipo.
+
+---
+
 ## Trampas que ya costaron caro
 
 **Finales de línea mezclados.** El repo tiene CRLF y LF. Cualquier script que
