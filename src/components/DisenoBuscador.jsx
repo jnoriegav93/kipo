@@ -84,7 +84,7 @@ export default function DisenoBuscador({ mapa, clase = 'w-72 max-w-[40vw]', auto
           title="Buscar"
           className="w-10 h-full flex items-center justify-center text-[var(--d-suave)] hover:text-[var(--d-texto)] disabled:opacity-40"
         >
-          {estado === 'buscando' ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} strokeWidth={2.5} />}
+          {estado === 'buscando' ? <Loader2 size={19} className="animate-spin" /> : <Search size={19} strokeWidth={2.5} />}
         </button>
       </form>
 
@@ -98,7 +98,7 @@ export default function DisenoBuscador({ mapa, clase = 'w-72 max-w-[40vw]', auto
                 onClick={() => ir(lugar)}
                 className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-white/5 border-b border-[var(--d-borde)]"
               >
-                <MapPin size={14} className="text-brand-500 shrink-0 mt-0.5" />
+                <MapPin size={16} className="text-brand-500 shrink-0 mt-0.5" />
                 <span className="min-w-0">
                   <span className="block text-sm font-black truncate">{nombre}</span>
                   <span className="block text-[11px] font-bold text-[var(--d-suave)] truncate">{resto.join(',').trim()}</span>
@@ -115,7 +115,7 @@ export default function DisenoBuscador({ mapa, clase = 'w-72 max-w-[40vw]', auto
           <div className="h-8 px-3 flex items-center justify-between">
             <span className="text-[9px] font-bold text-[var(--d-suave)]">Datos © OpenStreetMap</span>
             <button onClick={cerrar} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)] hover:text-[var(--d-texto)]">
-              <X size={11} /> Cerrar
+              <X size={14} /> Cerrar
             </button>
           </div>
         </div>

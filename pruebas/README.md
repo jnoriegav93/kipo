@@ -53,6 +53,7 @@ node pruebas/test-diseno-manzanas-ui.mjs  # CON TOQUES: Diseño, generar manzana
 node pruebas/test-diseno-movil-ui.mjs     # CON TOQUES: Diseño en celular vertical, horizontal y PC
 node pruebas/test-diseno-crear-ui.mjs     # CON TOQUES: crear proyecto en Diseño sin señal, orden de escrituras, rechazo
 node pruebas/test-diseno-casas-ui.mjs     # CON TOQUES Y GESTOS: formato regular, familias, vértices y lados con el dedo
+node pruebas/test-diseno-trazo-ui.mjs     # CON TOQUES: al volver a dibujar no queda una línea colgando del dibujo anterior
 node pruebas/test-datos-proyectos-ui.mjs  # useFirebaseData con React: qué escuchas se abren y cierran
 ```
 

@@ -71,12 +71,12 @@ export const CircleMarker = ({ center, radius, pathOptions = {}, eventHandlers =
   />
 );
 export const Polyline = ({ positions = [], pathOptions = {}, eventHandlers = {} }) => (
-  (eventHandlers.click || pathOptions.className) ? (
-    <div
-      data-linea=""
-      data-clase={pathOptions.className || ''}
-      data-puntos={JSON.stringify(positions)}
-      onClick={(e) => eventHandlers.click && eventHandlers.click(e)}
-    />
-  ) : null
+  <div
+    data-linea=""
+    data-clase={pathOptions.className || ''}
+    data-color={pathOptions.color || ''}
+    data-trazo={pathOptions.dashArray || ''}
+    data-puntos={JSON.stringify(positions)}
+    onClick={(e) => eventHandlers.click && eventHandlers.click(e)}
+  />
 );

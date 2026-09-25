@@ -117,6 +117,12 @@ durante el render.
 
 **Flexbox:** un hijo con `flex-1` necesita `min-h-0` para poder encogerse.
 
+**Tailwind: dos clases de la misma propiedad no se pisan por su orden en `className`.**
+Gana la que va después en la hoja de Tailwind, no la última escrita. Un estilo base con
+`px-3` y un botón de ícono con `px-0` encima quedaba con `px-3`: con 40 px de ancho, el
+ícono se encogía a 12 px (modo Diseño, 25/09). Para variar, armar otra clase sin la
+utilidad en conflicto (como `btnIcono`) en vez de sumarle la contraria.
+
 **Firestore no acepta arrays dentro de arrays.** Con `[[lat, lng], ...]`, `setDoc`
 lanza en el acto y no se guarda nada del documento. Los vértices van como
 `{lat, lng}`, como en las fibras; el modo Diseño convierte al guardar y al leer

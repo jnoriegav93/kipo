@@ -107,6 +107,9 @@ export default function DisenoCalles({
 }) {
   const [raton, setRaton] = useState(null);
   const [arrastre, setArrastre] = useState(null);   // { borde, idx, punto, imantado } mientras se arrastra
+  // Sin trazo en curso no hay tramo que mostrar: el último lugar del dedo de una calle
+  // anterior no puede quedar colgando para la siguiente (25/09)
+  if (trazo.length === 0 && raton !== null) setRaton(null);
 
   /* Resuelve dónde cae realmente un punto: primero el imán a vértices, y si no,
      el imán de ángulo respecto al segmento anterior. */

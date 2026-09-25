@@ -7,7 +7,8 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 Última actualización: 25 de septiembre de 2026, 10:45 (hora de Lima).
 
 > **Ahora:** el **modo Diseño** (catastro), que solo ve el admin. Último SELLO:
-> 25/09/26, 10:38. Lo último:
+> 25/09/26, 14:28 (arreglos: la línea colgada al volver a dibujar y los íconos chicos;
+> ver "Arreglos del 25/09 por la tarde"). Lo último:
 > - 24/09: manzanas desde calles; Diseño en el celular (vertical, horizontal y PC); crear
 >   un proyecto en Diseño sin esperar al servidor, que quitó también una descarga de más
 >   en toda la app (ver "Crear un proyecto en Diseño sin esperar");
@@ -237,6 +238,7 @@ por manzana.
 | **Crear un proyecto en Diseño sin esperar** (24/09, el usuario: "se queda en cargando y demora"): ver abajo | hecho — SELLO: 24/09/26, 21:53 |
 | **Formato regular** (25/09): la cuadra rectangular nace con sus casas; Dos filas, Tres zonas, Una fila, − / +, Girar; familias por casa; aviso antes de rehacer. Ver abajo | hecho — SELLO: 25/09/26, 10:38 |
 | **Vértices con el dedo** (25/09, pedido del usuario): marcar un vértice o un lado y moverlo desde lejos; presionar y arrastrar el 2.º y 3.er punto de la cuadra rectangular. Ver abajo | hecho — SELLO: 25/09/26, 10:38 |
+| **Línea colgada al volver a dibujar** y **íconos chicos** (25/09, el usuario). Ver "Arreglos del 25/09 por la tarde" | hecho — SELLO: 25/09/26, 14:28 |
 
 ### Diseño en el celular (24/09)
 
@@ -392,6 +394,28 @@ Probado:
 - Mirado en capturas de `harness-diseno/casas.html` (local, fuera de git) a 390 × 844 y
   844 × 390, con celular táctil emulado.
 - **Falta** la prueba del usuario en su celular.
+
+### Arreglos del 25/09 por la tarde
+
+- **Línea colgada.** El usuario: "cuando detengo el dibujado de una cuadra y empiezo de
+  nuevo, el primer punto jala una línea desde el último punto de la edición anterior".
+  - Causa: la vista previa guardaba la última posición del dedo (`raton`) y nadie la
+    borraba al cancelar o al cerrar con el botón. En el celular, cada toque manda también
+    un movimiento de ratón, y esa posición quedaba guardada.
+  - Arreglo: sin puntos puestos se borra, en `DisenoCatastro` y en `DisenoCalles`, que
+    tenía el mismo defecto.
+  - Prueba: `pruebas/test-diseno-trazo-ui.mjs`, con una cuadra y una calle. La versión
+    anterior falla las dos.
+- **Íconos chicos.** El usuario: "los íconos de los botones de esta sección se ven muy
+  pequeños".
+  - Causa principal, medida en la página de prueba: los botones de solo ícono de 40 px
+    llevaban `px-3` (del estilo base) y `px-0`, y en Tailwind gana `px-3`. Quedaban 12 px
+    por lado y el ícono se encogía a 12 px, fuera del tamaño que fuera.
+  - Ahora esos botones usan `btnIcono`, sin relleno. Además, ningún ícono de Diseño se
+    encoge (`[&_svg]:shrink-0` en la raíz).
+  - Tamaños nuevos: botones con texto de 13 a 16 px; − / + y herramientas de 12-14 a
+    16-17 px; cerrar y cancelar a 18 px; barra de grupos, mapa y cabecera de 16-18 a
+    20-22 px.
 
 ## Qué sigue, en orden
 

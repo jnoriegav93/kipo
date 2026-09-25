@@ -48,6 +48,10 @@ export default function DisenoCatastro({
 }) {
   const [raton, setRaton] = useState(null);
   const inicioPunto = useRef(null);
+  // Sin puntos puestos no hay tramo en curso. Sin esto, el último lugar del dedo de un
+  // dibujo cancelado (o cerrado con el botón) quedaba guardado, y al empezar otro salía
+  // una línea desde ahí hasta el primer punto nuevo (25/09).
+  if (pts.length === 0 && raton !== null) setRaton(null);
 
   const imantar = (ll) => {
     const bruto = Array.isArray(ll) ? ll : [ll.lat, ll.lng];

@@ -117,7 +117,7 @@ const Seccion = ({ titulo, abierta, onAlternar, children }) => (
       className="w-full flex items-center justify-between px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)] hover:text-[var(--d-texto)] transition-colors"
     >
       {titulo}
-      <ChevronDown size={13} className={`transition-transform ${abierta ? 'rotate-180' : ''}`} />
+      <ChevronDown size={16} className={`transition-transform ${abierta ? 'rotate-180' : ''}`} />
     </button>
     {abierta && <div className="px-2.5 pb-3 space-y-1.5">{children}</div>}
   </div>
@@ -143,7 +143,7 @@ const Interruptor = ({ label, valor, onClick, cuenta }) => (
   >
     <span className={`w-3.5 h-3.5 rounded border-2 shrink-0 flex items-center justify-center
       ${valor ? 'bg-brand-500 border-brand-600' : 'border-[var(--d-borde2)]'}`}>
-      {valor && <Check size={9} strokeWidth={4} className="text-white" />}
+      {valor && <Check size={11} strokeWidth={4} className="text-white" />}
     </span>
     <span className="flex-1 text-left text-[11px] font-black uppercase tracking-widest text-[var(--d-texto)]">{label}</span>
     <span className="text-[10px] font-black text-[var(--d-suave)]">{cuenta}</span>
@@ -578,6 +578,10 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
 
   const btn = 'h-10 px-3 rounded-xl border-2 flex items-center justify-center gap-1.5 text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all';
   const btnBase = `${btn} bg-[var(--d-alto)] border-[var(--d-borde)] text-[var(--d-texto)] hover:border-[var(--d-borde2)]`;
+  /* Botón de solo ícono, cuadrado de 40 px y sin relleno. Antes era btnBase con "w-10 px-0",
+     pero en Tailwind gana px-3 sobre px-0 (va después en la hoja de estilos): quedaban 12 px
+     por lado y el ícono se encogía a 12 px, lo pusiera uno del tamaño que fuera (25/09). */
+  const btnIcono = 'w-10 h-10 shrink-0 rounded-xl border-2 flex items-center justify-center active:scale-95 transition-all bg-[var(--d-alto)] border-[var(--d-borde)] text-[var(--d-texto)] hover:border-[var(--d-borde2)]';
 
   // En el celular se toca: no hay doble clic ni ratón que pase por encima
   const AYUDA = {
@@ -714,12 +718,12 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       <span className="flex-1 text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">Ancho</span>
       <button onClick={() => setAnchoDefecto(v => Math.max(3, v - 1))}
         className="w-9 h-9 rounded-lg border-2 border-[var(--d-borde)] bg-[var(--d-alto)] flex items-center justify-center active:scale-95">
-        <Minus size={12} strokeWidth={3} />
+        <Minus size={16} strokeWidth={3} />
       </button>
       <span className="w-10 text-center text-sm font-black tabular-nums">{anchoDefecto}</span>
       <button onClick={() => setAnchoDefecto(v => Math.min(40, v + 1))}
         className="w-9 h-9 rounded-lg border-2 border-[var(--d-borde)] bg-[var(--d-alto)] flex items-center justify-center active:scale-95">
-        <Plus size={12} strokeWidth={3} />
+        <Plus size={16} strokeWidth={3} />
       </button>
     </div>
   );
@@ -727,27 +731,27 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const contenidoGrupo = (id) => {
     if (id === 'calles') return (
       <>
-        <Herramienta icono={<Spline size={14} strokeWidth={2.5} />} label="Dibujar calle" activa={herramienta === 'calle'} onClick={() => elegir('calle')} />
+        <Herramienta icono={<Spline size={17} strokeWidth={2.5} />} label="Dibujar calle" activa={herramienta === 'calle'} onClick={() => elegir('calle')} />
         {stepperAncho}
       </>
     );
     if (id === 'manzanas') return (
       <>
-        <Herramienta icono={<LayoutGrid size={14} strokeWidth={2.5} />} label="Desde calles" activa={!!generacion} onClick={() => { generarDesdeCalles(); setGrupoAbierto(null); }} />
-        <Herramienta icono={<Square size={14} strokeWidth={2.5} />}  label="Cuadra rectangular" activa={herramienta === 'manzanaRect'}  onClick={() => elegir('manzanaRect')} />
-        <Herramienta icono={<PenTool size={14} strokeWidth={2.5} />} label="Cuadra irregular"   activa={herramienta === 'manzanaLibre'} onClick={() => elegir('manzanaLibre')} />
+        <Herramienta icono={<LayoutGrid size={17} strokeWidth={2.5} />} label="Desde calles" activa={!!generacion} onClick={() => { generarDesdeCalles(); setGrupoAbierto(null); }} />
+        <Herramienta icono={<Square size={17} strokeWidth={2.5} />}  label="Cuadra rectangular" activa={herramienta === 'manzanaRect'}  onClick={() => elegir('manzanaRect')} />
+        <Herramienta icono={<PenTool size={17} strokeWidth={2.5} />} label="Cuadra irregular"   activa={herramienta === 'manzanaLibre'} onClick={() => elegir('manzanaLibre')} />
       </>
     );
     if (id === 'areas') return (
       <>
-        <Herramienta icono={<PenTool size={14} strokeWidth={2.5} />}    label="Área (polígono)" activa={herramienta === 'areaPoly'} onClick={() => elegir('areaPoly')} />
-        <Herramienta icono={<CircleIcon size={14} strokeWidth={2.5} />} label="Área (círculo)"  activa={herramienta === 'areaCirc'} onClick={() => elegir('areaCirc')} />
+        <Herramienta icono={<PenTool size={17} strokeWidth={2.5} />}    label="Área (polígono)" activa={herramienta === 'areaPoly'} onClick={() => elegir('areaPoly')} />
+        <Herramienta icono={<CircleIcon size={17} strokeWidth={2.5} />} label="Área (círculo)"  activa={herramienta === 'areaCirc'} onClick={() => elegir('areaCirc')} />
       </>
     );
     if (id === 'puntuales') return (
       <>
-        <Herramienta icono={<MapPin size={14} strokeWidth={2.5} />} label="Marcador" activa={herramienta === 'marcador'} onClick={() => elegir('marcador')} />
-        <Herramienta icono={<Type size={14} strokeWidth={2.5} />}   label="Etiqueta" activa={herramienta === 'etiqueta'} onClick={() => elegir('etiqueta')} />
+        <Herramienta icono={<MapPin size={17} strokeWidth={2.5} />} label="Marcador" activa={herramienta === 'marcador'} onClick={() => elegir('marcador')} />
+        <Herramienta icono={<Type size={17} strokeWidth={2.5} />}   label="Etiqueta" activa={herramienta === 'etiqueta'} onClick={() => elegir('etiqueta')} />
       </>
     );
     return (
@@ -772,11 +776,11 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       <div className="flex items-center gap-1.5">
         <span className="flex-1 text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">{label}</span>
         <button onClick={() => cambiarCantidad(campo, -1)} disabled={valor <= 1} title="Una casa menos" className={clase}>
-          <Minus size={12} strokeWidth={3} />
+          <Minus size={16} strokeWidth={3} />
         </button>
         <span className="w-9 text-center text-sm font-black tabular-nums">{valor}</span>
         <button onClick={() => cambiarCantidad(campo, 1)} disabled={valor >= MAX_CASAS} title="Una casa más" className={clase}>
-          <Plus size={12} strokeWidth={3} />
+          <Plus size={16} strokeWidth={3} />
         </button>
       </div>
     );
@@ -821,7 +825,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
                 ? <>{stepperCasas('Costados', 'nLat')}{stepperCasas('Centro', 'nCentro')}</>
                 : stepperCasas(docCasasSel.formato.tipo === 'dos-filas' ? 'Por fila' : 'Casas', 'n')}
               <button onClick={girar} className={`${btnBase} w-full`}>
-                <RotateCw size={13} /> Girar
+                <RotateCw size={16} /> Girar
                 <span className="text-[var(--d-suave)] normal-case tracking-normal">
                   {(docCasasSel.formato.giro || 0) + 1}/{girosDe(docCasasSel.formato.tipo)}
                 </span>
@@ -856,24 +860,24 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)] mb-1.5">Ancho de arranque</p>
           <div className="flex items-center gap-1.5">
             <button onClick={() => setBorrador(b => ({ ...b, ancho: Math.max(3, b.ancho - 1) }))}
-              className={btnBase + ' w-10 px-0'}><Minus size={13} strokeWidth={3} /></button>
+              className={btnIcono}><Minus size={16} strokeWidth={3} /></button>
             <span className="flex-1 text-center text-lg font-black tabular-nums">{borrador.ancho} m</span>
             <button onClick={() => setBorrador(b => ({ ...b, ancho: Math.min(40, b.ancho + 1) }))}
-              className={btnBase + ' w-10 px-0'}><Plus size={13} strokeWidth={3} /></button>
+              className={btnIcono}><Plus size={16} strokeWidth={3} /></button>
           </div>
         </div>
         <button onClick={() => setBorrador(b => ({ ...b, lado: b.lado * -1 }))} className={btnBase + ' w-full'}>
-          <FlipHorizontal size={13} /> Cambiar lado
+          <FlipHorizontal size={16} /> Cambiar lado
         </button>
         <p className="text-[10px] font-bold text-[var(--d-suave)] leading-snug">
           El ancho es solo el arranque: después se mueve cada borde por su cuenta.
         </p>
         <div className={movil ? 'grid grid-cols-2 gap-2' : 'space-y-3'}>
           <button onClick={confirmarCalle} className={btn + ' w-full bg-brand-500 border-brand-600 text-white'}>
-            <Check size={13} /> Confirmar
+            <Check size={16} /> Confirmar
           </button>
           <button onClick={() => setBorrador(null)} className={btn + ' w-full bg-[var(--d-alto)] border-red-500/60 text-red-400'}>
-            <X size={13} /> Descartar
+            <X size={16} /> Descartar
           </button>
         </div>
       </>
@@ -889,19 +893,19 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           <p>{edicion.A.length + edicion.B.length} vértices</p>
         </div>
         <div className={movil ? 'grid grid-cols-2 gap-2' : 'space-y-1.5'}>
-          <Herramienta icono={<Plus size={14} strokeWidth={2.5} />} label="Agregar vértice"
+          <Herramienta icono={<Plus size={17} strokeWidth={2.5} />} label="Agregar vértice"
             activa={edicion.modo === 'agregar'} onClick={() => alternarModoEdicion('agregar')} />
-          <Herramienta icono={<Scissors size={14} strokeWidth={2.5} />} label="Cortar calle"
+          <Herramienta icono={<Scissors size={17} strokeWidth={2.5} />} label="Cortar calle"
             activa={edicion.modo === 'cortar'} onClick={() => alternarModoEdicion('cortar')} />
         </div>
         <p className="text-[10px] font-bold text-[var(--d-suave)] leading-snug">{ayudaEdicion}</p>
         {edicion.aviso && <p className="text-[11px] font-black text-red-400">{edicion.aviso}</p>}
         <div className={movil ? 'grid grid-cols-2 gap-2' : 'space-y-3'}>
           <button onClick={guardarEdicion} className={btn + ' w-full bg-brand-500 border-brand-600 text-white'}>
-            <Check size={13} /> Guardar
+            <Check size={16} /> Guardar
           </button>
           <button onClick={() => setEdicion(null)} className={btn + ' w-full bg-[var(--d-alto)] border-red-500/60 text-red-400'}>
-            <X size={13} /> Cancelar
+            <X size={16} /> Cancelar
           </button>
         </div>
       </>
@@ -924,7 +928,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
             />
             <button onClick={() => confirmarPendiente()} disabled={!texto.trim()}
               className={`${btn} w-full bg-brand-500 border-brand-600 text-white disabled:opacity-30`}>
-              <Check size={13} /> Colocar
+              <Check size={16} /> Colocar
             </button>
           </>
         ) : (
@@ -939,7 +943,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           </div>
         )}
         <button onClick={() => setPendiente(null)} className={`${btn} w-full bg-[var(--d-alto)] border-red-500/60 text-red-400`}>
-          <X size={13} /> Descartar
+          <X size={16} /> Descartar
         </button>
       </>
     );
@@ -955,8 +959,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
             </p>
           </div>
           {movil && (
-            <button onClick={() => setSeleccion(null)} title="Cerrar" className={`${btnBase} w-10 px-0 shrink-0`}>
-              <X size={14} />
+            <button onClick={() => setSeleccion(null)} title="Cerrar" className={btnIcono}>
+              <X size={18} />
             </button>
           )}
         </div>
@@ -964,17 +968,17 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)] mb-1.5">Familias</p>
           <div className="flex items-center gap-1.5">
             <button onClick={() => cambiarFamilias(-1)} disabled={familias <= 0} title="Una familia menos"
-              className={`${btnBase} w-10 px-0 disabled:opacity-30`}><Minus size={13} strokeWidth={3} /></button>
+              className={`${btnIcono} disabled:opacity-30`}><Minus size={16} strokeWidth={3} /></button>
             <span className="flex-1 text-center text-lg font-black tabular-nums">{familias}</span>
             <button onClick={() => cambiarFamilias(1)} title="Una familia más"
-              className={`${btnBase} w-10 px-0`}><Plus size={13} strokeWidth={3} /></button>
+              className={btnIcono}><Plus size={16} strokeWidth={3} /></button>
           </div>
           <p className="mt-1 text-[10px] font-bold text-[var(--d-suave)]">
             {familias === 0 ? 'No es vivienda (baldío, comercio, iglesia…)' : casaSel.esquina ? 'Casa de esquina' : ' '}
           </p>
         </div>
         <button onClick={() => seleccionar({ tipo: 'manzana', id: seleccion.manzanaId })} className={`${btnBase} w-full`}>
-          <ArrowLeft size={13} /> Manzana
+          <ArrowLeft size={16} /> Manzana
         </button>
         {!movil && (
           <button onClick={() => setSeleccion(null)} className={`${btnBase} w-full`}>
@@ -992,8 +996,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
             <p className="text-sm font-black uppercase">{String(seleccionado.id).replace('_', ' ')}</p>
           </div>
           {movil && (
-            <button onClick={() => setSeleccion(null)} title="Cerrar" className={`${btnBase} w-10 px-0 shrink-0`}>
-              <X size={14} />
+            <button onClick={() => setSeleccion(null)} title="Cerrar" className={btnIcono}>
+              <X size={18} />
             </button>
           )}
         </div>
@@ -1026,7 +1030,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
         {seleccion.tipo === 'manzana' && panelCasas}
         {seleccion.tipo === 'calle' && (
           <button onClick={() => editarCalle(seleccionado)} className={`${btnBase} w-full`}>
-            <PenLine size={13} /> Editar
+            <PenLine size={16} /> Editar
           </button>
         )}
         {/* Borrar pide un segundo toque: una calle borrada por error se perdía */}
@@ -1045,7 +1049,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           </div>
         ) : (
           <button onClick={() => setBorrarId(seleccionado.id)} className={`${btn} w-full bg-[var(--d-alto)] border-red-500/60 text-red-400`}>
-            <Trash2 size={13} /> Borrar
+            <Trash2 size={16} /> Borrar
           </button>
         )}
         {!movil && (
@@ -1069,7 +1073,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
         <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">Proyecto</p>
         <p className="text-sm font-black truncate">{proyecto.nombre}</p>
         <button onClick={() => { cancelarDibujo(); setMenuAbierto(false); setProyectoId(null); }} className={`${btnBase} w-full`}>
-          <Folder size={14} /> Cambiar de proyecto
+          <Folder size={17} /> Cambiar de proyecto
         </button>
         <p className="pt-2 text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">Pasos del diseño</p>
         {PASOS.map(p => {
@@ -1087,7 +1091,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
                     ? 'bg-brand-500 border-brand-600 text-white'
                     : 'bg-[var(--d-alto)] border-[var(--d-borde)] text-[var(--d-texto)] active:scale-95'}`}
             >
-              {p.listo ? <Icono size={14} /> : <Lock size={12} />}
+              {p.listo ? <Icono size={17} /> : <Lock size={14} />}
               <span className="flex-1 text-left">{p.num}. {p.label}</span>
               {!p.listo && <span className="text-[9px] font-bold normal-case tracking-normal">pronto</span>}
             </button>
@@ -1099,8 +1103,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
 
   /* ── Cabecera ─────────────────────────────────────────────────────────────── */
   const botonMenu = (
-    <button onClick={() => setMenuAbierto(v => !v)} title="Menú" className={`${btnBase} w-10 px-0 shrink-0`}>
-      <Menu size={18} strokeWidth={2.5} />
+    <button onClick={() => setMenuAbierto(v => !v)} title="Menú" className={btnIcono}>
+      <Menu size={22} strokeWidth={2.5} />
     </button>
   );
   const cabecera = (modo !== 'horizontal' || !proyecto) && (
@@ -1108,8 +1112,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       className="shrink-0 px-3 flex items-center gap-2 sm:gap-3 border-b border-[var(--d-borde)] bg-[var(--d-panel)]"
       style={{ paddingTop: `calc(${movil ? 6 : 10}px + env(safe-area-inset-top))`, paddingBottom: movil ? '6px' : '10px' }}
     >
-      <button onClick={onVolver} className={`${btnBase} w-10 px-0 shrink-0`}>
-        <ArrowLeft size={18} strokeWidth={2.5} />
+      <button onClick={onVolver} className={btnIcono}>
+        <ArrowLeft size={22} strokeWidth={2.5} />
       </button>
       <div className="flex-1 min-w-0">
         <p className={`font-black uppercase truncate ${movil && proyecto ? 'text-[13px] tracking-wide' : 'text-sm tracking-[0.2em]'}`}>
@@ -1121,8 +1125,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       </div>
       {proyecto && !movil && <DisenoBuscador mapa={mapa} />}
       {proyecto && movil && (
-        <button onClick={() => setBuscarAbierto(true)} title="Buscar lugar" className={`${btnBase} w-10 px-0 shrink-0`}>
-          <Search size={17} strokeWidth={2.5} />
+        <button onClick={() => setBuscarAbierto(true)} title="Buscar lugar" className={btnIcono}>
+          <Search size={21} strokeWidth={2.5} />
         </button>
       )}
       {proyecto && botonMenu}
@@ -1147,7 +1151,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           ${vertical ? 'w-11 h-11' : 'flex-1 h-12'}
           ${activo ? 'bg-brand-500 text-white' : abierto ? 'bg-[var(--d-alto)] text-brand-500' : 'text-[var(--d-texto)]'}`}
       >
-        <Icono size={vertical ? 18 : 17} strokeWidth={2.5} />
+        <Icono size={vertical ? 22 : 21} strokeWidth={2.5} />
         {!vertical && <span className="text-[9px] font-black uppercase tracking-wide">{g.label}</span>}
       </button>
     );
@@ -1162,17 +1166,17 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     <div className="shrink-0 w-14 flex flex-col items-center gap-1 py-2 border-r border-[var(--d-borde)] bg-[var(--d-panel)] overflow-y-auto"
       style={{ paddingLeft: 'env(safe-area-inset-left)', boxSizing: 'content-box' }}>
       <button onClick={onVolver} title="Volver" className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-95">
-        <ArrowLeft size={18} strokeWidth={2.5} />
+        <ArrowLeft size={22} strokeWidth={2.5} />
       </button>
       <IndicadorGuardado cargando={cargando} {...estadoGuardado} soloPunto />
       <div className="w-8 h-px my-1 bg-[var(--d-borde)]" />
       {!cargando && GRUPOS.map(g => botonGrupo(g, true))}
       <div className="flex-1" />
       <button onClick={() => setBuscarAbierto(true)} title="Buscar lugar" className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-95">
-        <Search size={18} strokeWidth={2.5} />
+        <Search size={22} strokeWidth={2.5} />
       </button>
       <button onClick={() => setMenuAbierto(v => !v)} title="Menú" className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-95">
-        <Menu size={18} strokeWidth={2.5} />
+        <Menu size={22} strokeWidth={2.5} />
       </button>
     </div>
   );
@@ -1187,7 +1191,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       <div className="flex items-center justify-between pb-1">
         <p className="text-[10px] font-black uppercase tracking-widest text-[var(--d-suave)]">{grupo.label}</p>
         <button onClick={() => setGrupoAbierto(null)} title="Cerrar" className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--d-suave)] active:scale-95">
-          <X size={15} />
+          <X size={18} />
         </button>
       </div>
       {contenidoGrupo(grupo.id)}
@@ -1231,12 +1235,12 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
         {total > 0 && (
           <button onClick={confirmarGeneracion} disabled={entran === 0}
             className={`${btn} bg-brand-500 border-brand-600 text-white shadow-xl ${apagadoSobreMapa}`}>
-            <Check size={13} /> Confirmar
+            <Check size={16} /> Confirmar
           </button>
         )}
         <button onClick={() => setGeneracion(null)} title="Descartar"
           className={btn + ' bg-[var(--d-alto)] border-red-500/60 text-red-400 shadow-xl'}>
-          <X size={13} />
+          <X size={18} />
         </button>
       </div>
     );
@@ -1257,14 +1261,14 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       </div>
       <button onClick={() => setTrazoCalle(v => v.slice(0, -1))} disabled={trazoCalle.length === 0}
         className={`${btnBase} shadow-xl ${apagadoSobreMapa}`}>
-        <Undo2 size={13} /> Atrás
+        <Undo2 size={16} /> Atrás
       </button>
       <button onClick={terminarCalle} disabled={trazoCalle.length < 2}
         className={`${btn} bg-brand-500 border-brand-600 text-white shadow-xl ${apagadoSobreMapa}`}>
-        <Check size={13} /> Terminar
+        <Check size={16} /> Terminar
       </button>
       <button onClick={cancelarDibujo} title="Cancelar" className={btn + ' bg-[var(--d-alto)] border-red-500/60 text-red-400 shadow-xl'}>
-        <X size={13} />
+        <X size={18} />
       </button>
     </div>
   );
@@ -1280,12 +1284,12 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       </div>
       {puntoMarcado != null && (
         <button onClick={() => setPuntoMarcado(null)} className={`${btn} bg-brand-500 border-brand-600 text-white shadow-xl`}>
-          <Check size={13} /> Listo
+          <Check size={16} /> Listo
         </button>
       )}
       <button onClick={() => setPts(v => v.slice(0, -1))} disabled={pts.length === 0}
         className={`${btnBase} shadow-xl ${apagadoSobreMapa}`}>
-        <Undo2 size={13} /> Atrás
+        <Undo2 size={16} /> Atrás
       </button>
       {(herramienta === 'manzanaLibre' || herramienta === 'areaPoly') && (
         <button
@@ -1293,11 +1297,11 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           disabled={pts.length < 3}
           className={`${btn} bg-brand-500 border-brand-600 text-white shadow-xl ${apagadoSobreMapa}`}
         >
-          <Check size={13} /> Cerrar
+          <Check size={16} /> Cerrar
         </button>
       )}
       <button onClick={cancelarDibujo} title="Cancelar" className={`${btn} bg-[var(--d-alto)] border-red-500/60 text-red-400 shadow-xl`}>
-        <X size={13} />
+        <X size={18} />
       </button>
     </div>
   );
@@ -1314,7 +1318,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
         </p>
       </div>
       <button onClick={() => setMarcado(null)} className={`${btn} bg-brand-500 border-brand-600 text-white shadow-xl`}>
-        <Check size={13} /> Listo
+        <Check size={16} /> Listo
       </button>
     </div>
   );
@@ -1326,19 +1330,19 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const botonesMapa = (
     <div className={`absolute ${posBotones} z-[500] flex flex-col rounded-xl border-2 border-[var(--d-borde)] overflow-hidden bg-[var(--d-alto)] shadow-xl`}>
       <button onClick={() => setLupa(s => Math.min(2.5, s + 0.2))} className={botonMapa} title="Agrandar postes">
-        <ZoomIn size={17} strokeWidth={2.5} />
+        <ZoomIn size={21} strokeWidth={2.5} />
       </button>
       <div className="h-px bg-[var(--d-borde)]" />
       <button onClick={() => setLupa(s => Math.max(0.5, s - 0.2))} className={botonMapa} title="Reducir postes">
-        <ZoomOut size={17} strokeWidth={2.5} />
+        <ZoomOut size={21} strokeWidth={2.5} />
       </button>
       <div className="h-px bg-[var(--d-borde)]" />
       <button onClick={centrarProyecto} className={botonMapa} title="Centrar en el proyecto">
-        <Maximize size={16} strokeWidth={2.5} />
+        <Maximize size={20} strokeWidth={2.5} />
       </button>
       <div className="h-px bg-[var(--d-borde)]" />
       <button onClick={irAMiUbicacion} className={botonMapa} title="Mi ubicación">
-        <LocateFixed size={16} strokeWidth={2.5} />
+        <LocateFixed size={20} strokeWidth={2.5} />
       </button>
     </div>
   );
@@ -1445,8 +1449,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       {/* Plegar el panel (solo en la PC: en el celular no hay panel fijo) */}
       {modo === 'pc' && (
         <div className="absolute top-3 left-3 z-[500]">
-          <button onClick={() => setPanelAbierto(v => !v)} className={`${btnBase} w-10 px-0 shadow-xl`}>
-            {panelAbierto ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+          <button onClick={() => setPanelAbierto(v => !v)} className={`${btnIcono} shadow-xl`}>
+            {panelAbierto ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
           </button>
         </div>
       )}
@@ -1472,8 +1476,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       {movil && buscarAbierto && (
         <div className="absolute top-2 inset-x-2 z-[1000] flex gap-2">
           <DisenoBuscador mapa={mapa} clase="flex-1 min-w-0" autoFocus alElegir={() => setBuscarAbierto(false)} />
-          <button onClick={() => setBuscarAbierto(false)} title="Cerrar" className={`${btnBase} w-10 px-0 shrink-0 shadow-xl`}>
-            <X size={15} />
+          <button onClick={() => setBuscarAbierto(false)} title="Cerrar" className={`${btnIcono} shadow-xl`}>
+            <X size={18} />
           </button>
         </div>
       )}
@@ -1498,7 +1502,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
         </p>
         {onCrearProyecto && nuevoNombre === null && (
           <button onClick={() => setNuevoNombre('')} className={`${btn} bg-brand-500 border-brand-600 text-white`}>
-            <FolderPlus size={14} strokeWidth={2.5} /> Nuevo proyecto
+            <FolderPlus size={17} strokeWidth={2.5} /> Nuevo proyecto
           </button>
         )}
       </div>
@@ -1523,11 +1527,11 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
           <div className="flex gap-2">
             <button onClick={crearProyecto} disabled={!nuevoNombre.trim()}
               className={`${btn} flex-1 bg-brand-500 border-brand-600 text-white disabled:opacity-30`}>
-              <Check size={13} /> Crear
+              <Check size={16} /> Crear
             </button>
             <button onClick={() => { setNuevoNombre(null); setErrorCrear(null); }} title="Cancelar"
-              className={`${btnBase} w-10 px-0`}>
-              <X size={13} />
+              className={btnIcono}>
+              <X size={18} />
             </button>
           </div>
         </div>
@@ -1544,7 +1548,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
                 onClick={() => setProyectoId(p.id)}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-panel)] hover:border-[var(--d-borde2)] active:scale-95 transition-all"
               >
-                <Folder size={18} className="text-brand-500 shrink-0" />
+                <Folder size={22} className="text-brand-500 shrink-0" />
                 <span className="flex-1 text-left text-sm font-black truncate">{p.nombre}</span>
                 <span className="text-[11px] font-black px-2 py-0.5 rounded-lg border-2 border-[var(--d-borde)] text-[var(--d-suave)]">
                   {n} pts
@@ -1559,7 +1563,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex flex-col bg-[var(--d-fondo)] text-[var(--d-texto)]"
+      // [&_svg]:shrink-0: un ícono dentro de un botón flexible no se encoge si falta espacio
+      className="fixed inset-0 z-[60] flex flex-col bg-[var(--d-fondo)] text-[var(--d-texto)] [&_svg]:shrink-0"
       style={PALETA}
     >
       {cabecera}
@@ -1573,7 +1578,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
             <div className="w-60 shrink-0 border-r border-[var(--d-borde)] bg-[var(--d-panel)] overflow-y-auto">
               {cargando ? (
                 <div className="flex items-center gap-2 px-3 py-4 text-[var(--d-suave)]">
-                  <Loader2 size={14} className="animate-spin" />
+                  <Loader2 size={16} className="animate-spin" />
                   <span className="text-[11px] font-black uppercase tracking-widest">Cargando</span>
                 </div>
               ) : GRUPOS.map(g => (
