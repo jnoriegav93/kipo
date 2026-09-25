@@ -28,6 +28,9 @@ cada tanda de trabajo. Las reglas de cómo trabajar en el repo están en
 > **Después:** el modo Diseño, en pausa desde el 22/09 (ver "En qué estamos: el modo
 > DISEÑO").
 >
+> Las pruebas automáticas de estas tandas están en `pruebas/`: reglas en el emulador,
+> funciones sobre una Firestore falsa, lógica y pantallas (ver su README).
+>
 > El trabajo va en la rama `equipos-por-proyecto`. `main` se adelanta a ella en cada
 > despliegue, y las dos se suben a GitHub (`jnoriegav93/kipo`).
 
@@ -390,7 +393,7 @@ en el cable y en qué medio tramo.
   `VistaMapa.jsx`. **ESLint dio limpio y el build compiló sin una queja**; se habría visto
   como pantalla negra al abrir el editor. Lo cazó un barrido que compara los `<Componente>`
   usados contra lo importado o declarado en el archivo
-  (`scratchpad/iconos-sin-importar.mjs`). Conviene pasarlo tras tocar JSX con iconos.
+  (hoy `pruebas/barrido-jsx.mjs`, que revisa todo `src/`). Conviene pasarlo tras tocar JSX.
 - **La fibra es del todo independiente del poste (21/09).** Se quitaron `puntoId` de los
   vértices y `puntos`/`from`/`to` de la fibra: eran de cuando se dibujaba poste por poste.
   **Qué los usaba de verdad** (se verificó, no se supuso): soltar la fibra al borrar un
@@ -448,7 +451,8 @@ en el cable y en qué medio tramo.
   solo dice "a este le falta algo" y cuál falta lo dice la lista.
   **Regla acordada, no obvia:** un medio tramo enganchado a un cable que a su vez no tiene
   fibras **cuenta como asociado** — el que falla ahí es el cable, y es el cable el que
-  palpita. Está cubierto por prueba en `scratchpad/prueba-asociados.mjs`.
+  palpita. Lo cubrió una prueba del scratchpad de esa sesión (`prueba-asociados.mjs`; no
+  quedó en el repo).
   Se cuenta sobre lo **visible** (mismo filtro por días que los cables) para que el número
   de la barra cuadre con lo que palpita. En la barra, dos botones en una fila bajo la
   cabecera de la lista; cada uno despliega los suyos y centra el mapa.
@@ -1772,7 +1776,7 @@ Lo que faltaba mapear quedó resuelto así:
      sobre la Firestore falsa.
    - **`usuarios` cerrada** (reglas del 24/09, 02:03): cada uno lee solo su documento y
      cambia solo su logo; el admin (por uid o correo), todo. Probada en el EMULADOR (Java
-     portátil en el scratchpad; `reglas-test/test-reglas.mjs`, 36 casos que cubren
+     portátil; `pruebas/test-reglas.mjs`, entonces 36 casos, hoy 45, que cubren
      también las reglas del paso 5) con un control: con la regla vieja, los casos "no"
      fallan.
    - **Candado también en el servidor** para puntos, fibras, acero, papelera y el borrar
@@ -1780,7 +1784,7 @@ Lo que faltaba mapear quedó resuelto así:
      admin. El usuario lo pidió el 24/09, una vez que todos subieron sus cambios. Desde
      ahí, si un editor pasa a supervisor con cambios sin subir, el servidor los rechaza:
      la cola los intenta 3 veces y los deja en error. Probado en el emulador
-     (`reglas-test/test-reglas-obra.mjs`, 57 casos). Cubre puntos viejos sin obra, con la
+     (`pruebas/test-reglas-obra.mjs`, 57 casos). Cubre puntos viejos sin obra, con la
      obra en número o de una obra borrada; mover entre obras; recuperar de la papelera;
      un lote de 450 postes y el borrado de una obra en un lote. Hubo control: con las
      reglas de producción salen mal justo los 21 casos "no". Medido: caben 20 obras
@@ -1797,8 +1801,8 @@ Lo que faltaba mapear quedó resuelto así:
      causa probable es `window.confirm` bloqueado en ese teléfono o el panel reiniciado al
      cambiar de app. Se cambió: los tres botones siempre activos (la función ya se cuida
      sola) y la confirmación DENTRO del panel. Probado con toques de verdad (jsdom +
-     react-dom, en el scratchpad `dom-test/test-panel.mjs`, con `confirm` bloqueado):
-     el nuevo, sin fallas; el de las 01:55, 7 fallas.
+     react-dom, con `confirm` bloqueado): el nuevo, sin fallas; el de las 01:55, 7
+     fallas. (Esa prueba no se guardó: el panel se retiró después.)
    - **El cierre, en producción** (24/09, 03:25 a 03:28; con "por completar: 0" ya no
      hacía falta esperar a LIMPIAR): funciones `crearExportacion`, `aceptarInvitacion` y
      `traspasarProyecto`; hosting (SELLO: 24/09/26, 03:25, con el panel nuevo); reglas.
@@ -1861,8 +1865,8 @@ copien… a la lista de ferreterías del nuevo dueño"):
 
 Probado: la función real sobre la Firestore falsa (8 escenarios, 8 mutantes); la
 lógica de la app con un servidor de mentira (5 mutantes); y con toques de verdad en la
-ventana real de la obra (jsdom, `dom-test/test-armados-ui.mjs`: FIJAR, IMPORTAR con
-CANCELAR y con AGREGAR, CONSERVAR, y la dueña con su propia obra; 16 casos; el control
+ventana real de la obra (jsdom, `pruebas/test-armados-ui.mjs`: FIJAR, IMPORTAR con
+CANCELAR y con AGREGAR, CONSERVAR, y el dueño con su propia obra; 16 casos; el control
 con la versión anterior falla). La función responde en producción.
 
 Cada paso se despliega por separado y **fuera de la jornada de trabajo**.

@@ -1,0 +1,10 @@
+{
+  "name": "kipo-pruebas",
+  "private": true,
+  "description": "Pruebas de Kipo fuera de la app: reglas en el emulador, funciones sobre una Firestore falsa, lógica pura y pantallas (SSR y jsdom). Ver README.md.",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "jsdom": "^24.1.3"
+  }
+}

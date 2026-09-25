@@ -16,7 +16,7 @@ en campo. Antes de desplegar hay que pasar por todo esto:
 ```bash
 npx eslint <archivos tocados>    # comparar contra la línea base, no contra cero
 npm run build
-node scratchpad/smoke.js         # opcional: Chrome sin ventana, llega al login
+node pruebas/barrido-jsx.mjs     # componentes JSX usados sin importar, en todo src/
 firebase deploy --only hosting --project kipo-d29af   # no hay .firebaserc: el proyecto va explícito
 ```
 
@@ -37,7 +37,8 @@ nunca restringiendo: se aplican al instante y a todos. Una regla mal escrita dej
 a la cuadrilla sin poder subir fotos en ese mismo segundo. Las pocas veces que hubo
 que restringir (paso 6 del rediseño de equipos) fue con el visto bueno del usuario,
 probando antes en el emulador de Firestore casos que tienen que pasar y casos que
-tienen que fallar, más una corrida de control con la regla vieja.
+tienen que fallar, más una corrida de control con la regla vieja. Esas pruebas están
+en `pruebas/` (ver su README): usarlas y ampliarlas ante cualquier cambio de reglas.
 
 ```bash
 firebase deploy --only firestore:rules --project kipo-d29af
@@ -102,8 +103,9 @@ for (const E of ['\r\n', '\n']) { const A = a.split('\n').join(E); if (t.include
 comillas, los acentos graves y los `${}` se destrozan al pasar por el shell.
 
 **ESLint no detecta componentes JSX indefinidos** (`react/jsx-no-undef` está
-apagado) y Vite tampoco. Mover código entre archivos exige revisar los imports a
-mano: ya hubo dos pantallas negras por eso.
+apagado) y Vite tampoco. Mover código entre archivos exige revisar los imports: ya
+hubo dos pantallas negras por eso. `node pruebas/barrido-jsx.mjs` los busca en todo
+`src/`. Ojo: con archivos como argumento revisa solo esos.
 
 **La línea base de lint no es cero.** Hay decenas de errores previos. Antes de
 tocar, medir; después, comparar. Lo que importa es no sumar.
@@ -121,7 +123,9 @@ lanza en el acto y no se guarda nada del documento. Los vértices van como
 con `aFirestore` / `desdeFirestore`. Pasó una tanda entera sin guardar nada
 porque el error solo salía en la consola.
 
-**El smoke test solo llega al login**, así que no ve errores dentro de modales.
+**Una prueba que solo llega al login no ve errores dentro de modales.** Para una
+ventana concreta sirve dibujarla (`pruebas/render-*.mjs`) o tocarla con jsdom
+(`pruebas/test-armados-ui.mjs` abre la de una obra con `modalPendiente`).
 
 **La hora de Lima, con Node, no con `date`.** En Git Bash, `TZ=America/Lima date`
 devuelve la hora **UTC** sin avisar: cinco horas de más. El 23/09 eso hizo creer que
