@@ -177,7 +177,9 @@ Revisado contra el código de App_Design (`modules/m1-catastro/js/blocks.js`):
   elegido: las casas de esa sección se dibujan paralelas a la guía; la cantidad sigue
   con − / +.
 - **Casas:** **fusionar** (solo si quedan pegadas; hereda la mayor cantidad de
-  familias, como en el prototipo) y **cortar** una casa (no existía: es nuevo). **Sin
+  familias, como en el prototipo) y **cortar** una casa (no existía: es nuevo; se
+  corta **trazando la línea** por donde partirla, y **cada mitad nace con 1 familia**,
+  respuestas del usuario del 24/09). **Sin
   mover linderos** ("haría más complejo el dibujo y lo que se busca es que sea ágil").
   Lo que no es vivienda (baldío, comercio, iglesia) va con **0 familias**, sin otra
   marca por ahora.
@@ -213,6 +215,10 @@ por manzana.
 | **Calles:** trazar borde A, imán a vértices, imán de ángulo 90°, medida en vivo, ancho de arranque, cambiar lado, confirmar | hecho |
 | **Editar calle:** arrastrar vértices de los dos bordes con imán (16 px a vértices, 12 px a bordes de otras calles), ancho local en vivo, rango de ancho en el panel, Guardar / Cancelar | hecho |
 | **Agregar vértice** tocando un borde y **cortar calle** con un clic en cada borde | hecho |
+| **Manzanas desde calles** (24/09): botón "Desde calles"; candidatas naranja / gris, un toque alterna; "N de M"; las que ya existen salen grises; esquinas a menos de 10 m se cierran solo para el cálculo; nacen con `forma: 'calles'` (siempre irregulares) | hecho — SELLO: 24/09/26, 20:28 |
+| Cada manzana guarda cómo nació (`forma`: `rect`, `libre` o `calles`) y el panel lo muestra | hecho (24/09) |
+| **Borrar pide un segundo toque** ("¿Borrar…? No se puede deshacer") | hecho (24/09) |
+| **Los números no se repiten**: el último de cada tipo va en `ultimos` del catastro | hecho (24/09) |
 
 Archivos: `src/views/VistaDiseno.jsx`, `src/components/DisenoCatastro.jsx`,
 `src/components/DisenoCalles.jsx`, `src/components/DisenoBuscador.jsx`,
@@ -230,9 +236,12 @@ de `diseno` ya están en producción y la lista de Diseño muestra solo los proy
 propios, así que el guardado del dueño funciona.)
 1. **Que el usuario pruebe las calles en la app real**, en un proyecto chico: nunca las
    usó fuera de la página de prueba del 12/09.
-2. **Generar manzanas desde calles** (siempre irregulares), con candidatas revisables
-   (naranja = entra, gris = no). Incluye cerrar esquinas solo para el cálculo.
-   Necesita `polygon-clipping`, en el trozo diferido de Diseño.
+2. ~~Generar manzanas desde calles~~ **hecho el 24/09** (`src/utils/disenoManzanas.js`,
+   `src/components/DisenoCandidatas.jsx`; `polygon-clipping` instalado, solo en el trozo
+   de Diseño: el arranque de la app no creció). Probado con la geometría
+   (`pruebas/test-manzanas-calles.mjs`, 4 mutantes) y con toques
+   (`pruebas/test-diseno-manzanas-ui.mjs`, 15 pasos, control con la versión anterior).
+   Falta que el usuario lo pruebe con calles de verdad.
 3. **Formato regular** para la cuadra rectangular: Dos filas, Tres zonas, Una fila,
    Girar.
 4. **Formato irregular:** divisores, casas por sección, Perpendicular / Paralelo, Lado
@@ -242,10 +251,10 @@ propios, así que el guardado del dueño funciona.)
 6. Exportar GeoJSON.
 7. Bloque de cuadras (baja prioridad: con las calles funcionando pierde sentido).
 
-Arreglos chicos a meter en el camino: confirmar (o deshacer) al borrar, y que los
-números de calle y de manzana no se reutilicen (`siguienteId` hoy vuelve a dar
-`calle_003` tras borrarla; va a importar cuando las casas y las NAPs apunten a
-manzanas).
+Arreglos chicos, hechos el 24/09 junto con el paso 2: borrar pide un segundo toque, y
+los números de calle, manzana, área, marcador y etiqueta ya no se reutilizan
+(`nuevosIds` con `ultimos` en el catastro; antes, tras borrar `calle_003`, la siguiente
+volvía a ser `calle_003`). Deshacer no hay.
 
 Después del catastro vienen las fases 2 a 5 del plan: tramos (grafo de vanos),
 NAPs, rutas y aprobación, y reconciliación con la liquidación.

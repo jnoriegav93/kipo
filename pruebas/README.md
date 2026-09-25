@@ -22,6 +22,7 @@ node pruebas/test-amigos.mjs              # amistades y gente con la que se coin
 node pruebas/test-paso4.mjs               # candado por rol y colores de día por persona
 node pruebas/test-traspaso.mjs            # qué ferretería se copia al traspasar una obra
 node pruebas/test-armados-materiales.mjs  # llevar armados de un catálogo a otro
+node pruebas/test-manzanas-calles.mjs     # modo Diseño: manzanas desde las calles (geometría)
 ```
 
 ## Cloud Functions sobre una Firestore falsa
@@ -46,7 +47,14 @@ node pruebas/render-4a-proyectos.mjs    # lista de proyectos (supervisor, obras 
 node pruebas/render-4a.mjs
 node pruebas/render-4b.mjs
 node pruebas/test-armados-ui.mjs        # CON TOQUES (jsdom): FIJAR, IMPORTAR, CONSERVAR
+node pruebas/test-diseno-manzanas-ui.mjs  # CON TOQUES: Diseño, generar manzanas, borrar, números
 ```
+
+El modo Diseño se toca con `stub-react-leaflet.jsx`: Leaflet no dibuja en jsdom, así que
+cada polígono es un `<div>` con su color y su trazo, y el clic llama a su
+`eventHandlers.click`. Para una corrida de control contra otra versión de la vista, se le
+pasa su ruta (en Git Bash, con `MSYS_NO_PATHCONV=1`, o convierte `/src/...` en una ruta de
+Windows).
 
 ## Reglas de Firestore en el emulador
 

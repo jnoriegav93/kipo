@@ -5,12 +5,14 @@ import {
   ArrowLeft, Folder, Layers, Waypoints, Boxes, Route, Cable, FileDown, Lock,
   ZoomIn, ZoomOut, Square, PenTool, Undo2, Check, X, Trash2, Loader2,
   Circle as CircleIcon, MapPin, Type, PanelLeftClose, PanelLeft, ChevronDown,
-  Spline, Minus, Plus, FlipHorizontal, Scissors, PenLine, FolderPlus,
+  Spline, Minus, Plus, FlipHorizontal, Scissors, PenLine, FolderPlus, LayoutGrid,
 } from 'lucide-react';
 import { perteneceAProyecto } from '../utils/helpers';
 import DisenoCatastro from '../components/DisenoCatastro';
 import DisenoCalles from '../components/DisenoCalles';
 import DisenoBuscador from '../components/DisenoBuscador';
+import DisenoCandidatas from '../components/DisenoCandidatas';
+import { manzanasDesdeCalles } from '../utils/disenoManzanas';
 import { suscribirCatastro, crearGuardadoDiferido, CAPAS } from '../services/disenoService';
 import {
   areaM2, paralela, largoPolilinea, proyectarEnPolilinea, insertarVertice, cortarCalle, anchosCalle,
@@ -62,10 +64,21 @@ const colorPunto = (p) => {
   return '#0F1217';
 };
 
-const siguienteId = (lista, prefijo) => {
+/* Ids nuevos que NUNCA se repiten: el último número usado de cada tipo se guarda en el
+   catastro (`ultimos`). Antes se tomaba el mayor de la lista y, al borrar la última,
+   su número volvía a nacer (calle_003 otra vez); cuando las casas y las NAPs apunten a
+   manzanas, eso las enlazaría con otra. Devuelve los ids y el `ultimos` a guardar. */
+const nuevosIds = (catastro, lista, prefijo, n = 1) => {
   const nums = lista.map(x => parseInt(String(x.id).split('_')[1] || '0', 10) || 0);
-  return `${prefijo}_${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`;
+  const base = Math.max(0, ...nums, catastro?.ultimos?.[prefijo] || 0);
+  return {
+    ids: Array.from({ length: n }, (_, k) => `${prefijo}_${String(base + k + 1).padStart(3, '0')}`),
+    ultimos: { ...(catastro?.ultimos || {}), [prefijo]: base + n },
+  };
 };
+
+// Cómo nació cada manzana: lo va a necesitar su configuración (regular o irregular)
+const FORMA_TEXTO = { rect: 'Rectangular, dibujada', libre: 'Irregular, dibujada', calles: 'Desde calles (irregular)' };
 
 /* Encuadra el mapa al abrir el proyecto: sobre sus postes y, si todavía no tiene,
    sobre lo ya dibujado. Solo cuando cambia `clave` (otro proyecto, fin de la carga,
@@ -160,6 +173,8 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const [edicion, setEdicion] = useState(null);     // { id, A, B, modo, corte, aviso } — calle en edición
   const [medida, setMedida] = useState(null);       // longitud del tramo en curso
   const [anchoDefecto, setAnchoDefecto] = useState(8);
+  const [generacion, setGeneracion] = useState(null); // { candidatas, esquinasCerradas } — manzanas desde calles
+  const [borrarId, setBorrarId] = useState(null);     // lo seleccionado que espera el "sí" para borrarse
   const [estadoGuardado, setEstadoGuardado] = useState({ estado: 'guardado' });
   const [guardado] = useState(() => crearGuardadoDiferido(600, setEstadoGuardado));
 
@@ -233,7 +248,9 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const finalizar = (tipo, geo) => {
     if (tipo === 'manzana') {
       if (!geo.latlngs || geo.latlngs.length < 3) return;
-      guardar({ manzanas: [...manzanas, { id: siguienteId(manzanas, 'manzana'), latlngs: geo.latlngs }] });
+      const { ids, ultimos } = nuevosIds(catastro, manzanas, 'manzana');
+      const forma = herramienta === 'manzanaRect' ? 'rect' : 'libre';
+      guardar({ manzanas: [...manzanas, { id: ids[0], latlngs: geo.latlngs, forma }], ultimos });
       setHerramienta(null);
       setPts([]);
       return;
@@ -257,13 +274,16 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     if (!pendiente) return;
     if (pendiente.que === 'area') {
       const geo = { tipo: pendiente.tipo, latlngs: pendiente.latlngs || null, center: pendiente.center || null, radius: pendiente.radius || null };
-      guardar({ areas: [...areas, { id: siguienteId(areas, 'area'), subTipo, ...geo }] });
+      const { ids, ultimos } = nuevosIds(catastro, areas, 'area');
+      guardar({ areas: [...areas, { id: ids[0], subTipo, ...geo }], ultimos });
     } else if (pendiente.que === 'marcador') {
-      guardar({ marcadores: [...marcadores, { id: siguienteId(marcadores, 'marcador'), latlng: pendiente.latlng, tipo: subTipo }] });
+      const { ids, ultimos } = nuevosIds(catastro, marcadores, 'marcador');
+      guardar({ marcadores: [...marcadores, { id: ids[0], latlng: pendiente.latlng, tipo: subTipo }], ultimos });
     } else if (pendiente.que === 'etiqueta') {
       const t = texto.trim();
       if (!t) return;
-      guardar({ etiquetas: [...etiquetas, { id: siguienteId(etiquetas, 'etiqueta'), latlng: pendiente.latlng, texto: t }] });
+      const { ids, ultimos } = nuevosIds(catastro, etiquetas, 'etiqueta');
+      guardar({ etiquetas: [...etiquetas, { id: ids[0], latlng: pendiente.latlng, texto: t }], ultimos });
     }
     setPendiente(null);
     setTexto('');
@@ -292,12 +312,13 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
   const confirmarCalle = () => {
     if (!borrador) return;
     setAnchoDefecto(borrador.ancho);
+    const { ids, ultimos } = nuevosIds(catastro, calles, 'calle');
     guardar({ calles: [...calles, {
-      id: siguienteId(calles, 'calle'),
+      id: ids[0],
       A: borrador.A,
       B: paralela(borrador.A, borrador.ancho, borrador.lado),
       ancho: borrador.ancho,
-    }] });
+    }], ultimos });
     setBorrador(null);
   };
 
@@ -336,8 +357,9 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
       setEdicion(ed => ({ ...ed, corte: null, aviso: 'Corta más hacia el centro de la calle.' }));
       return;
     }
-    const nueva = { ...calles.find(c => c.id === edicion.id), ...partes[1], id: siguienteId(calles, 'calle') };
-    guardar({ calles: [...calles.map(c => (c.id === edicion.id ? { ...c, ...partes[0] } : c)), nueva] });
+    const { ids, ultimos } = nuevosIds(catastro, calles, 'calle');
+    const nueva = { ...calles.find(c => c.id === edicion.id), ...partes[1], id: ids[0] };
+    guardar({ calles: [...calles.map(c => (c.id === edicion.id ? { ...c, ...partes[0] } : c)), nueva], ultimos });
     setEdicion(null);
   };
 
@@ -348,11 +370,33 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
     setEdicion(null);
   };
 
+  /* MANZANAS DESDE CALLES (acordado el 24/09): los espacios cerrados entre calles salen
+     como candidatas (naranja entra, gris no; un toque alterna) y al confirmar pasan a
+     ser manzanas, siempre irregulares. Las calles no se tocan: cerrar las esquinas es
+     solo para el cálculo (utils/disenoManzanas.js). */
+  const generarDesdeCalles = () => {
+    setPts([]); setHerramienta(null); setPendiente(null); setSeleccion(null); setEdicion(null);
+    setGeneracion(manzanasDesdeCalles(calles, manzanas));
+  };
+  const alternarCandidata = (i) => setGeneracion(g => (g
+    ? { ...g, candidatas: g.candidatas.map((c, k) => (k === i ? { ...c, incluida: !c.incluida } : c)) }
+    : g));
+  const confirmarGeneracion = () => {
+    const elegidas = (generacion?.candidatas || []).filter(c => c.incluida);
+    if (!elegidas.length) return;
+    const { ids, ultimos } = nuevosIds(catastro, manzanas, 'manzana', elegidas.length);
+    guardar({
+      manzanas: [...manzanas, ...elegidas.map((c, k) => ({ id: ids[k], latlngs: c.latlngs, forma: 'calles' }))],
+      ultimos,
+    });
+    setGeneracion(null);
+  };
+
   const cancelarDibujo = () => {
     setPts([]); setHerramienta(null); setPendiente(null);
-    setTrazoCalle([]); setBorrador(null); setMedida(null); setEdicion(null);
+    setTrazoCalle([]); setBorrador(null); setMedida(null); setEdicion(null); setGeneracion(null);
   };
-  const usar = (h) => { setPts([]); setPendiente(null); setSeleccion(null); setEdicion(null); setHerramienta(v => v === h ? null : h); };
+  const usar = (h) => { setPts([]); setPendiente(null); setSeleccion(null); setEdicion(null); setGeneracion(null); setHerramienta(v => v === h ? null : h); };
 
   const btn = 'h-10 px-3 rounded-xl border-2 flex items-center justify-center gap-1.5 text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all';
   const btnBase = `${btn} bg-[var(--d-alto)] border-[var(--d-borde)] text-[var(--d-texto)] hover:border-[var(--d-borde2)]`;
@@ -532,6 +576,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
 
                   <Seccion titulo="Manzanas" abierta={secciones.manzanas}
                     onAlternar={() => setSecciones(s => ({ ...s, manzanas: !s.manzanas }))}>
+                    <Herramienta icono={<LayoutGrid size={14} strokeWidth={2.5} />} label="Desde calles" activa={!!generacion} onClick={generarDesdeCalles} />
                     <Herramienta icono={<Square size={14} strokeWidth={2.5} />}  label="Cuadra rectangular" activa={herramienta === 'manzanaRect'}  onClick={() => usar('manzanaRect')} />
                     <Herramienta icono={<PenTool size={14} strokeWidth={2.5} />} label="Cuadra irregular"   activa={herramienta === 'manzanaLibre'} onClick={() => usar('manzanaLibre')} />
                   </Seccion>
@@ -596,7 +641,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
                 onMedida={setMedida}
                 borrador={borrador}
                 seleccionId={seleccion && seleccion.tipo === 'calle' ? seleccion.id : null}
-                onSeleccionar={(id) => setSeleccion({ tipo: 'calle', id })}
+                onSeleccionar={(id) => { if (!generacion) setSeleccion({ tipo: 'calle', id }); }}
                 edicion={paso === 'catastro' ? edicion : null}
                 onMoverVertice={moverVertice}
                 onClicBorde={clicBorde}
@@ -608,8 +653,11 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
                 herramienta={paso === 'catastro' ? herramienta : null}
                 pts={pts} setPts={setPts}
                 onFinalizar={finalizar}
-                seleccion={seleccion} onSeleccionar={(s) => { if (!edicion) setSeleccion(s); }}
+                seleccion={seleccion} onSeleccionar={(s) => { if (!edicion && !generacion) setSeleccion(s); }}
               />
+
+              {/* Candidatas a manzana, encima de todo mientras se revisan */}
+              {generacion && <DisenoCandidatas candidatas={generacion.candidatas} onAlternar={alternarCandidata} />}
 
               {capas.postes && puntosProy.map(p => (
                 <CircleMarker
@@ -640,7 +688,45 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
             </div>
 
             {/* Proyecto sin postes ni catastro: no hay nada que encuadrar todavía */}
-            {proyectoVacio && !herramienta && !borrador && !edicion && (
+            {/* Manzanas desde calles: cuántas entran, y confirmar o descartar */}
+            {generacion && (() => {
+              const total = generacion.candidatas.length;
+              const entran = generacion.candidatas.filter(c => c.incluida).length;
+              return (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-2 max-w-[calc(100%-7rem)]">
+                  <div className="rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] px-3 py-1.5 min-h-10 flex flex-col justify-center shadow-xl">
+                    {total === 0 ? (
+                      <p className="text-[10px] font-black uppercase tracking-widest text-red-400">
+                        No salió ninguna manzana cerrada: revisa que las calles se toquen
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-500">
+                          {entran} de {total} manzana{total === 1 ? '' : 's'} · toca una para quitarla o ponerla
+                        </p>
+                        {generacion.esquinasCerradas > 0 && (
+                          <p className="text-[10px] font-bold text-[var(--d-suave)]">
+                            Se cerraron {generacion.esquinasCerradas} punta{generacion.esquinasCerradas === 1 ? '' : 's'} de calle a menos de 10 m de otra (solo para el cálculo)
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {total > 0 && (
+                    <button onClick={confirmarGeneracion} disabled={entran === 0}
+                      className={btn + ' bg-brand-500 border-brand-600 text-white shadow-xl disabled:opacity-30'}>
+                      <Check size={13} /> Confirmar
+                    </button>
+                  )}
+                  <button onClick={() => setGeneracion(null)} title="Descartar"
+                    className={btn + ' bg-[var(--d-alto)] border-red-500/60 text-red-400 shadow-xl'}>
+                    <X size={13} />
+                  </button>
+                </div>
+              );
+            })()}
+
+            {proyectoVacio && !herramienta && !borrador && !edicion && !generacion && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[500] w-[min(92%,26rem)] rounded-xl border-2 border-[var(--d-borde)] bg-[var(--d-alto)] px-4 py-3 shadow-xl text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest text-brand-500">Proyecto sin postes</p>
                 <p className="mt-1 text-[11px] font-bold text-[var(--d-suave)] leading-snug">
@@ -811,6 +897,7 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
                   <div className="space-y-1 text-[11px] font-bold text-[var(--d-suave)]">
                     {seleccion.tipo === 'manzana' && (
                       <>
+                        {seleccionado.forma && <p>{FORMA_TEXTO[seleccionado.forma]}</p>}
                         <p>{Math.round(areaM2(seleccionado.latlngs)).toLocaleString('es-PE')} m²</p>
                         <p>{seleccionado.latlngs.length} vértices</p>
                       </>
@@ -837,9 +924,25 @@ export default function VistaDiseno({ onVolver, proyectos = [], puntos = [], onC
                       <PenLine size={13} /> Editar
                     </button>
                   )}
-                  <button onClick={borrarSeleccion} className={`${btn} w-full bg-[var(--d-alto)] border-red-500/60 text-red-400`}>
-                    <Trash2 size={13} /> Borrar
-                  </button>
+                  {/* Borrar pide un segundo toque: una calle borrada por error se perdía */}
+                  {borrarId === seleccionado.id ? (
+                    <div className="rounded-xl border-2 border-red-500/60 p-2 space-y-2">
+                      <p className="text-[11px] font-black text-red-400 leading-snug">
+                        ¿Borrar {String(seleccionado.id).replace('_', ' ')}? No se puede deshacer.
+                      </p>
+                      <div className="flex gap-2">
+                        <button onClick={() => { borrarSeleccion(); setBorrarId(null); }}
+                          className={`${btn} flex-1 bg-red-600 border-red-700 text-white`}>
+                          Sí, borrar
+                        </button>
+                        <button onClick={() => setBorrarId(null)} className={`${btnBase} flex-1`}>No</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setBorrarId(seleccionado.id)} className={`${btn} w-full bg-[var(--d-alto)] border-red-500/60 text-red-400`}>
+                      <Trash2 size={13} /> Borrar
+                    </button>
+                  )}
                   <button onClick={() => setSeleccion(null)} className={`${btnBase} w-full`}>
                     Deseleccionar
                   </button>
